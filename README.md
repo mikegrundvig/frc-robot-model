@@ -11,10 +11,12 @@ It's unreleased: there are no versions yet, and anything may change.
 
 | Package (`com.michaelgrundvig.frc.world`) | Holds |
 |---|---|
-| `robot` | The robot's definition: its body, drivetrain, joints and what drives them, sensors, cameras and IMUs, and the rules between them (interlocks, conditions, named places and outputs). |
+| `robot` | The robot's definition: its body, drivetrain, joints and what drives them, sensors, cameras and IMUs, and the rules between them (interlocks, conditions, named places and outputs); and what a joint's definition means for a program, as functions of plain values (where it is driven, how far its encoder and motor may disagree, which limits its controller reads). |
 | `field` | The field: its tags, the places and zones code names, headings, starts, terrain, and a venue's measured layout. |
 | `physical` | What both are made of: mass and inertia, shapes and materials. |
 | `config` | The validation kit every record is built and checked with. A definition that can't work is refused as it's built, saying why; one that's doubtful says so. |
+| `path` | Timed paths for a drivetrain: keyframes at poses or the field's places, and the trajectories planned through them or along a line under the limits they're given. |
+| `game` | What a season's game manual allows a robot to be, checked against its definition. |
 | `bridges` | Writers for other tools, such as AdvantageScope's robot assets. |
 
 A joint, as a definition writes it:

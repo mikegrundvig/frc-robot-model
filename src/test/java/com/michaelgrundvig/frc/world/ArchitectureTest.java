@@ -15,8 +15,10 @@ class ArchitectureTest {
   /**
    * The validation kit ({@code config}) is what every description is built with, and the physical
    * values ({@code physical}) what the field and the robot are both made of; the field and the
-   * robot's definition know nothing of each other; the writers for other tools ({@code bridges})
-   * read all of it, and nothing reads them.
+   * robot's definition know nothing of each other; the paths ({@code path}) read the field, and the
+   * game's limits ({@code game}) read the robot's definition, and neither is read by the field, the
+   * robot or the other; the writers for other tools ({@code bridges}) read all of it, and nothing
+   * reads them.
    */
   @Test
   void theModelsPackagesStayApart() {
@@ -30,15 +32,23 @@ class ArchitectureTest {
         .definedBy("com.michaelgrundvig.frc.world.field..")
         .layer("robot")
         .definedBy("com.michaelgrundvig.frc.world.robot..")
+        .layer("path")
+        .definedBy("com.michaelgrundvig.frc.world.path..")
+        .layer("game")
+        .definedBy("com.michaelgrundvig.frc.world.game..")
         .layer("bridges")
         .definedBy("com.michaelgrundvig.frc.world.bridges..")
         .whereLayer("kit")
-        .mayOnlyBeAccessedByLayers("physical", "field", "robot", "bridges")
+        .mayOnlyBeAccessedByLayers("physical", "field", "robot", "game", "bridges")
         .whereLayer("physical")
         .mayOnlyBeAccessedByLayers("field", "robot", "bridges")
         .whereLayer("field")
-        .mayOnlyBeAccessedByLayers("bridges")
+        .mayOnlyBeAccessedByLayers("path", "bridges")
         .whereLayer("robot")
+        .mayOnlyBeAccessedByLayers("game", "bridges")
+        .whereLayer("path")
+        .mayOnlyBeAccessedByLayers("bridges")
+        .whereLayer("game")
         .mayOnlyBeAccessedByLayers("bridges")
         .whereLayer("bridges")
         .mayNotBeAccessedByAnyLayer()
