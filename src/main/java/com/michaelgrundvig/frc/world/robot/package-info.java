@@ -22,12 +22,25 @@
  * position, or between two). These are facts about the robot, where its intake is out and that its
  * roller mustn't run stowed, which every reader reads alike.
  *
+ * <p>What a definition means for a program is worked out here too, as plain functions of its values
+ * and of readings handed in: where a joint is driven and where it stops braking ({@link
+ * com.michaelgrundvig.frc.world.robot.Travel}), how far its encoder and its motor's count may
+ * disagree ({@link com.michaelgrundvig.frc.world.robot.EncoderGap}), what its place names read
+ * ({@link com.michaelgrundvig.frc.world.robot.PlaceNames}), whether a limit switch reads as it
+ * should ({@link com.michaelgrundvig.frc.world.robot.SwitchDoubt}), which limits its motor
+ * controller reads ({@link com.michaelgrundvig.frc.world.robot.ControllerPins}), and the volts that
+ * hold it from its encoder ({@link com.michaelgrundvig.frc.world.robot.EncoderLoop}). None keeps
+ * anything between calls, and none reads a clock: what to remember from one loop to the next is the
+ * robot program's.
+ *
  * <p>It's a description, read by everything that needs to know the robot: the mechanisms' code,
  * localization (where the wheels and sensors sit), the simulator (all of it), Pitwall, and the
  * views. It holds no state (where an arm is now comes from its sensors) and no behavior: what to do
  * with its places, when to go where and what to wait for, is the robot program's. Nothing here
  * reads anything back: not the field, not localization, not the robot program. Interlocks speak
- * only of the robot's own joints; what the field or the game allows is the robot program's too.
+ * only of the robot's own joints; what the field or the game allows is the robot program's too (the
+ * game's limits are checked against a definition in {@code com.michaelgrundvig.frc.world.game},
+ * which reads this).
  *
  * <p>A robot's joints, their places and its configurations are constants in {@code Robots}, each
  * joint written in one block: {@code Joint.pivot(...).range(...).positions(...).motor(...)
