@@ -1,18 +1,13 @@
 package com.michaelgrundvig.frc.world.physical;
 
-import static com.michaelgrundvig.frc.world.physical.Cases.assertRefused;
-import static com.michaelgrundvig.frc.world.physical.Cases.refused;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import java.util.List;
-import java.util.stream.Stream;
-import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Translation3d;
@@ -25,13 +20,14 @@ class ShapeTest {
     return Material.builder().name("aluminum").build();
   }
 
+  private static Shape.Box box(Pose3d pose, Translation3d size) {
+    return Shape.Box.builder().pose(pose).size(size).material(aluminum()).build();
+  }
+
   /** A 2 x 1 x 0.5 m box centered at (1, 1, 1), turned a quarter turn about z: 2 m along y. */
   private static Shape.Box box() {
-    return Shape.Box.builder()
-        .pose(new Pose3d(1, 1, 1, new Rotation3d(0, 0, Math.PI / 2)))
-        .size(new Translation3d(2, 1, 0.5))
-        .material(aluminum())
-        .build();
+    return box(
+        new Pose3d(1, 1, 1, new Rotation3d(0, 0, Math.PI / 2)), new Translation3d(2, 1, 0.5));
   }
 
   @Test
@@ -65,37 +61,14 @@ class ShapeTest {
     assertThat(box().distance(point)).isCloseTo(distance, within(1e-12));
   }
 
-  static Stream<Arguments> refusals() {
-    Pose3d at = Pose3d.ZERO;
-    return Stream.of(
-        refused(
-            "a box flat in one axis",
-            () ->
-                Shape.Box.builder()
-                    .pose(at)
-                    .size(new Translation3d(1, 0, 1))
-                    .material(aluminum())
-                    .build(),
-            "Box.size",
-            "positive along each axis"),
-        refused(
-            "a box nowhere",
-            () ->
-                Shape.Box.builder()
-                    .pose(new Pose3d(Double.NaN, 0, 0, Rotation3d.ZERO))
-                    .size(SIZE)
-                    .material(aluminum())
-                    .build(),
-            "Box.pose"),
-        refused(
-            "a material with no name",
-            () -> Material.builder().name(" ").build(),
-            "Material.name"));
-  }
-
-  @ParameterizedTest
-  @MethodSource("refusals")
-  void aShapeMustBeOne(ThrowingCallable building, String[] pieces) {
-    assertRefused(building, pieces);
+  @Test
+  void aShapeMustBeOne() {
+    assertThatThrownBy(() -> box(Pose3d.ZERO, new Translation3d(1, 0, 1)))
+        .hasMessageContaining("Box.size")
+        .hasMessageContaining("positive along each axis");
+    assertThatThrownBy(() -> box(new Pose3d(Double.NaN, 0, 0, Rotation3d.ZERO), SIZE))
+        .hasMessageContaining("Box.pose");
+    assertThatThrownBy(() -> Material.builder().name(" ").build())
+        .hasMessageContaining("Material.name");
   }
 }

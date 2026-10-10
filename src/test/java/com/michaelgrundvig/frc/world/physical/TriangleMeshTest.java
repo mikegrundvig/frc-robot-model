@@ -1,19 +1,14 @@
 package com.michaelgrundvig.frc.world.physical;
 
-import static com.michaelgrundvig.frc.world.physical.Cases.assertRefused;
-import static com.michaelgrundvig.frc.world.physical.Cases.refused;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import java.util.List;
-import java.util.stream.Stream;
-import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Translation2d;
 
 class TriangleMeshTest {
@@ -111,27 +106,15 @@ class TriangleMeshTest {
         .isCloseTo(0.5, within(1e-12));
   }
 
-  static Stream<Arguments> refusals() {
+  @Test
+  void aMeshMustHoldTogether() {
     List<Vector3> three = List.of(new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(0, 1, 0));
-    return Stream.of(
-        refused(
-            "a corner that isn't there",
-            () -> new TriangleMesh(three, List.of(new TriangleMesh.Triangle(0, 1, 3))),
-            "names corner 3 of 3"),
-        refused(
-            "a triangle with no area",
-            () -> new TriangleMesh(three, List.of(new TriangleMesh.Triangle(0, 1, 1))),
-            "no area"),
-        refused(
-            "a corner that is no point",
-            () -> new TriangleMesh(List.of(new Vector3(0, 0, Double.NaN)), List.of()),
-            "isn't a point"));
-  }
-
-  @ParameterizedTest
-  @MethodSource("refusals")
-  void aMeshMustHoldTogether(ThrowingCallable building, String[] pieces) {
-    assertRefused(building, pieces);
+    assertThatThrownBy(() -> new TriangleMesh(three, List.of(new TriangleMesh.Triangle(0, 1, 3))))
+        .hasMessageContaining("names corner 3 of 3");
+    assertThatThrownBy(() -> new TriangleMesh(three, List.of(new TriangleMesh.Triangle(0, 1, 1))))
+        .hasMessageContaining("no area");
+    assertThatThrownBy(() -> new TriangleMesh(List.of(new Vector3(0, 0, Double.NaN)), List.of()))
+        .hasMessageContaining("isn't a point");
     assertThat(TriangleMesh.EMPTY.castDown(Translation2d.ZERO)).isEmpty();
   }
 }
