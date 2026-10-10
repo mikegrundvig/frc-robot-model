@@ -1,11 +1,19 @@
 package com.michaelgrundvig.frc.world.physical;
 
+import static com.michaelgrundvig.frc.world.physical.Cases.assertRefused;
+import static com.michaelgrundvig.frc.world.physical.Cases.refused;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 import java.util.List;
+import java.util.stream.Stream;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Translation2d;
 
 class TriangleMeshTest {
@@ -29,32 +37,40 @@ class TriangleMeshTest {
   @Test
   void eachTriangleFacesOutByTheRightHandRule() {
     TriangleMesh wedge = wedge();
+    TriangleMesh.Triangle slope = wedge.triangles().get(0);
+    TriangleMesh.Triangle back = wedge.triangles().get(2);
 
-    Vector3 slope = wedge.normal(wedge.triangles().get(0));
-    assertThat(slope.x()).isCloseTo(-1 / Math.sqrt(5), within(1e-12));
-    assertThat(slope.z()).isCloseTo(2 / Math.sqrt(5), within(1e-12));
-    Vector3 back = wedge.normal(wedge.triangles().get(2));
-    assertThat(back.x()).isCloseTo(1, within(1e-12));
-    assertThat(wedge.vertical(wedge.triangles().get(2))).isTrue();
-    assertThat(wedge.vertical(wedge.triangles().get(0))).isFalse();
-    assertThat(wedge.corners(wedge.triangles().get(0)))
+    assertThat(wedge.normal(slope).x()).isCloseTo(-1 / Math.sqrt(5), within(1e-12));
+    assertThat(wedge.normal(slope).z()).isCloseTo(2 / Math.sqrt(5), within(1e-12));
+    assertThat(wedge.normal(back).x()).isCloseTo(1, within(1e-12));
+    assertThat(wedge.vertical(back)).isTrue();
+    assertThat(wedge.vertical(slope)).isFalse();
+    assertThat(wedge.corners(slope))
         .containsExactly(new Vector3(0, 0, 0), new Vector3(2, 0, 1), new Vector3(2, 2, 1));
   }
 
-  @Test
-  void aLineCastDownMeetsTheHighestFaceAndPassesWallsBy() {
+  /** A line cast down meets the highest face and passes walls by; blank means it meets nothing. */
+  @ParameterizedTest(name = "{0}")
+  @CsvSource(
+      delimiter = '|',
+      textBlock =
+          """
+          on the slope                 | 1   | 0.5 | 0.5
+          on the top edge, over a wall | 2   | 1   | 1
+          on the foot                  | 0   | 1   | 0
+          past the wall                | 2.1 | 1   |
+          """)
+  void aLineCastDownMeetsTheHighestFaceAndPassesWallsBy(
+      String label, double x, double y, @Nullable Double height) {
     TriangleMesh wedge = wedge();
+    var hit = wedge.castDown(new Translation2d(x, y));
 
-    TriangleMesh.Hit hit = wedge.castDown(new Translation2d(1, 0.5)).orElseThrow();
-    assertThat(hit.height()).isCloseTo(0.5, within(1e-12));
-    assertThat(hit.normal().z()).isPositive();
-    assertThat(wedge.castDown(new Translation2d(2, 1)).orElseThrow().height())
-        .as("on the top edge, over the wall")
-        .isCloseTo(1, within(1e-12));
-    assertThat(wedge.castDown(new Translation2d(0, 1)).orElseThrow().height())
-        .as("on the foot")
-        .isCloseTo(0, within(1e-12));
-    assertThat(wedge.castDown(new Translation2d(2.1, 1))).isEmpty();
+    if (height == null) {
+      assertThat(hit).isEmpty();
+    } else {
+      assertThat(hit.orElseThrow().height()).isCloseTo(height, within(1e-12));
+      assertThat(hit.orElseThrow().normal().z()).isPositive();
+    }
     assertThat(wedge.heightOver(wedge.triangles().get(2), new Translation2d(2, 1))).isEmpty();
   }
 
@@ -95,15 +111,27 @@ class TriangleMeshTest {
         .isCloseTo(0.5, within(1e-12));
   }
 
-  @Test
-  void aMeshMustHoldTogether() {
+  static Stream<Arguments> refusals() {
     List<Vector3> three = List.of(new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(0, 1, 0));
-    assertThatThrownBy(() -> new TriangleMesh(three, List.of(new TriangleMesh.Triangle(0, 1, 3))))
-        .hasMessageContaining("names corner 3 of 3");
-    assertThatThrownBy(() -> new TriangleMesh(three, List.of(new TriangleMesh.Triangle(0, 1, 1))))
-        .hasMessageContaining("no area");
-    assertThatThrownBy(() -> new TriangleMesh(List.of(new Vector3(0, 0, Double.NaN)), List.of()))
-        .hasMessageContaining("isn't a point");
+    return Stream.of(
+        refused(
+            "a corner that isn't there",
+            () -> new TriangleMesh(three, List.of(new TriangleMesh.Triangle(0, 1, 3))),
+            "names corner 3 of 3"),
+        refused(
+            "a triangle with no area",
+            () -> new TriangleMesh(three, List.of(new TriangleMesh.Triangle(0, 1, 1))),
+            "no area"),
+        refused(
+            "a corner that is no point",
+            () -> new TriangleMesh(List.of(new Vector3(0, 0, Double.NaN)), List.of()),
+            "isn't a point"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("refusals")
+  void aMeshMustHoldTogether(ThrowingCallable building, String[] pieces) {
+    assertRefused(building, pieces);
     assertThat(TriangleMesh.EMPTY.castDown(Translation2d.ZERO)).isEmpty();
   }
 }

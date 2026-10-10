@@ -1,6 +1,7 @@
 package com.michaelgrundvig.frc.world.physical;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.wpilib.units.Units.Kilograms;
@@ -8,13 +9,36 @@ import static org.wpilib.units.Units.Pounds;
 
 import com.michaelgrundvig.frc.world.config.ConfigException;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
 
 /** Mass properties: how much a part weighs, where, and how hard it is to turn. */
 class InertiaTest {
+  private static final Rotation3d QUARTER = new Rotation3d(0, 0, Math.PI / 2);
+  private static final Translation3d UNIT = new Translation3d(1, 1, 1);
+
+  private static Inertia of(
+      double ixx, double iyy, double izz, double ixy, double ixz, double iyz) {
+    return Inertia.builder().ixx(ixx).iyy(iyy).izz(izz).ixy(ixy).ixz(ixz).iyz(iyz).build();
+  }
+
+  private static MassProperties part(double kilograms, double x, Inertia inertia) {
+    return MassProperties.builder()
+        .mass(Kilograms.of(kilograms))
+        .cg(new Translation3d(x, 0, 0))
+        .inertia(inertia)
+        .build();
+  }
+
+  private static MassProperties cube(double x) {
+    return part(1, x, Inertia.box(Kilograms.of(1), UNIT));
+  }
+
   @Test
   void aBoxsInertiaIsItsMassSpreadEvenly() {
     // A 60 kg robot, 0.8 m by 0.7 m by 0.5 m tall.
@@ -23,51 +47,59 @@ class InertiaTest {
     assertThat(box.izz()).isCloseTo(60 * (0.64 + 0.49) / 12, within(1e-12));
     assertThat(box.ixx()).isCloseTo(60 * (0.49 + 0.25) / 12, within(1e-12));
     assertThat(box.iyy()).isCloseTo(60 * (0.64 + 0.25) / 12, within(1e-12));
-    assertThat(box.ixy()).isZero();
-    assertThat(box.ixz()).isZero();
-    assertThat(box.iyz()).isZero();
+    assertThat(List.of(box.ixy(), box.ixz(), box.iyz())).containsOnly(0.0);
   }
 
-  @Test
-  void aTurnedPartHasProductsOfInertia() {
-    // A 1 kg bar, 1 m by 0.2 m by 0.2 m, turned 45° about z: its tensor's own entries.
-    double across = (0.04 + 0.04) / 12;
-    double along = (1 + 0.04) / 12;
-    Inertia turned =
-        Inertia.builder()
-            .ixx((across + along) / 2)
-            .iyy((across + along) / 2)
-            .izz(along)
-            .ixy((across - along) / 2)
-            .ixz(0)
-            .iyz(0)
-            .build();
+  /**
+   * A 1 kg bar, 1 m by 0.2 m by 0.2 m, turned 45° about z, has ixx = iyy = 0.04667, izz = 0.08667.
+   */
+  @ParameterizedTest(name = "{0}")
+  @CsvSource(
+      delimiter = '|',
+      textBlock =
+          """
+          a turned bar's own entries         | 0.04666667 | 0.04666667 | 0.08666667 | -0.04 | 0 | 0 |
+          a product no body turns by         | 0.04666667 | 0.04666667 | 0.08666667 | 0.1   | 0 | 0 | no body turns that way
+          a negative moment                  | -1         | 1          | 1          | 0     | 0 | 0 | Inertia.ixx: -1 must be zero or more
+          a moment over the other two's sum  | 3          | 1          | 1          | 0     | 0 | 0 | each must be at most the sum of the other two
+          a product that is no number        | 1          | 1          | 1          | NaN   | 0 | 0 | Inertia.ixy
+          """)
+  void anInertiaMustBeABodys(
+      String label,
+      double ixx,
+      double iyy,
+      double izz,
+      double ixy,
+      double ixz,
+      double iyz,
+      @Nullable String refusal) {
+    if (refusal == null) {
+      assertThatCode(() -> of(ixx, iyy, izz, ixy, ixz, iyz)).doesNotThrowAnyException();
+    } else {
+      assertThatThrownBy(() -> of(ixx, iyy, izz, ixy, ixz, iyz))
+          .isInstanceOf(ConfigException.class)
+          .hasMessageContaining(refusal);
+    }
+  }
 
-    assertThat(turned.ixy()).isNegative();
+  @ParameterizedTest(name = "{0}")
+  @CsvSource(
+      delimiter = '|',
+      textBlock =
+          """
+          a negative mass          | -1 | 0   | MassProperties.mass
+          a mass of nothing known  | -1 | 0   | must be zero or more
+          a center that is no place| 1  | NaN | MassProperties.cg
+          """)
+  void massPropertiesMustBeAPartsOwn(String label, double kilograms, double z, String refusal) {
     assertThatThrownBy(
             () ->
-                Inertia.builder()
-                    .ixx((across + along) / 2)
-                    .iyy((across + along) / 2)
-                    .izz(along)
-                    .ixy(0.1)
-                    .ixz(0)
-                    .iyz(0)
+                MassProperties.builder()
+                    .mass(Kilograms.of(kilograms))
+                    .cg(new Translation3d(0, 0, z))
+                    .inertia(Inertia.ZERO)
                     .build())
-        .isInstanceOf(ConfigException.class)
-        .hasMessageContaining("Inertia.ixy")
-        .hasMessageContaining("no body turns that way");
-  }
-
-  @Test
-  void anInertiaMustBeABodys() {
-    assertThatThrownBy(() -> Inertia.builder().ixx(-1).iyy(1).izz(1).ixy(0).ixz(0).iyz(0).build())
-        .hasMessageContaining("Inertia.ixx: -1 must be zero or more");
-    assertThatThrownBy(() -> Inertia.builder().ixx(3).iyy(1).izz(1).ixy(0).ixz(0).iyz(0).build())
-        .hasMessageContaining("each must be at most the sum of the other two");
-    assertThatThrownBy(
-            () -> Inertia.builder().ixx(1).iyy(1).izz(1).ixy(Double.NaN).ixz(0).iyz(0).build())
-        .hasMessageContaining("Inertia.ixy");
+        .hasMessageContaining(refusal);
   }
 
   @Test
@@ -81,23 +113,6 @@ class InertiaTest {
 
     assertThat(robot.mass().in(Kilograms)).isCloseTo(61.235, within(1e-3));
     assertThat(robot.cg().getZ()).isEqualTo(0.2);
-    assertThatThrownBy(
-            () ->
-                MassProperties.builder()
-                    .mass(Kilograms.of(-1))
-                    .cg(new Translation3d(0, 0, Double.NaN))
-                    .inertia(robot.inertia())
-                    .build())
-        .hasMessageContaining("MassProperties.mass")
-        .hasMessageContaining("must be zero or more");
-    assertThatThrownBy(
-            () ->
-                MassProperties.builder()
-                    .mass(Kilograms.of(1))
-                    .cg(new Translation3d(0, 0, Double.NaN))
-                    .inertia(robot.inertia())
-                    .build())
-        .hasMessageContaining("MassProperties.cg");
   }
 
   /**
@@ -111,12 +126,6 @@ class InertiaTest {
     MassProperties seen =
         none.transformedBy(
             new Transform3d(new Translation3d(1, 2, 3), new Rotation3d(0.3, -0.2, 1.1)));
-    MassProperties point =
-        MassProperties.builder()
-            .mass(Kilograms.of(2))
-            .cg(new Translation3d(0.5, 0, 0))
-            .inertia(Inertia.ZERO)
-            .build();
 
     assertThat(none.isMassless()).isTrue();
     assertThat(none.inertia().isZero()).isTrue();
@@ -125,11 +134,13 @@ class InertiaTest {
     assertThat(MassProperties.sum(List.of(none, none))).isEqualTo(MassProperties.NONE);
     assertThat(MassProperties.sum(List.of(none, cube(0.5))).cg().getX()).isEqualTo(0.5);
     assertThat(cube(0.5).minus(none)).isEqualTo(cube(0.5));
-    assertThat(point.inertia().rotated(new Rotation3d(0, 0, 1)).isZero()).isTrue();
+    assertThat(part(2, 0.5, Inertia.ZERO).inertia().rotated(new Rotation3d(0, 0, 1)).isZero())
+        .as("a point mass")
+        .isTrue();
     assertThat(Inertia.ZERO.whyNotSolid()).contains("turns too easily");
-    assertThat(Inertia.box(Kilograms.of(1), new Translation3d(1, 1, 1)).whyNotSolid()).isNull();
-    assertThat(Inertia.builder().ixx(0).iyy(1).izz(1).ixy(0).ixz(0).iyz(0).build().whyNotSolid())
-        .as("a thin rod along x: a part, but no body")
+    assertThat(Inertia.box(Kilograms.of(1), UNIT).whyNotSolid()).isNull();
+    assertThat(of(0, 1, 1, 0, 0, 0).whyNotSolid())
+        .as("a thin rod along x: a part, no body")
         .isNotNull();
   }
 
@@ -137,7 +148,9 @@ class InertiaTest {
   @Test
   void aTurnedInertiaIsTheSameBodyTurned() {
     Inertia bar = Inertia.box(Kilograms.of(1), new Translation3d(1, 0.2, 0.2));
-    Inertia turned = bar.rotated(new Rotation3d(0, 0, Math.PI / 2));
+    Inertia turned = bar.rotated(QUARTER);
+    // Turned 45 degrees, it's as hard to turn about x as the unturned bar about that diagonal.
+    Inertia diagonal = bar.rotated(new Rotation3d(0, 0, Math.PI / 4));
 
     assertThat(turned.ixx()).isCloseTo(bar.iyy(), within(1e-12));
     assertThat(turned.iyy()).isCloseTo(bar.ixx(), within(1e-12));
@@ -146,8 +159,6 @@ class InertiaTest {
     assertThat(bar.about(new Vector3(0, 0, 3))).as("an axis of any length").isEqualTo(bar.izz());
     assertThat(bar.about(new Vector3(1, 1, 0)))
         .isCloseTo((bar.ixx() + bar.iyy()) / 2, within(1e-12));
-    // Turned 45 degrees, it's as hard to turn about x as the unturned bar about that diagonal.
-    Inertia diagonal = bar.rotated(new Rotation3d(0, 0, Math.PI / 4));
     assertThat(diagonal.ixx()).isCloseTo(bar.about(new Vector3(1, -1, 0)), within(1e-12));
     assertThat(diagonal.ixy()).as("the tensor's own entry").isNegative();
   }
@@ -159,13 +170,13 @@ class InertiaTest {
     MassProperties right = cube(0.5);
     MassProperties both = MassProperties.sum(List.of(left, right));
     Inertia box = Inertia.box(Kilograms.of(2), new Translation3d(2, 1, 1));
+    MassProperties less = both.minus(right);
 
     assertThat(both.mass().in(Kilograms)).isEqualTo(2);
     assertThat(both.cg().getNorm()).isZero();
     assertThat(both.inertia().ixx()).isCloseTo(box.ixx(), within(1e-12));
     assertThat(both.inertia().iyy()).isCloseTo(box.iyy(), within(1e-12));
     assertThat(both.inertia().izz()).isCloseTo(box.izz(), within(1e-12));
-    MassProperties less = both.minus(right);
     assertThat(less.cg().getX()).isCloseTo(-0.5, within(1e-12));
     assertThat(less.inertia().izz()).isCloseTo(left.inertia().izz(), within(1e-12));
     assertThatThrownBy(() -> left.minus(both))
@@ -178,27 +189,12 @@ class InertiaTest {
   /** A part given in its joint's frame, seen from the robot's: moved, and turned with it. */
   @Test
   void aPartSeenFromAnotherFrame() {
-    MassProperties bar =
-        MassProperties.builder()
-            .mass(Kilograms.of(1))
-            .cg(new Translation3d(0.5, 0, 0))
-            .inertia(Inertia.box(Kilograms.of(1), new Translation3d(1, 0.2, 0.2)))
-            .build();
-    MassProperties seen =
-        bar.transformedBy(
-            new Transform3d(new Translation3d(0, 0, 1), new Rotation3d(0, 0, Math.PI / 2)));
+    MassProperties bar = part(1, 0.5, Inertia.box(Kilograms.of(1), new Translation3d(1, 0.2, 0.2)));
+    MassProperties seen = bar.transformedBy(new Transform3d(new Translation3d(0, 0, 1), QUARTER));
 
     assertThat(seen.cg().getX()).isCloseTo(0, within(1e-12));
     assertThat(seen.cg().getY()).isCloseTo(0.5, within(1e-12));
     assertThat(seen.cg().getZ()).isEqualTo(1);
     assertThat(seen.inertia().iyy()).isCloseTo(bar.inertia().ixx(), within(1e-12));
-  }
-
-  private static MassProperties cube(double x) {
-    return MassProperties.builder()
-        .mass(Kilograms.of(1))
-        .cg(new Translation3d(x, 0, 0))
-        .inertia(Inertia.box(Kilograms.of(1), new Translation3d(1, 1, 1)))
-        .build();
   }
 }
