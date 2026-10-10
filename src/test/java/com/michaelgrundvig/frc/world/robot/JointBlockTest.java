@@ -22,7 +22,6 @@ import com.michaelgrundvig.frc.world.physical.Shape;
 import com.michaelgrundvig.frc.world.physical.Vector3;
 import com.michaelgrundvig.frc.world.robot.Driven.AbsoluteEncoder;
 import com.michaelgrundvig.frc.world.robot.Driven.LimitSwitch;
-import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -84,7 +83,8 @@ class JointBlockTest {
             .rest(Meters.of(0))
             .positions(clear)
             .motors(
-                Motors.of(Motor.KRAKEN_X60, Gearing.of(10))
+                Motor.KRAKEN_X60
+                    .through(Gearing.of(10))
                     .drum(Inches.of(1))
                     .on(TALON_FX.can(5), TALON_FX.can(6)))
             .limitSwitch(LimitSwitch.lower().at(Meters.of(0)));
@@ -117,7 +117,7 @@ class JointBlockTest {
         Joint.pivot("arm", Part.CHASSIS, AXLE, Joint.PITCH_UP)
             .range(Range.degrees(-30, 120))
             .rest(Degrees.of(-20))
-            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(60)).count(2));
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(60)).count(2));
     Joint.Revolute wired =
         sim.motors(
                 motors ->
@@ -152,7 +152,7 @@ class JointBlockTest {
         Joint.pivot("arm", Part.CHASSIS, AXLE, Joint.PITCH_UP)
             .range(Range.degrees(-30, 120))
             .rest(Degrees.of(-20))
-            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(60)).on(TALON_FX.can(20)));
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(60)).on(TALON_FX.can(20)));
     MechanismWiring.Cancoder cancoder = CANCODER.can(22).offset(Rotations.of(0.12)).fused();
     MechanismWiring.DataPortEncoder dataPort = DATA_PORT.offset(Rotations.of(0.3));
     MechanismWiring.PortEncoder pot =
@@ -248,7 +248,8 @@ class JointBlockTest {
             .range(Range.meters(0, 1.2))
             .rest(Meters.of(0))
             .motors(
-                Motors.of(Motor.KRAKEN_X60, Gearing.of(10))
+                Motor.KRAKEN_X60
+                    .through(Gearing.of(10))
                     .drum(Inches.of(1))
                     .on(TALON_FX.can(CANIVORE, 5), TALON_FX.can(CANIVORE, 6)))
             .absoluteEncoder(Driven.AbsoluteEncoder.of().ratio(1.0 / 9).on(cancoder));
@@ -318,7 +319,7 @@ class JointBlockTest {
     assertThat(bare.absoluteEncoder(pot).ownSensors()).as("no motors, no drum").isEmpty();
     Sensor.Encoder onShaft =
         (Sensor.Encoder)
-            bare.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)).count(2))
+            bare.motors(Motor.KRAKEN_X60.through(Gearing.of(10)).drum(Inches.of(1)).count(2))
                 .absoluteEncoder(pot)
                 .ownSensors()
                 .getFirst();
@@ -419,7 +420,7 @@ class JointBlockTest {
             .range(Range.degrees(0, 135))
             .rest(IN)
             .positions(IN, OUT)
-            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)))
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(25)))
             .control(MechanismControl.position(30));
     Joint.Revolute practice =
         pivot
@@ -461,7 +462,7 @@ class JointBlockTest {
             .carries(
                 Link.box("arm", new Translation3d(0, 0, 0.2), new Translation3d(0.05, 0.5, 0.36)))
             .positions(IN, OUT)
-            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)).on(TALON_FX.can(32)))
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(25)).on(TALON_FX.can(32)))
             .absoluteEncoder(CANCODER.can(34).offset(Rotations.of(0.82)))
             .limitSwitch(LimitSwitch.lower().at(Degrees.of(0)))
             .control(MechanismControl.position(30));
@@ -471,12 +472,12 @@ class JointBlockTest {
         Joint.elevator("elevator", Part.CHASSIS, AXLE)
             .range(Range.meters(0, 1.2))
             .rest(Meters.of(0))
-            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)).count(2))
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(10)).drum(Inches.of(1)).count(2))
             .control(MechanismControl.position(60));
 
     assertThatIllegalArgumentException()
         .isThrownBy(
-            () -> pivot.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(30)).on(TALON_FX.can(33))))
+            () -> pivot.motors(Motor.KRAKEN_X60.through(Gearing.of(30)).on(TALON_FX.can(33))))
         .withMessage(
             "pivot already has its motors: to re-wire them, motors(motors -> motors.on(...)); to"
                 + " re-gear them, motors(motors -> motors.gearing(...))");
@@ -524,7 +525,7 @@ class JointBlockTest {
         .isThrownBy(
             () ->
                 elevator.motors(
-                    Motors.of(Motor.KRAKEN_X60, Gearing.of(12)).drum(Inches.of(1)).count(2)))
+                    Motor.KRAKEN_X60.through(Gearing.of(12)).drum(Inches.of(1)).count(2)))
         .withMessageStartingWith("elevator already has its motors");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> elevator.control(MechanismControl.position(50)))
@@ -546,16 +547,16 @@ class JointBlockTest {
   void reWiredItsLoopReadsItsEncoderAsBefore() {
     Joint.Revolute fused =
         Joint.roller("turret", Part.CHASSIS, AXLE, Vector3.UP)
-            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(50)).on(TALON_FX.can(20)))
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(50)).on(TALON_FX.can(20)))
             .absoluteEncoder(CANCODER.can(22).offset(Rotations.of(0.1)).fused());
     Joint.Revolute onDataPort =
         Joint.roller("turret", Part.CHASSIS, AXLE, Vector3.UP)
-            .motors(Motors.of(Motor.NEO, Gearing.of(50)).on(SPARK_MAX.can(20)))
+            .motors(Motor.NEO.through(Gearing.of(50)).on(SPARK_MAX.can(20)))
             .absoluteEncoder(DATA_PORT.offset(Rotations.of(0.1)).closesLoop());
     MechanismWiring.PortEncoder port = MechanismWiring.PortEncoder.dutyCycle(1);
     Joint.Revolute onPort =
         Joint.roller("turret", Part.CHASSIS, AXLE, Vector3.UP)
-            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(50)).on(TALON_FX.can(20)))
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(50)).on(TALON_FX.can(20)))
             .absoluteEncoder(port.closesLoop());
 
     assertThat(
@@ -651,7 +652,8 @@ class JointBlockTest {
     Joint.Revolute turret =
         Joint.roller("turret", Part.CHASSIS, AXLE, Vector3.UP)
             .motors(
-                Motors.of(Motor.KRAKEN_X60, Gearing.of(50))
+                Motor.KRAKEN_X60
+                    .through(Gearing.of(50))
                     .on(TALON_FX.can(20), TALON_FX.can(21).clockwise()))
             .absoluteEncoder(
                 Driven.AbsoluteEncoder.of()
@@ -664,7 +666,8 @@ class JointBlockTest {
             .range(Range.meters(0, 1.2))
             .rest(Meters.of(0))
             .motors(
-                Motors.of(Motor.KRAKEN_X60, Gearing.of(10))
+                Motor.KRAKEN_X60
+                    .through(Gearing.of(10))
                     .drum(Inches.of(1))
                     .on(TALON_FX.can(5), TALON_FX.can(6)))
             .limitSwitch(
@@ -989,11 +992,12 @@ class JointBlockTest {
         .isThrownBy(
             () ->
                 arm.motors(
-                    Motors.of(Motor.KRAKEN_X60, Gearing.of(60))
+                    Motor.KRAKEN_X60
+                        .through(Gearing.of(60))
                         .on(TALON_FX.can(20), SPARK_MAX.can(21))))
         .withMessageContaining("a joint's motors are on one kind of controller, on one bus");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> arm.motors(Motors.of(Motor.NEO, Gearing.of(60)).on(TALON_FX.can(20))))
+        .isThrownBy(() -> arm.motors(Motor.NEO.through(Gearing.of(60)).on(TALON_FX.can(20))))
         .withMessageContaining(
             "its NEO is on a TalonFX, which doesn't drive one: a TalonFXS or a SPARK MAX or a SPARK"
                 + " Flex does");
@@ -1008,8 +1012,7 @@ class JointBlockTest {
             () ->
                 robot(
                     arm.motors(
-                            Motors.of(Motor.KRAKEN_X60, Gearing.of(60))
-                                .on(TALON_FX.can(CANIVORE, 20)))
+                            Motor.KRAKEN_X60.through(Gearing.of(60)).on(TALON_FX.can(CANIVORE, 20)))
                         .absoluteEncoder(CANCODER.can(21).offset(Rotations.of(0.1)))))
         .withMessage(
             "RobotDefinition[test].joints: arm's CANcoder is on Systemcore's CAN_S0 port, and its"
@@ -1019,7 +1022,8 @@ class JointBlockTest {
             robot(
                     arm.absoluteEncoder(CANCODER.can(CANIVORE, 21).offset(Rotations.of(0.1)))
                         .motors(
-                            Motors.of(Motor.KRAKEN_X60, Gearing.of(60))
+                            Motor.KRAKEN_X60
+                                .through(Gearing.of(60))
                                 .on(TALON_FX.can(CANIVORE, 20))))
                 .joints())
         .as("its encoder written before its motors: the definition judges the whole block")
@@ -1085,7 +1089,8 @@ class JointBlockTest {
     Joint.Revolute shooter =
         Joint.roller("shooter", Part.CHASSIS, AXLE)
             .motors(
-                Motors.of(Motor.KRAKEN_X60, Gearing.of(1))
+                Motor.KRAKEN_X60
+                    .through(Gearing.of(1))
                     .on(TALON_FX.can(1), TALON_FX.can(2).clockwise()));
     Joint.Revolute regeared = shooter.motors(had -> had.gearing(Gearing.of(1.5)));
     Joint.Prismatic topped =
@@ -1233,8 +1238,7 @@ class JointBlockTest {
             .positions(low)
             .outputs(raising)
             .rest(low)
-            .motors(
-                Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)).on(TALON_FX.can(5)))
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(10)).drum(Inches.of(1)).on(TALON_FX.can(5)))
             .absoluteEncoder(cancoder)
             .limitSwitch(
                 LimitSwitch.lower()
@@ -1293,7 +1297,8 @@ class JointBlockTest {
         .isThrownBy(
             () ->
                 lift.motors(
-                    Motors.of(Motor.KRAKEN_X60, Gearing.of(12))
+                    Motor.KRAKEN_X60
+                        .through(Gearing.of(12))
                         .drum(Inches.of(1))
                         .on(TALON_FX.can(9))))
         .withMessageStartingWith("lift already has its motors");
@@ -1309,12 +1314,12 @@ class JointBlockTest {
     Joint.Revolute pivot =
         Joint.pivot("pivot", Part.CHASSIS, AXLE, Joint.PITCH_DOWN)
             .range(Range.degrees(0, 135))
-            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)).count(2))
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(25)).count(2))
             .limitSwitch(LimitSwitch.upper().on(SensorWiring.Direction.FORWARD.normallyClosed()))
             .runsOnlyWhen(lift.atLeast(Inches.of(10)));
 
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> pivot.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(30)).count(2)))
+        .isThrownBy(() -> pivot.motors(Motor.KRAKEN_X60.through(Gearing.of(30)).count(2)))
         .withMessageStartingWith("pivot already has its motors");
     Sensor.Switch upper = pivot.switchAt(Sensor.Switch.Limit.End.UPPER);
     assertThat(((Sensor.Switch.Limit) upper.kind()).position()).isEmpty();

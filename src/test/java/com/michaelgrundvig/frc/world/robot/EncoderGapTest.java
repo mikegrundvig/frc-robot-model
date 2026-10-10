@@ -8,7 +8,6 @@ import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.Rotations;
 
-import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -22,13 +21,14 @@ class EncoderGapTest {
 
   private static final Joint.Revolute PIVOT =
       StandardRobot.PIVOT
-          .motors(Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(25, 1)))
+          .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(25, 1)))
           .control(MechanismControl.position(30));
 
   private static final Joint.Prismatic ELEVATOR =
       StandardRobot.ELEVATOR
           .motors(
-              Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(10, 1))
+              Motor.KRAKEN_X60
+                  .through(MechanismFixtures.gearing(10, 1))
                   .drum(Inches.of(1))
                   .count(2))
           .control(MechanismControl.position(60));
@@ -39,7 +39,7 @@ class EncoderGapTest {
               StandardRobot.lightPivot("turret", Optional.empty()),
               List.of(Position.degrees("front", 0)),
               List.of())
-          .motors(Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(50, 1)))
+          .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(50, 1)))
           .control(MechanismControl.position(20));
 
   private static double margin(Joint joint) {

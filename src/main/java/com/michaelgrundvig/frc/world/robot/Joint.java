@@ -61,8 +61,8 @@ import org.wpilib.units.measure.Voltage;
  *
  * <p>The parts describe themselves. Motors, an absolute encoder and a limit switch are values that
  * carry their own options ({@link Driven.Motors}, {@link Driven.AbsoluteEncoder}, {@link
- * Driven.LimitSwitch}), and the block takes each whole: {@code .motors(Motors.of(Motor.KRAKEN_X60,
- * Gearing.of(25)).on(TALON_FX.can(32)))}.
+ * Driven.LimitSwitch}), and the block takes each whole: {@code
+ * .motors(Motor.KRAKEN_X60.through(Gearing.of(25)).on(TALON_FX.can(32)))}.
  *
  * <p>A practice robot is written as the competition robot's joints with a few things changed, so a
  * later change to the competition robot reaches it. A part is changed by naming it and saying what
@@ -907,9 +907,9 @@ public sealed interface Joint extends Part permits Joint.Block {
     }
 
     /**
-     * The motors that drive it: {@code .motors(Motors.of(Motor.KRAKEN_X60,
-     * Gearing.of(25)).on(TALON_FX.can(32)))}. A joint that slides says its drum as well: {@code
-     * Motors.of(Motor.KRAKEN_X60, Gearing.of(5)).drum(Inches.of(0.75))}.
+     * The motors that drive it: {@code
+     * .motors(Motor.KRAKEN_X60.through(Gearing.of(25)).on(TALON_FX.can(32)))}. A joint that slides
+     * says its drum as well: {@code .through(Gearing.of(5)).drum(Inches.of(0.75))}.
      */
     default J motors(Driven.Motors motors) {
       saidOnce(

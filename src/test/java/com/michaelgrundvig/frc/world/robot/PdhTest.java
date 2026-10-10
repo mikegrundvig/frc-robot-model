@@ -14,7 +14,6 @@ import static org.wpilib.units.Units.Rotations;
 
 import com.michaelgrundvig.frc.world.config.Finding;
 import com.michaelgrundvig.frc.world.robot.Driven.LimitSwitch;
-import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -35,7 +34,7 @@ class PdhTest {
       MechanismWiring.Device leader, MechanismWiring.Device other) {
     return Joint.roller("roller", Part.CHASSIS, AXLE)
         .outputs(INTAKING)
-        .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(3)).on(leader, other));
+        .motors(Motor.KRAKEN_X60.through(Gearing.of(3)).on(leader, other));
   }
 
   private static final Joint.Revolute FED =
@@ -146,7 +145,8 @@ class PdhTest {
             .range(Range.degrees(0, 135))
             .rest(Position.degrees("in", 1.5))
             .motors(
-                Motors.of(Motor.KRAKEN_X60, Gearing.of(25))
+                Motor.KRAKEN_X60
+                    .through(Gearing.of(25))
                     .on(TALON_FX.can(CANIVORE, 20).pdh(6, Amps.of(40))))
             .absoluteEncoder(CANCODER.can(CANIVORE, 21).offset(Rotations.of(0)).remote())
             .limitSwitch(LimitSwitch.lower().on(CANDI.can(CANIVORE, 22).s1().normallyClosed()))
@@ -281,7 +281,7 @@ class PdhTest {
     Joint.Revolute simulated =
         Joint.roller("simulated", Part.CHASSIS, AXLE)
             .outputs(INTAKING)
-            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(3)));
+            .motors(Motor.KRAKEN_X60.through(Gearing.of(3)));
     RobotDefinition robot =
         RobotDefinitionBuilder.builder(robot(Optional.of(Pdh.can(1)), half, simulated))
             .drivetrain(wiredDrivetrain())

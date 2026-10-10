@@ -9,7 +9,6 @@ import static org.wpilib.units.Units.Radians;
 import static org.wpilib.units.Units.RadiansPerSecond;
 import static org.wpilib.units.Units.RadiansPerSecondPerSecond;
 
-import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -25,7 +24,7 @@ class TravelTest {
   /** The intake's pivot (0° to 135°) on a Kraken at 25:1, profiled at 8 rad/s and 30 rad/s². */
   private static final Joint.Revolute PIVOT =
       StandardRobot.PIVOT
-          .motors(Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(25, 1)))
+          .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(25, 1)))
           .control(
               MechanismControl.position(30)
                   .withProfile(RadiansPerSecond.of(8), RadiansPerSecondPerSecond.of(30))
@@ -35,7 +34,8 @@ class TravelTest {
   private static final Joint.Prismatic ELEVATOR =
       StandardRobot.ELEVATOR
           .motors(
-              Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(10, 1))
+              Motor.KRAKEN_X60
+                  .through(MechanismFixtures.gearing(10, 1))
                   .drum(Inches.of(1))
                   .count(2))
           .control(
@@ -49,7 +49,7 @@ class TravelTest {
               StandardRobot.lightPivot("turret", Optional.empty()),
               List.of(TURRET_FRONT),
               List.of())
-          .motors(Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(50, 1)))
+          .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(50, 1)))
           .control(
               MechanismControl.position(20)
                   .withProfile(RadiansPerSecond.of(3), RadiansPerSecondPerSecond.of(10))

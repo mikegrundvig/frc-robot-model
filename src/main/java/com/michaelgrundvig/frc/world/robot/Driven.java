@@ -110,14 +110,6 @@ public record Driven(
     }
 
     /**
-     * One motor turning a joint through a gearing, which only the simulator runs until it is on a
-     * controller: {@code Motors.of(Motor.KRAKEN_X60, Gearing.of(25)).on(TALON_FX.can(32))}.
-     */
-    public static Motors of(Motor motor, Gearing gearing) {
-      return builder().motor(motor).count(1).gearing(gearing).build();
-    }
-
-    /**
      * This many of the motor turning the joint together: {@code .count(4)}. Motors on controllers
      * need not say it, since {@link #on} counts them.
      */

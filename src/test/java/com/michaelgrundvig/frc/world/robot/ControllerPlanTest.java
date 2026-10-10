@@ -18,7 +18,6 @@ import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.Meters;
 
-import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.DoubleSupplier;
@@ -65,7 +64,7 @@ class ControllerPlanTest {
   private static final Joint.Revolute BLOCK_ARM = Joint.pivot("block arm", Part.CHASSIS, point(0.1, 0, 0.5), PITCH_UP)
       .range(Range.degrees(-30, 120)).rest(Degrees.of(-30))
       .carries(link("block arm link", 4, point(0.3, 0, 0), point(0.6, 0.05, 0.05)))
-      .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(60)).on(BLOCK_CONTROLLER)).control(MechanismFixtures.stowed(30));
+      .motors(Motor.KRAKEN_X60.through(Gearing.of(60)).on(BLOCK_CONTROLLER)).control(MechanismFixtures.stowed(30));
 
   private static final Drive ARM_MOTORS = motors(ARM, Motor.KRAKEN_X60, 2, gearing(60, 1));
   private static final Drive ARM_ON_NEOS = motors(ARM, Motor.NEO, 2, gearing(60, 1));

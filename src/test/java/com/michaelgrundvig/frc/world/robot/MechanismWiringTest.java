@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.wpilib.units.Units.Rotations;
 
-import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.wpilib.math.geometry.Translation3d;
@@ -17,7 +16,7 @@ class MechanismWiringTest {
   /** A joint's motors on TalonFXs at these IDs, the first leading. */
   private static Joint.Revolute onTalons(MechanismWiring.Device... controllers) {
     return Joint.pivot("arm", Part.CHASSIS, new Translation3d(), Joint.PITCH_UP)
-        .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(60)).on(controllers));
+        .motors(Motor.KRAKEN_X60.through(Gearing.of(60)).on(controllers));
   }
 
   @Test
@@ -55,7 +54,7 @@ class MechanismWiringTest {
    */
   @Test
   void itTakesAMotorAndNoIdTwice() {
-    assertThatThrownBy(() -> Motors.of(Motor.KRAKEN_X60, Gearing.of(60)).count(0))
+    assertThatThrownBy(() -> Motor.KRAKEN_X60.through(Gearing.of(60)).count(0))
         .hasMessage("Motors.count: 0 must be positive");
     assertThatThrownBy(
             () ->

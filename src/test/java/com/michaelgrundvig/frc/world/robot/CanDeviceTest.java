@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.wpilib.units.Units.Rotations;
 
-import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.wpilib.math.geometry.Translation3d;
@@ -27,7 +26,7 @@ class CanDeviceTest {
     Motor motor = controller.controller() == TALON_FX ? Motor.KRAKEN_X60 : Motor.NEO_VORTEX;
     return Joint.roller(label, Part.CHASSIS, AXLE)
         .outputs(RUNNING)
-        .motors(Motors.of(motor, Gearing.of(3)).on(controller));
+        .motors(motor.through(Gearing.of(3)).on(controller));
   }
 
   private static SwerveWiring.ModuleWiring module(int drive, int steer, int encoder) {

@@ -309,7 +309,7 @@ final class Blocks {
     if (joint.driven().motors().flatMap(Driven.Motors::pitchRadius).isEmpty()) {
       return possessive(joint.label())
           + " absolute encoder turns with its drum, and its block has no motors to say the drum's"
-          + " pitch radius: give them, .motors(Motors.of(motor, gearing).drum(pitchRadius))";
+          + " pitch radius: give them, .motors(motor.through(gearing).drum(pitchRadius))";
     }
     if (joint.range().isEmpty()) {
       return joint.label()

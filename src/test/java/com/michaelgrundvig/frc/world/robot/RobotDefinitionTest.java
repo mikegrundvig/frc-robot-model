@@ -14,7 +14,6 @@ import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Rotations;
 
 import com.michaelgrundvig.frc.world.robot.Driven.LimitSwitch;
-import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -158,7 +157,7 @@ class RobotDefinitionTest {
         .isThrownBy(
             () ->
                 pivot(Gearing.of(30))
-                    .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)).on(TALON_FX.can(33))))
+                    .motors(Motor.KRAKEN_X60.through(Gearing.of(25)).on(TALON_FX.can(33))))
         .withMessageStartingWith(
             "pivot already has its motors: to re-wire them, motors(motors -> motors.on(...))");
   }
@@ -402,7 +401,7 @@ class RobotDefinitionTest {
     return Joint.pivot("pivot", Part.CHASSIS, AXLE, Joint.PITCH_DOWN)
         .range(Range.degrees(0, 135))
         .rest(Degrees.of(1.5))
-        .motors(Motors.of(Motor.KRAKEN_X60, gearing).on(TALON_FX.can(32)))
+        .motors(Motor.KRAKEN_X60.through(gearing).on(TALON_FX.can(32)))
         .control(
             MechanismControl.position(30)
                 .withHoming(MechanismControl.Homing.toHardStop(Sensor.Switch.Limit.End.LOWER)));

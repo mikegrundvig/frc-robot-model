@@ -114,6 +114,15 @@ public record Motor(
   }
 
   /**
+   * One of this motor driving a joint through a gearing, which is how a joint's block starts its
+   * motors: {@code Motor.KRAKEN_X60.through(Gearing.of(25)).on(TALON_FX.can(32))}. Until it is put
+   * on a controller, only the simulator runs it.
+   */
+  public Driven.Motors through(Gearing gearing) {
+    return Driven.Motors.builder().motor(this).count(1).gearing(gearing).build();
+  }
+
+  /**
    * Describes any DC motor from its datasheet, one named value at a time: {@code
    * Motor.fromDatasheet().name("...").nominalVoltage(Volts.of(12))...build()}. Datasheets often
    * give the free speed in rpm: {@code RPM.of(6000)}.

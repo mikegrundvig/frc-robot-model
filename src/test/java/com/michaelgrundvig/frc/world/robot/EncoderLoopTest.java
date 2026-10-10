@@ -3,14 +3,13 @@ package com.michaelgrundvig.frc.world.robot;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
-import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import org.junit.jupiter.api.Test;
 
 /** The volts that hold a joint at its profile's point, from where its encoder says it is. */
 class EncoderLoopTest {
   private static final Joint.Revolute PIVOT =
       StandardRobot.PIVOT
-          .motors(Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(25, 1)))
+          .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(25, 1)))
           .control(
               MechanismControl.position(30).withHoming(MechanismControl.Homing.assumeAtRest()));
 
