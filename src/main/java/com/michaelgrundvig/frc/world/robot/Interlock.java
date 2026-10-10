@@ -7,36 +7,57 @@ import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * An interlock: what one joint may do, by where another is or what a sensor reads. Each is one of
- * two shapes, written from the joint it restricts, in its block, or in the robot's definition for
- * one its block can't name yet ({@code Interlock.that(ELEVATOR).keepsOut(...).when(...)}). A roller
- * that runs only with the pivot out, in the roller's block:
+ * An interlock is a rule that restricts one joint according to where another joint is, how fast
+ * another joint runs, or what a sensor reads. There are two kinds.
+ *
+ * <p>A run-only-when ({@link RunsOnlyWhen}) lets its joint move only while a condition holds. Here
+ * a roller runs only once its pivot is out, written in the roller's block:
  *
  * {@snippet class=com.michaelgrundvig.frc.world.examples.ExampleJoints region=runs-only-when}
  *
- * <p>An arm kept out of the bumper's band while the elevator is too low, in the arm's:
+ * <p>A keep-out ({@link KeepsOut}) keeps its joint out of a region of its travel while a condition
+ * holds. Here an arm is kept out of the bumper's band while the elevator is too low, written in the
+ * arm's block:
  *
  * {@snippet class=com.michaelgrundvig.frc.world.examples.ExampleJoints region=keeps-out}
  *
- * <p>Interlocks are facts about the robot, in its definition, enforced beneath every command: no
- * command, binding, auto or button skips one. They speak only of the robot's own joints and
- * sensors; where the field or the game says what's allowed (a trench, a zone, a hub), that's a gate
- * in the robot's code, which knows the field. A sensor that's lost holds no condition: one that
- * keeps a joint out keeps it out, and one it runs only when holds it. The definition checks them
- * when it's built: every joint and sensor one of the robot's, none that follows another, no joint
- * held where it can't move or from a named position it can't then reach, and every configuration,
- * and the robot as it starts, obeying every interlock on a joint's position (a sensor's reading
- * isn't known until the robot runs), with no joints there holding each other so that none can move
- * to free another.
+ * <p>An interlock is normally written in the block of the joint it restricts. When its condition
+ * names a joint that is declared later, so the block cannot refer to it yet, it is written in the
+ * robot's definition instead: {@code Interlock.that(ELEVATOR).keepsOut(...).when(...)}.
+ *
+ * <p>Interlocks are facts about the robot. They live in its definition and are enforced beneath
+ * every command, so no command, binding, auto or button can skip one. They speak only of the
+ * robot's own joints and sensors. A rule that depends on the field or the game (a trench, a zone, a
+ * hub) is a gate in the robot's code instead, because the robot's code knows the field and this
+ * model of the robot does not.
+ *
+ * <p>A condition that cannot be judged restricts. When a sensor is lost, or a joint does not know
+ * where it is, a keep-out stays closed and a run-only-when holds its joint.
+ *
+ * <p>The definition checks its interlocks when it is built. Every joint and sensor must be one of
+ * the robot's, and none may be a joint that follows another. No joint may be held where it cannot
+ * move, or kept from a named position it could then never reach. Every configuration, and the robot
+ * as it starts, must obey every interlock whose condition is on a joint's position (what a sensor
+ * reads is not known until the robot runs). And no group of joints may hold each other so that none
+ * can move to free another.
+ *
+ * <p>This type only declares the rules. What they allow a joint to do in any one loop is decided by
+ * {@link InterlockEnforcement}.
  */
 public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.KeepsOut {
   /** The joint it restricts. */
   Joint joint();
 
-  /** Where the other joint must be, or what a sensor must read, for it to apply: see each shape. */
+  /**
+   * What must be true for the interlock to act. A run-only-when lets its joint move while this
+   * holds; a keep-out closes its region while this holds.
+   */
   Condition condition();
 
-  /** The other joint its condition is about, where it is or how fast it runs; none for a sensor. */
+  /**
+   * The other joint, the one the condition is about, whether it reads that joint's position or its
+   * speed. A condition on a sensor has no other joint.
+   */
   default Optional<Joint> other() {
     return switch (condition()) {
       case Condition.OnJoint onJoint -> Optional.of(onJoint.joint());
@@ -51,17 +72,19 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
   }
 
   /**
-   * A joint that may move only while a condition holds: while it doesn't, a joint held to a
-   * position stays where it is, and one run at an output stops, each going on when it holds again.
-   * A team's intake roller runs only with its pivot past 110°.
+   * A run-only-when: its joint may move only while a condition holds. While the condition does not
+   * hold, a joint that holds positions stays where it comes to a stop, and a joint that only runs
+   * at outputs stops. Either carries on with what it was asked once the condition holds again. For
+   * example, an intake roller runs only with its pivot past 110°.
    *
    * @param joint the joint it restricts
-   * @param condition where another joint must be, or what a sensor must read, for it to move
+   * @param condition where another joint must be, how fast it must run, or what a sensor must read,
+   *     for this joint to move
    */
   @ConfigRecord
   record RunsOnlyWhen(Joint joint, Condition condition) implements Interlock {
     public RunsOnlyWhen {
-      Places.refuse(notAnother(joint, condition));
+      Places.refuse(whyNotAboutAnother(joint, condition));
     }
 
     /** Starts describing the interlock, one named value at a time. */
@@ -76,19 +99,32 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
   }
 
   /**
-   * A joint kept out of a region of its travel while a condition holds: its target is held at the
-   * region's edge, on the side it's on, until the condition clears. An arm kept out of the bumper's
+   * A keep-out: its joint is kept out of a region of its travel while a condition holds. The region
+   * is closed while the condition holds and open otherwise. While it is closed, a joint outside it
+   * is stopped at the edge on the side it is on. For example, an arm is kept out of the bumper's
    * band while the elevator is too low to clear it.
    *
+   * <p>A joint can be inside the region when it closes, or when the robot starts. It is then
+   * allowed only to leave, by the side {@link #sideKeptTo} names.
+   *
    * @param joint the joint it restricts
-   * @param region where the joint may not be meanwhile, in its units: part of its range, and not
-   *     all
-   * @param condition where another joint is, or what a sensor reads, while the region is closed
+   * @param region where the joint may not be while the condition holds, in the joint's units. It is
+   *     part of the joint's range and never all of it.
+   * @param condition where another joint is, how fast it runs, or what a sensor reads, while the
+   *     region is closed
    */
   @ConfigRecord
   record KeepsOut(Joint joint, Range region, Condition condition) implements Interlock {
+    /** A side of the region, along the joint's travel. */
+    public enum Side {
+      /** Toward the low end of the joint's travel, at or beyond the region's lower edge. */
+      BELOW,
+      /** Toward the high end of the joint's travel, at or beyond the region's upper edge. */
+      ABOVE
+    }
+
     public KeepsOut {
-      Places.refuse(notAnother(joint, condition), notPartOf(joint, region));
+      Places.refuse(whyNotAboutAnother(joint, condition), whyNotPartOfRange(joint, region));
     }
 
     /** Starts describing the interlock, one named value at a time. */
@@ -97,45 +133,107 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
     }
 
     /**
-     * Whether a position is inside the region: short of its edges, where the joint may be, and at
-     * an edge that reaches an end of the joint's range, past which there's no room to be out. A
-     * joint headed there is held at the region's other edge, so it never gets to that end.
+     * Whether a position is inside the region.
+     *
+     * <p>An edge of the region is normally outside it: the edge is where a joint is held, so it
+     * must be somewhere the joint is allowed to be. The exception is an edge that sits at an end of
+     * the joint's range. There is nowhere beyond that edge for the joint to be, so a joint standing
+     * on it is inside the region and has to leave by the other edge.
      */
-    public boolean keepsOut(double position) {
-      return (roomBelow() ? position > region.lower() : position >= region.lower())
-          && (roomAbove() ? position < region.upper() : position <= region.upper());
+    public boolean isInside(double position) {
+      boolean betweenTheEdges = position >= region.lower() && position <= region.upper();
+      if (!betweenTheEdges) {
+        return false;
+      }
+      if (position == region.lower()) {
+        return !hasRoomBelow();
+      }
+      if (position == region.upper()) {
+        return !hasRoomAbove();
+      }
+      return true;
     }
 
     /**
-     * Which side of the region a joint at a position is kept to: below it (true) or above. Out of
-     * it, the side it's on. Inside, as one there when the robot started or when the region closed
-     * is, it may only leave: by the side it was last on, else by the nearer edge, and never by a
-     * side with no room past it.
+     * Which side of the region the joint is kept to while the region is closed.
      *
-     * @param lastSide the side the joint was last out on: -1 below, 1 above, 0 never or unknown
+     * <p>A joint outside the region is kept to the side it is on. A joint inside the region may
+     * only leave it, and this says by which side. It leaves by the side it was last outside on,
+     * because that is the way it came in. A joint that has never been outside (it started inside)
+     * leaves by the nearer edge. In either case it never leaves by a side with no room beyond it.
+     *
+     * @param position where the joint is
+     * @param lastOutside the side the joint was on when it was last outside the region, or empty if
+     *     it has not been outside it yet
      */
-    public boolean keptBelow(double position, int lastSide) {
-      if (position <= region.lower() && roomBelow()) {
-        return true;
+    public Side sideKeptTo(double position, Optional<Side> lastOutside) {
+      if (position <= region.lower() && hasRoomBelow()) {
+        return Side.BELOW;
       }
-      if (position >= region.upper() && roomAbove()) {
-        return false;
+      if (position >= region.upper() && hasRoomAbove()) {
+        return Side.ABOVE;
       }
-      return !roomAbove()
-          || (roomBelow()
-              && (lastSide != 0
-                  ? lastSide < 0
-                  : position - region.lower() <= region.upper() - position));
+      // From here on the joint has to leave the region: it is inside it, or it reads past an end of
+      // its range that the region reaches.
+      if (!hasRoomAbove()) {
+        return Side.BELOW;
+      }
+      if (!hasRoomBelow()) {
+        return Side.ABOVE;
+      }
+      if (lastOutside.isPresent()) {
+        return lastOutside.get();
+      }
+      return sideOfNearerEdge(position);
     }
 
-    /** Whether there's room below the region: it doesn't reach the low end of the joint's range. */
-    private boolean roomBelow() {
+    /** Which side the joint is kept to when it has not been outside the region yet. */
+    public Side sideKeptTo(double position) {
+      return sideKeptTo(position, Optional.empty());
+    }
+
+    /** The edge of the region on one side: where a joint kept to that side is stopped. */
+    public double edge(Side side) {
+      return switch (side) {
+        case BELOW -> region.lower();
+        case ABOVE -> region.upper();
+      };
+    }
+
+    /**
+     * How far a position is past the region's edge on one side, measured into the region. It is
+     * zero at the edge and negative while the position is still outside the region on that side.
+     * For the side a joint is kept to, this is how far the joint, or a goal it is asked for, has
+     * gone beyond where it may be.
+     */
+    public double distancePastEdge(Side side, double position) {
+      return switch (side) {
+        case BELOW -> position - region.lower();
+        case ABOVE -> region.upper() - position;
+      };
+    }
+
+    /** The side whose edge is nearer a position. Halfway between the edges counts as below. */
+    private Side sideOfNearerEdge(double position) {
+      double toLowerEdge = position - region.lower();
+      double toUpperEdge = region.upper() - position;
+      if (toLowerEdge <= toUpperEdge) {
+        return Side.BELOW;
+      }
+      return Side.ABOVE;
+    }
+
+    /**
+     * Whether the joint has anywhere to be below the region. It has not when the region reaches the
+     * low end of the joint's range. A joint with no range can always go further.
+     */
+    private boolean hasRoomBelow() {
       Optional<Range> range = joint.range();
       return range.isEmpty() || region.lower() > range.get().lower();
     }
 
-    /** Whether there's room above the region: it doesn't reach the high end of its range. */
-    private boolean roomAbove() {
+    /** Whether the joint has anywhere to be above the region: see {@link #hasRoomBelow}. */
+    private boolean hasRoomAbove() {
       Optional<Range> range = joint.range();
       return range.isEmpty() || region.upper() < range.get().upper();
     }
@@ -154,103 +252,127 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
   }
 
   /**
-   * A joint an interlock is being written about: say what it may do. Not an interlock until it's
-   * said.
+   * The first step of writing an interlock: the joint it will restrict. It is not an interlock
+   * until one of its methods says what the joint may do.
    *
    * @param joint the joint
    */
   record Subject(Joint joint) {
-    /** It moves only while the condition holds. */
+    /** The joint moves only while the condition holds. */
     public RunsOnlyWhen runsOnlyWhen(Condition condition) {
       return RunsOnlyWhen.builder().joint(joint).condition(condition).build();
     }
 
-    /** It's kept out of a region of its travel: say while what ({@link KeepingOut#when}). */
+    /** The joint is kept out of a region of its travel. {@link KeepingOut#when} says while what. */
     public KeepingOut keepsOut(Range region) {
       return new KeepingOut(joint, region);
     }
   }
 
   /**
-   * A joint kept out of a region, being written: say while what. Not an interlock until it's said.
+   * The second step of writing a keep-out: the joint and the region. It is not an interlock until
+   * {@link #when} says while what.
    *
    * @param joint the joint
    * @param region where it may not be
    */
   record KeepingOut(Joint joint, Range region) {
-    /** While the condition holds. */
+    /** The region is closed while the condition holds. */
     public KeepsOut when(Condition condition) {
       return KeepsOut.builder().joint(joint).region(region).condition(condition).build();
     }
   }
 
   /**
-   * Why a condition can't restrict a joint, or null when it can: one on a joint must be about
-   * another joint, where it is or how fast it runs, not one of its named outputs, nor exactly at
-   * one of its positions, which the joint, measured, never is. Any sensor's can.
+   * Why a condition cannot restrict a joint, or null when it can. An interlock has to be about
+   * something other than the joint it restricts, and has to be something the robot can judge while
+   * it runs. A condition on a sensor always is.
    */
-  private static @Nullable String notAnother(Joint joint, Condition given) {
-    if (given instanceof Condition.UpToSpeed upToSpeed) {
-      return upToSpeed.joint().equals(joint)
-          ? joint.label() + " can't be held by how fast it runs itself: an interlock is on another"
-          : null;
+  private static @Nullable String whyNotAboutAnother(Joint joint, Condition condition) {
+    return switch (condition) {
+      case Condition.OnSensor onSensor -> null;
+      case Condition.UpToSpeed upToSpeed -> whyNotOnSpeed(joint, upToSpeed);
+      case Condition.OnJoint onJoint -> whyNotOnPosition(joint, onJoint);
+    };
+  }
+
+  /** Why a joint cannot be restricted by how fast a joint runs: only when it is the same joint. */
+  private static @Nullable String whyNotOnSpeed(Joint joint, Condition.UpToSpeed condition) {
+    if (condition.joint().equals(joint)) {
+      return joint.label()
+          + " can't be held by how fast it runs itself: an interlock is on another";
     }
-    if (!(given instanceof Condition.OnJoint condition)) {
-      return null;
-    }
+    return null;
+  }
+
+  /**
+   * Why a joint cannot be restricted by where a joint is. The other joint must be a different one,
+   * and the condition must be an edge or a band, not "at" a named place ({@link #whyNotAtAPlace}).
+   */
+  private static @Nullable String whyNotOnPosition(Joint joint, Condition.OnJoint condition) {
     if (condition.joint().equals(joint)) {
       return joint.label()
           + " can't be held by where it is itself: limit it by its range, or an interlock on another"
           + " joint";
     }
     if (condition instanceof Condition.At at) {
-      String other = at.joint().label();
-      if (at.isOutput()) {
-        return "an interlock speaks of where a joint is, or how fast it runs, and "
-            + at.name()
-            + " is "
-            + possessive(other)
-            + " output: say the speed it must reach, "
-            + other
-            + ".upToSpeed(...)";
-      }
-      // The robot judges it against where the joint is measured, which is never exactly a place.
-      boolean revolute = at.joint() instanceof Joint.Revolute;
-      String of = revolute ? "Degrees.of(...)" : "Inches.of(...)";
-      return at
-          + " holds only with "
-          + other
-          + " exactly at "
-          + at.name()
-          + ", "
-          + Places.shownAt(revolute, at.position().orElseThrow().value())
-          + ", which a measured position never is, so the interlock would never hold: say the"
-          + " edge where the parts clear, "
-          + other
-          + ".atLeast("
-          + of
-          + ") or "
-          + other
-          + ".atMost("
-          + of
-          + "), or a band around "
-          + at.name()
-          + ", "
-          + other
-          + ".between("
-          + of
-          + ", "
-          + of
-          + ")";
+      return whyNotAtAPlace(at);
     }
     return null;
   }
 
   /**
-   * Why a region isn't part of a joint's range, and not all of it, or isn't of its kind, or null
-   * when it is.
+   * Why an interlock cannot be on a joint being "at" a named place. A named output says how the
+   * joint runs, not where it is. A named position holds only with the joint exactly there, and the
+   * robot judges the condition against a measured position, which is never exactly anywhere, so the
+   * interlock would never act.
    */
-  private static @Nullable String notPartOf(Joint joint, Range region) {
+  private static String whyNotAtAPlace(Condition.At at) {
+    String other = at.joint().label();
+    if (at.isOutput()) {
+      return "an interlock speaks of where a joint is, or how fast it runs, and "
+          + at.name()
+          + " is "
+          + possessive(other)
+          + " output: say the speed it must reach, "
+          + other
+          + ".upToSpeed(...)";
+    }
+    boolean revolute = at.joint() instanceof Joint.Revolute;
+    String of = revolute ? "Degrees.of(...)" : "Inches.of(...)";
+    return at
+        + " holds only with "
+        + other
+        + " exactly at "
+        + at.name()
+        + ", "
+        + Places.shownAt(revolute, at.position().orElseThrow().value())
+        + ", which a measured position never is, so the interlock would never hold: say the"
+        + " edge where the parts clear, "
+        + other
+        + ".atLeast("
+        + of
+        + ") or "
+        + other
+        + ".atMost("
+        + of
+        + "), or a band around "
+        + at.name()
+        + ", "
+        + other
+        + ".between("
+        + of
+        + ", "
+        + of
+        + ")";
+  }
+
+  /**
+   * Why a region cannot be one a joint is kept out of, or null when it can. The region must be in
+   * the joint's units, must overlap the joint's range, and must not cover all of it, which would
+   * leave the joint nowhere to be.
+   */
+  private static @Nullable String whyNotPartOfRange(Joint joint, Range region) {
     boolean revolute = joint instanceof Joint.Revolute;
     if (region.kind() != Position.Kind.of(joint)) {
       return Joint.wrongKind("the region is", revolute);
@@ -265,10 +387,12 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
             + Places.shownAt(revolute, region.upper());
     String rangeShown =
         Places.shownAt(revolute, range.lower()) + " to " + Places.shownAt(revolute, range.upper());
-    if (region.upper() <= range.lower() || region.lower() >= range.upper()) {
+    boolean outsideTheRange = region.upper() <= range.lower() || region.lower() >= range.upper();
+    if (outsideTheRange) {
       return regionShown + " is outside " + possessive(joint.label()) + " range, " + rangeShown;
     }
-    if (region.lower() <= range.lower() && region.upper() >= range.upper()) {
+    boolean allOfTheRange = region.lower() <= range.lower() && region.upper() >= range.upper();
+    if (allOfTheRange) {
       return regionShown
           + " is all of "
           + possessive(joint.label())

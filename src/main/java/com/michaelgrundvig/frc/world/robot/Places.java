@@ -252,7 +252,7 @@ final class Places {
       if (broken != null && interlock instanceof Interlock.KeepsOut out) {
         Joint joint = out.joint();
         double here = start.getOrDefault(joint, joint.restPosition());
-        double edge = out.keptBelow(here, 0) ? out.region().lower() : out.region().upper();
+        double edge = out.edge(out.sideKeptTo(here));
         doubts.add(
             Finding.doubt(
                 joint.label(),
@@ -521,7 +521,7 @@ final class Places {
               : null;
       case Interlock.KeepsOut out -> {
         double position = at.getOrDefault(out.joint(), out.joint().restPosition());
-        yield holds && out.keepsOut(position)
+        yield holds && out.isInside(position)
             ? "puts "
                 + out.joint().label()
                 + " at "
@@ -635,7 +635,7 @@ final class Places {
         double highest = joint.range().map(Range::upper).orElse(Double.POSITIVE_INFINITY);
         Range region = out.region();
         // Inside, it may leave by the side it's kept to, as on the robot.
-        if (out.keptBelow(here, 0)) {
+        if (out.sideKeptTo(here) == Interlock.KeepsOut.Side.BELOW) {
           from = lowest;
           to = Math.max(here, region.lower());
         } else {
@@ -786,7 +786,7 @@ final class Places {
         for (Interlock interlock : interlocks) {
           if (interlock instanceof Interlock.KeepsOut out
               && out.joint().equals(joint)
-              && out.keepsOut(position.value())) {
+              && out.isInside(position.value())) {
             closing.computeIfAbsent(on(out).joint(), j -> new ArrayList<>()).add(out);
           }
         }

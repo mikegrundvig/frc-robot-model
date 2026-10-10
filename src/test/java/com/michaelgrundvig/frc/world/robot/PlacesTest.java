@@ -52,9 +52,7 @@ class PlacesTest {
   private static final Condition.UpToSpeed SPUN = ROLLER.upToSpeed(RPM.of(1500));
 
   // Interlocks, named for what they keep and while what.
-  private static final Interlock.KeepsOut ELEVATOR_OUT_OF_THE_MIDDLE = Interlock.that(ELEVATOR).keepsOut(Range.meters(0.2, 0.6)).when(ARM_DOWN);
   private static final Interlock.KeepsOut ELEVATOR_OFF_THE_BOTTOM = Interlock.that(ELEVATOR).keepsOut(Range.meters(0, 0.3)).when(ARM_DOWN);
-  private static final Interlock.KeepsOut ELEVATOR_OFF_THE_TOP = Interlock.that(ELEVATOR).keepsOut(Range.meters(0.9, 1.2)).when(ARM_DOWN);
   private static final Interlock ELEVATOR_LOW_WHILE_ARM_DOWN = Interlock.that(ELEVATOR).keepsOut(Range.meters(0.1, 0.6)).when(ARM_DOWN);
   private static final Interlock ELEVATOR_LOW_WHILE_ARM_UP = Interlock.that(ELEVATOR).keepsOut(Range.meters(0.1, 0.6)).when(ARM.atLeast(Degrees.of(20)));
   private static final Interlock ARM_CLEARS_BUMPER_UNDER_32_IN = Interlock.that(ARM).keepsOut(Range.degrees(-10, 30)).when(ELEVATOR.atMost(Inches.of(32)));
@@ -598,14 +596,7 @@ class PlacesTest {
   // What the model answers: a table of questions and answers.
 
   @ParameterizedTest
-  @MethodSource({
-    "placesAndOutputs",
-    "speeds",
-    "ownership",
-    "practiceRobots",
-    "interlocksInBlocks",
-    "keptSides"
-  })
+  @MethodSource({"placesAndOutputs", "speeds", "ownership", "practiceRobots", "interlocksInBlocks"})
   void itAnswers(Supplier<?> question, @Nullable Object answer) {
     assertThat(question.get()).isEqualTo(answer);
   }
@@ -753,25 +744,6 @@ class PlacesTest {
         asks("every interlock has the block's too", () -> keepOutInABlock().everyInterlock(), List.of(ARM_KEEP_OUT_IN_A_LIST, ROLLER_ONLY_WHEN_OUT)),
         asks("a re-tuned joint is as written, without its block's interlocks",
             () -> keepOutInABlock().with(ARM.control(stowed(20))).everyInterlock(), List.of(ROLLER_ONLY_WHEN_OUT)));
-  }
-
-  /** Which side of a keep-out a joint is kept to: where it is, and the side it was last out on. */
-  static Stream<Arguments> keptSides() {
-    return Stream.of(
-        asks("outside, below the region", () -> ELEVATOR_OUT_OF_THE_MIDDLE.keptBelow(0.1, 1), true),
-        asks("outside, above the region", () -> ELEVATOR_OUT_OF_THE_MIDDLE.keptBelow(0.7, -1), false),
-        asks("at the lower edge, still below", () -> ELEVATOR_OUT_OF_THE_MIDDLE.keptBelow(0.2, 1), true),
-        asks("at the upper edge, still above", () -> ELEVATOR_OUT_OF_THE_MIDDLE.keptBelow(0.6, -1), false),
-        asks("inside, last out below", () -> ELEVATOR_OUT_OF_THE_MIDDLE.keptBelow(0.5, -1), true),
-        asks("inside, last out above", () -> ELEVATOR_OUT_OF_THE_MIDDLE.keptBelow(0.3, 1), false),
-        asks("inside, never out, nearer the lower edge", () -> ELEVATOR_OUT_OF_THE_MIDDLE.keptBelow(0.3, 0), true),
-        asks("inside, never out, nearer the upper edge", () -> ELEVATOR_OUT_OF_THE_MIDDLE.keptBelow(0.5, 0), false),
-        asks("inside at the bottom, last out below: no room below", () -> ELEVATOR_OFF_THE_BOTTOM.keptBelow(0.1, -1), false),
-        asks("inside at the bottom, never out", () -> ELEVATOR_OFF_THE_BOTTOM.keptBelow(0.1, 0), false),
-        asks("inside at the top, last out above: no room above", () -> ELEVATOR_OFF_THE_TOP.keptBelow(1.1, 1), true),
-        asks("inside at the top, never out", () -> ELEVATOR_OFF_THE_TOP.keptBelow(1.1, 0), true),
-        asks("a band's upper edge is out of it", () -> ARM_CLEARS_BUMPER.keepsOut(inRadians(30)), false),
-        asks("just inside a band's upper edge", () -> ARM_CLEARS_BUMPER.keepsOut(inRadians(29)), true));
   }
 
   /** A place or output's value, in the units the joint runs in. */

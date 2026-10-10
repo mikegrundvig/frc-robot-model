@@ -11,7 +11,7 @@ It's unreleased: there are no versions yet, and anything may change.
 
 | Package (`com.michaelgrundvig.frc.world`) | Holds |
 |---|---|
-| `robot` | The robot's definition: its body, drivetrain, joints and what drives them, sensors, cameras and IMUs, and the rules between them (interlocks, conditions, named places and outputs); and what a joint's definition means for a program, as functions of plain values (where it is driven, how far its encoder and motor may disagree, which limits its controller reads). |
+| `robot` | The robot's definition: its body, drivetrain, joints and what drives them, sensors, cameras and IMUs, and the rules between them (interlocks, conditions, named places and outputs); and what a joint's definition means for a program, as functions of plain values (where it is driven, what its interlocks allow it each loop, how far its encoder and motor may disagree, which limits its controller reads). |
 | `field` | The field: its tags, the places and zones code names, headings, starts, terrain, and a venue's measured layout. |
 | `physical` | What both are made of: mass and inertia, shapes and materials. |
 | `config` | The validation kit every record is built and checked with. A definition that can't work is refused as it's built, saying why; one that's doubtful says so. |

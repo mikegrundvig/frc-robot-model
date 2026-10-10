@@ -22,6 +22,11 @@
  * position, or between two). These are facts about the robot, where its intake is out and that its
  * roller mustn't run stowed, which every reader reads alike.
  *
+ * <p>What the interlocks on a joint allow it to do in one loop is decided here too, as a function
+ * of plain values ({@link com.michaelgrundvig.frc.world.robot.InterlockEnforcement}): the robot
+ * program keeps what the interlocks remember between loops and reads the sensors, and the rules
+ * stay with the declarations.
+ *
  * <p>What a definition means for a program is worked out here too, as plain functions of its values
  * and of readings handed in: where a joint is driven and where it stops braking ({@link
  * com.michaelgrundvig.frc.world.robot.Travel}), how far its encoder and its motor's count may
