@@ -1,0 +1,111 @@
+// The world model: what the field and the robot are. Its packages, which ArchitectureTest keeps
+// apart: the validation kit every configuration record is built with (config), what the field and
+// the robot are both made of (physical), the field with its tags, places, and terrain (field), the
+// robot's definition (robot), and the writers for other tools (bridges). It reads WPILib's math,
+// units, field layouts and JSON library and nothing more, so everything can read it, the robot
+// itself, the simulator, localization, and the views, without reaching anything else of theirs.
+
+plugins {
+    id "java-library"
+    id "jacoco"
+    alias(libs.plugins.spotless)
+    alias(libs.plugins.errorprone)
+    alias(libs.plugins.pitest)
+}
+
+// What a build that includes this one asks for (settings.gradle, includeBuild): the model is
+// com.michaelgrundvig.frc:world, and its processor com.michaelgrundvig.frc:docs-processor.
+group = "com.michaelgrundvig.frc"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+base {
+    archivesName = "world"
+}
+
+// WPILib publishes its libraries to its own repository; everything else is on Maven Central.
+repositories {
+    maven {
+        name = "wpilib"
+        url = "https://frcmaven.wpi.edu/artifactory/release/"
+        content {
+            includeGroupByRegex "org\\.wpilib(\\..*)?"
+        }
+    }
+    mavenCentral()
+}
+
+dependencies {
+    // The model's own vocabulary: poses, transforms, and measures in its records' signatures, and
+    // the season's official tag layouts, with what they're built on (WPILib's utilities, the matrix
+    // library under its math, and the readers of its formats).
+    api libs.wpilib.math
+    api libs.wpilib.units
+    api libs.wpilib.util
+    api libs.wpilib.fields
+    api libs.ejml.simple
+    api libs.quickbuf.runtime
+    api libs.avaje.jsonb
+    api libs.jspecify
+
+    // Configuration records are built by name, through builders generated as they compile.
+    compileOnly libs.recordbuilder.core
+    testCompileOnly libs.recordbuilder.core
+    annotationProcessor libs.recordbuilder.processor
+    // Writes the configuration records' Javadoc into the jar, so Pitwall's page can say what each
+    // value means. It runs in the compiler only: the model never sees Pitwall.
+    annotationProcessor project(":docs-processor")
+
+    errorprone libs.errorprone.core
+    errorprone libs.nullaway
+
+    testImplementation platform(libs.junit.bom)
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+    testImplementation libs.assertj.core
+    testImplementation libs.archunit
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // As the robot program compiles: the model runs on the robot.
+    options.compilerArgs.add "-XDstringConcat=inline"
+}
+tasks.named("compileJava") {
+    options.compilerArgs.add "-Apitwall.docs.records=com.michaelgrundvig.frc.world.config.ConfigRecord"
+}
+
+tasks.named("test") {
+    useJUnitPlatform()
+}
+
+apply from: file("gradle/quality.gradle")
+
+// Mutation testing: PIT changes the model's compiled code a little at a time (a comparison turned
+// round, a returned value emptied, a call removed) and runs the tests that cover each change. A
+// change no test notices is a line the tests run without checking. Coverage says which lines ran;
+// this says which are checked. It takes minutes, so nothing runs it but its own task, `pitest`:
+// not `check`, not `ci`. Its report is build/reports/pitest/index.html.
+pitest {
+    pitestVersion = libs.versions.pitest.core.get()
+    junit5PluginVersion = libs.versions.pitest.junit5.get()
+    // All of the model, or the classes -PpitClasses names, for a run of under a minute while
+    // working on one: ./gradlew :world:pitest -PpitClasses='com.michaelgrundvig.frc.world.robot.Interlock*'
+    targetClasses = [
+        project.findProperty("pitClasses") ?: "com.michaelgrundvig.frc.world.*"
+    ]
+    targetTests = [
+        "com.michaelgrundvig.frc.world.*"
+    ]
+    // The builders are generated as the records compile: nothing of the model's to test.
+    excludedClasses = [
+        "com.michaelgrundvig.frc.world.**.*Builder*"
+    ]
+    // Two test JVMs at once, as the tests themselves run (gradle/quality.gradle).
+    threads = 2
+    outputFormats = ["HTML", "XML"]
+    timestampedReports = false
+}
