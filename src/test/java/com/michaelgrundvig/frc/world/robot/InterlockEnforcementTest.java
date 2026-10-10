@@ -378,11 +378,14 @@ class InterlockEnforcementTest {
         decides("resting on the high end, a goal deeper in the region: held where it is",
             () -> TOP.decide(remembering(NEVER_OUTSIDE), goTo(14), at(16, CLOSED)),
             heldFromNow(holdAt(16), remembering(heldInside(16, NEVER_OUTSIDE)), OFF_THE_TOP)),
-        // As the code stands, and reported as a likely fault: a reading a little past the stop is
-        // not "inside", so the joint is not held but driven through the region to its far edge.
-        decides("reading a little past the low end, asked to stay: sent to the upper edge",
+        // An encoder at a hard stop can read a little past it. The joint is still inside the region
+        // that reaches that stop, so it is held at the stop, not driven through to the far edge.
+        decides("reading a little past the low end, asked to stay: held at the stop",
             () -> BOTTOM.decide(remembering(NEVER_OUTSIDE), goTo(0), at(-0.25, CLOSED)),
-            held(holdAt(4), remembering(LAST_ABOVE), OFF_THE_BOTTOM)));
+            heldFromNow(goTo(0), remembering(heldInside(0, NEVER_OUTSIDE)))),
+        decides("reading a little past the high end, asked to stay: held at the stop",
+            () -> TOP.decide(remembering(NEVER_OUTSIDE), goTo(16), at(16.25, CLOSED)),
+            heldFromNow(goTo(16), remembering(heldInside(16, NEVER_OUTSIDE)))));
   }
 
   /**

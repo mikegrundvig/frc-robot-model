@@ -137,21 +137,17 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
      *
      * <p>An edge of the region is normally outside it: the edge is where a joint is held, so it
      * must be somewhere the joint is allowed to be. The exception is an edge that sits at an end of
-     * the joint's range. There is nowhere beyond that edge for the joint to be, so a joint standing
-     * on it is inside the region and has to leave by the other edge.
+     * the joint's range. There is nowhere beyond that edge for the joint to be, so the region is
+     * taken to carry on past it: a joint standing on that edge is inside, and so is one whose
+     * encoder reads a little past the hard stop. Either has to leave by the other edge.
      */
     public boolean isInside(double position) {
-      boolean betweenTheEdges = position >= region.lower() && position <= region.upper();
-      if (!betweenTheEdges) {
+      if (Double.isNaN(position)) {
         return false;
       }
-      if (position == region.lower()) {
-        return !hasRoomBelow();
-      }
-      if (position == region.upper()) {
-        return !hasRoomAbove();
-      }
-      return true;
+      boolean aboveLowerEdge = !hasRoomBelow() || position > region.lower();
+      boolean belowUpperEdge = !hasRoomAbove() || position < region.upper();
+      return aboveLowerEdge && belowUpperEdge;
     }
 
     /**

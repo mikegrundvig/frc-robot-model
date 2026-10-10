@@ -101,8 +101,8 @@ class InterlockTest {
         asks("that region's other edge is outside", () -> OFF_THE_BOTTOM.isInside(4), false),
         asks("the high end of the range is inside", () -> OFF_THE_TOP.isInside(16), true),
         asks("that region's other edge is outside too", () -> OFF_THE_TOP.isInside(12), false),
-        asks("past the low end of the range counts as outside", () -> OFF_THE_BOTTOM.isInside(-1), false),
-        asks("past the high end of the range counts as outside", () -> OFF_THE_TOP.isInside(17), false),
+        asks("reading past the low end of the range is still inside", () -> OFF_THE_BOTTOM.isInside(-1), true),
+        asks("reading past the high end of the range is still inside", () -> OFF_THE_TOP.isInside(17), true),
         asks("with no range, the lower edge is outside", () -> WHEEL_OUT_OF_A_BAND.isInside(1), false),
         asks("with no range, the upper edge is outside", () -> WHEEL_OUT_OF_A_BAND.isInside(2), false),
         asks("a position that is not a number is not inside", () -> OUT_OF_THE_MIDDLE.isInside(Double.NaN), false));
