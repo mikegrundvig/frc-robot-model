@@ -1,105 +1,82 @@
 package com.michaelgrundvig.frc.world.field;
 
+import static com.michaelgrundvig.frc.world.field.TestFields.pose;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.wpilib.math.geometry.Pose2d;
-import org.wpilib.math.geometry.Rotation2d;
 
 class PlacementTest {
-  private final Place left = Place.at("Left", new Pose2d(1, 6, Rotation2d.ZERO));
-  private final Place center = Place.at("Center", new Pose2d(1, 4, Rotation2d.ZERO));
-  private final FieldModel field = TestFields.model(List.of(left, center), List.of(), List.of());
+  private static final Place LEFT = Place.at("Left", pose(1, 6, 0));
+  private static final Place CENTER = Place.at("Center", pose(1, 4, 0));
 
-  private static final Optional<Alliance> RED = Optional.of(Alliance.RED);
+  /** An auto's start needn't be one of the field's: the check reads the one it's given too. */
+  private static final Place WALL = Place.at("By the wall", pose(2, 7, 0));
 
-  /** Red's center start: the image of blue's (1, 4, 0°). */
-  private static Pose2d redCenter(double dx, double dy, double degrees) {
-    return new Pose2d(15 + dx, 4 + dy, Rotation2d.fromDegrees(180 + degrees));
-  }
+  private static final FieldModel FIELD =
+      TestFields.model(List.of(LEFT, CENTER), List.of(), List.of());
+  private static final Map<String, Place> PLACES = Map.of("Center", CENTER, "By the wall", WALL);
 
-  private Placement check(Pose2d pose, @Nullable Place expected) {
-    return Placement.check(field, RED, pose, expected, 0.10, 5);
-  }
+  /**
+   * A robot off its alliance's center start by (dx, dy, degrees), checked against the start
+   * expected, within 10 cm and 5°; red's starts are the images of blue's. A blank alliance is not
+   * yet known, a blank expected start is any.
+   */
+  @ParameterizedTest(name = "{0}")
+  @CsvSource(
+      delimiter = '|',
+      textBlock =
+          """
+          on the expected start        | RED  |  0.02 |  0    |  1 | Center      | READY          | Ready on Center: 2 cm, 1° off
+          on another start             | RED  |  0    | -2    |  0 | Center      | WRONG_START    | On Left, not the expected start
+          off every start              | RED  | -1    | -1.5  | 12 | Center      | NOT_ON_A_START | Not on a start: Center is 1.80 m and 12° away
+          turned too far               | RED  |  0    |  0    | 10 | Center      | NOT_ON_A_START | Not on a start: Center is 0.00 m and 10° away
+          nothing expected, on a start | RED  |  0    | -2    |  0 |             | READY          | Ready on Left: 0 cm, 0° off
+          nothing expected, off all    | RED  | -1    | -1.5  |  0 |             | NOT_ON_A_START | Not on a start: Left is 1.12 m and 0° away
+          blue's starts are blue's     | BLUE |  0    |  0    |  0 | Center      | READY          | Ready on Center: 0 cm, 0° off
+          the alliance is not known    |      |  0    |  0    |  0 | Center      | ALLIANCE_UNKNOWN | Alliance unknown
+          an own start, on it          | RED  | -1    | -3    |  0 | By the wall | READY          | Ready on By the wall: 0 cm, 0° off
+          an own start, on a field one | RED  |  0    |  0    |  0 | By the wall | WRONG_START    | On Center, not the expected start
+          an own start, away from it   | RED  | -1    | -1.5  |  0 | By the wall | NOT_ON_A_START | Not on a start: By the wall is 1.50 m and 0° away
+          """)
+  void aRobotIsReadyOnTheExpectedStartOrSaysWhatItIsOn(
+      String label,
+      @Nullable Alliance alliance,
+      double dx,
+      double dy,
+      double degrees,
+      @Nullable String expected,
+      Placement.Status status,
+      String described) {
+    Pose2d from = alliance == Alliance.BLUE ? pose(1, 4, 0) : pose(15, 4, 180);
+    Pose2d robot =
+        pose(from.getX() + dx, from.getY() + dy, from.getRotation().getDegrees() + degrees);
 
-  @Test
-  void onTheExpectedStartItIsReady() {
-    Placement placement = check(redCenter(0.02, 0, 1), center);
-
-    assertThat(placement.status()).isEqualTo(Placement.Status.READY);
-    assertThat(placement.start()).isEqualTo("Center");
-    assertThat(placement.describe()).isEqualTo("Ready on Center: 2 cm, 1° off");
-  }
-
-  @Test
-  void onAnotherStartItSaysWhichOne() {
-    Placement placement = check(redCenter(0, -2, 0), center); // red's left is toward -y
-
-    assertThat(placement.status()).isEqualTo(Placement.Status.WRONG_START);
-    assertThat(placement.describe()).isEqualTo("On Left, not the expected start");
-  }
-
-  @Test
-  void offEveryStartItPointsToTheExpectedOne() {
-    Placement placement = check(redCenter(-1.0, -1.5, 12), center);
-
-    assertThat(placement.status()).isEqualTo(Placement.Status.NOT_ON_A_START);
-    assertThat(placement.describe()).isEqualTo("Not on a start: Center is 1.80 m and 12° away");
-  }
-
-  @Test
-  void turnedTooFarItIsNotOnTheStart() {
-    assertThat(check(redCenter(0, 0, 10), center).status())
-        .isEqualTo(Placement.Status.NOT_ON_A_START);
-  }
-
-  @Test
-  void withNothingExpectedAnyStartWillDoAndTheNearestIsNamed() {
-    assertThat(check(redCenter(0, -2, 0), null).describe()).startsWith("Ready on Left");
-    assertThat(check(redCenter(-1, -1.5, 0), null).describe())
-        .isEqualTo("Not on a start: Left is 1.12 m and 0° away");
-  }
-
-  @Test
-  void onTheBlueAllianceTheStartsAreBlues() {
     Placement placement =
         Placement.check(
-            field, Optional.of(Alliance.BLUE), new Pose2d(1, 4, Rotation2d.ZERO), center, 0.1, 5);
+            FIELD,
+            Optional.ofNullable(alliance),
+            robot,
+            expected == null ? null : PLACES.get(expected),
+            0.10,
+            5);
 
-    assertThat(placement.status()).isEqualTo(Placement.Status.READY);
-  }
-
-  @Test
-  void untilTheAllianceIsKnownNeitherAreTheStarts() {
-    Placement placement =
-        Placement.check(field, Optional.empty(), redCenter(0, 0, 0), center, 0.1, 5);
-
-    assertThat(placement.status()).isEqualTo(Placement.Status.ALLIANCE_UNKNOWN);
-    assertThat(placement.describe()).isEqualTo("Alliance unknown");
+    assertThat(placement.status()).isEqualTo(status);
+    assertThat(placement.describe()).isEqualTo(described);
   }
 
   @Test
   void aFieldWithoutStartsSaysSo() {
     Placement placement =
-        Placement.check(TestFields.model(), RED, redCenter(0, 0, 0), null, 0.1, 5);
+        Placement.check(
+            TestFields.FIELD, Optional.of(Alliance.RED), pose(15, 4, 180), null, 0.1, 5);
 
     assertThat(placement.describe()).isEqualTo("No start positions");
-  }
-
-  /** An auto's start needn't be one of the field's: the check reads the one it's given too. */
-  @Test
-  void anExpectedStartOfItsOwnIsCheckedToo() {
-    Place own = Place.at("By the wall", new Pose2d(2, 7, Rotation2d.ZERO));
-    Pose2d onIt = own.on(field, Alliance.RED);
-
-    assertThat(Placement.check(field, RED, onIt, own, 0.10, 5).describe())
-        .isEqualTo("Ready on By the wall: 0 cm, 0° off");
-    assertThat(check(redCenter(0, 0, 0), own).describe())
-        .isEqualTo("On Center, not the expected start");
-    assertThat(check(redCenter(-1.0, -1.5, 0), own).describe())
-        .startsWith("Not on a start: By the wall is ");
   }
 }

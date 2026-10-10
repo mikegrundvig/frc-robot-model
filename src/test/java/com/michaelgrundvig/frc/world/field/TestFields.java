@@ -3,13 +3,19 @@ package com.michaelgrundvig.frc.world.field;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import com.michaelgrundvig.frc.world.physical.Polygon2d;
+import com.michaelgrundvig.frc.world.physical.TriangleMesh;
 import java.util.ArrayList;
 import java.util.List;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.params.provider.Arguments;
 import org.wpilib.fields.Field;
 import org.wpilib.fields.FieldTag;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Pose3d;
+import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Rotation3d;
+import org.wpilib.math.geometry.Translation2d;
 import org.wpilib.math.geometry.Translation3d;
 
 /**
@@ -25,6 +31,9 @@ import org.wpilib.math.geometry.Translation3d;
 final class TestFields {
   static final double LENGTH = 16;
   static final double WIDTH = 8;
+
+  /** The test field with no starts, places or zones. */
+  static final FieldModel FIELD = model();
 
   private TestFields() {}
 
@@ -59,6 +68,65 @@ final class TestFields {
 
   static FieldModel model() {
     return model(List.of(), List.of(), List.of());
+  }
+
+  static Translation2d xy(double x, double y) {
+    return new Translation2d(x, y);
+  }
+
+  /** A polygon from its corners' x and y, counterclockwise. */
+  static Polygon2d polygon(double... xy) {
+    List<Translation2d> corners = new ArrayList<>();
+    for (int i = 0; i < xy.length; i += 2) {
+      corners.add(xy(xy[i], xy[i + 1]));
+    }
+    return new Polygon2d(corners);
+  }
+
+  static Pose2d pose(double x, double y, double degrees) {
+    return new Pose2d(x, y, Rotation2d.fromDegrees(degrees));
+  }
+
+  /**
+   * A platform like 2023's charge station: a 2 m square top 25 cm up, from (4, 2) to (6, 4), ramps
+   * 0.5 m long down its front and back (toward -x and +x), and edges on its sides.
+   */
+  static final Platform STATION =
+      new Platform(
+          "Station",
+          Polygon2d.rectangle(xy(4, 2), xy(6, 4)),
+          0.25,
+          List.of(
+              Platform.Side.EDGE,
+              Platform.Side.ramp(0.5),
+              Platform.Side.EDGE,
+              Platform.Side.ramp(0.5)));
+
+  /** A ridge from CAD, closed at its ends and underneath: a crest along y at x = 14.5. */
+  static MeshSurface tent() {
+    TriangleMesh.Builder mesh = TriangleMesh.builder();
+    int frontLeft = mesh.corner(14, 1, 0);
+    int frontRight = mesh.corner(15, 1, 0);
+    int frontTop = mesh.corner(14.5, 1, 0.2);
+    int backLeft = mesh.corner(14, 2.5, 0);
+    int backRight = mesh.corner(15, 2.5, 0);
+    int backTop = mesh.corner(14.5, 2.5, 0.2);
+    TriangleMesh tent =
+        mesh.quad(frontLeft, frontTop, backTop, backLeft)
+            .quad(frontTop, frontRight, backRight, backTop)
+            .triangle(frontLeft, frontRight, frontTop)
+            .triangle(backLeft, backTop, backRight)
+            .quad(frontLeft, backLeft, backRight, frontRight)
+            .build();
+    return new MeshSurface(
+        "Tent",
+        tent,
+        List.of(new Crossing("Tent crest", xy(14.5, 1), xy(14.5, 2.5), Crossing.Kind.CREST)));
+  }
+
+  /** A row of a table of refusals: what was asked, and the message that refuses it. */
+  static Arguments refused(String label, ThrowingCallable building, String message) {
+    return Arguments.argumentSet(label, building, message);
   }
 
   static void assertPose(Pose2d actual, double x, double y, double degrees) {

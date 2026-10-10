@@ -1,5 +1,6 @@
 package com.michaelgrundvig.frc.world.field;
 
+import static com.michaelgrundvig.frc.world.field.TestFields.refused;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
@@ -7,45 +8,44 @@ import static org.assertj.core.api.Assertions.within;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.fields.FieldTag;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Rotation3d;
 
 /** Tags as known: where the official layout puts them, and where a survey found them. */
 class TagTest {
+  private static final TagLayout LAYOUT = TagLayout.of(TestFields.layout());
+
   @Test
   void aTagIsWhereTheSurveyFoundItElseWhereTheLayoutPutsIt() {
     Pose3d nominal = new Pose3d(4, 4, 1, new Rotation3d(0, 0, Math.PI));
     Pose3d surveyed = new Pose3d(4.01, 3.98, 1.02, new Rotation3d(0, 0, Math.PI));
 
-    Tag official = Tag.nominal(2, nominal);
-    Tag measured = new Tag(2, nominal, surveyed);
-
-    assertThat(official.pose()).isEqualTo(nominal);
-    assertThat(official.surveyed()).isNull();
-    assertThat(measured.pose()).isEqualTo(surveyed);
+    assertThat(Tag.nominal(2, nominal).pose()).isEqualTo(nominal);
+    assertThat(Tag.nominal(2, nominal).surveyed()).isNull();
+    assertThat(new Tag(2, nominal, surveyed).pose()).isEqualTo(surveyed);
   }
 
-  @Test
-  void aTagMustMakeSense() {
-    Pose3d pose = new Pose3d();
-    assertThatThrownBy(() -> Tag.nominal(-1, pose)).hasMessageContaining("zero or more");
+  static Stream<Arguments> refusals() {
+    List<Tag> twice = new ArrayList<>(LAYOUT.tags());
+    twice.add(LAYOUT.tags().get(0));
+    return Stream.of(
+        refused("a negative tag number", () -> Tag.nominal(-1, new Pose3d()), "zero or more"),
+        refused("a tag twice", () -> new TagLayout("Twice", 16, 8, twice), "tag 2 twice"),
+        refused(
+            "a layout with no length", () -> new TagLayout("Flat", 0, 8, List.of()), "positive"));
   }
 
-  @Test
-  void aLayoutHasEachTagOnceAndASize() {
-    TagLayout layout = TagLayout.of(TestFields.layout());
-
-    assertThat(layout.name()).isEqualTo("Test field");
-    assertThat(layout.lengthMeters()).isEqualTo(16);
-    assertThat(layout.tags()).allMatch(tag -> tag.surveyed() == null);
-    List<Tag> twice = new ArrayList<>(layout.tags());
-    twice.add(layout.tags().get(0));
-    assertThatThrownBy(() -> new TagLayout("Twice", 16, 8, twice))
-        .hasMessageContaining("tag 2 twice");
-    assertThatThrownBy(() -> new TagLayout("Flat", 0, 8, List.of()))
-        .hasMessageContaining("positive");
+  @ParameterizedTest
+  @MethodSource("refusals")
+  void aTagOrLayoutThatMakesNoSenseIsRefused(ThrowingCallable building, String message) {
+    assertThatThrownBy(building).hasMessageContaining(message);
   }
 
   /**

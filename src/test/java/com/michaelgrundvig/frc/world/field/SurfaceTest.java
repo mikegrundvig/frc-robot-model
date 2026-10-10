@@ -49,7 +49,7 @@ class SurfaceTest {
                     Platform.Side.EDGE,
                     Platform.Side.EDGE)),
             hill(),
-            tent());
+            TestFields.tent());
     List<Arguments> all = new ArrayList<>();
     for (Surface surface : written) {
       all.add(Arguments.of(surface.name(), surface));
@@ -98,33 +98,6 @@ class SurfaceTest {
       }
     }
     return new MeshSurface("Hill", mesh.build(), List.of());
-  }
-
-  /** A ridge from CAD, closed at its ends and underneath: a crest along y at x = 14.5. */
-  static MeshSurface tent() {
-    TriangleMesh.Builder mesh = TriangleMesh.builder();
-    int frontLeft = mesh.corner(14, 1, 0);
-    int frontRight = mesh.corner(15, 1, 0);
-    int frontTop = mesh.corner(14.5, 1, 0.2);
-    int backLeft = mesh.corner(14, 2.5, 0);
-    int backRight = mesh.corner(15, 2.5, 0);
-    int backTop = mesh.corner(14.5, 2.5, 0.2);
-    TriangleMesh tent =
-        mesh.quad(frontLeft, frontTop, backTop, backLeft)
-            .quad(frontTop, frontRight, backRight, backTop)
-            .triangle(frontLeft, frontRight, frontTop)
-            .triangle(backLeft, backTop, backRight)
-            .quad(frontLeft, backLeft, backRight, frontRight)
-            .build();
-    return new MeshSurface(
-        "Tent",
-        tent,
-        List.of(
-            new Crossing(
-                "Tent crest",
-                new Translation2d(14.5, 1),
-                new Translation2d(14.5, 2.5),
-                Crossing.Kind.CREST)));
   }
 
   @ParameterizedTest(name = "{0}")

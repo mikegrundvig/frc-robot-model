@@ -3,12 +3,13 @@ package com.michaelgrundvig.frc.world.field;
 import static com.michaelgrundvig.frc.world.field.TestFields.LENGTH;
 import static com.michaelgrundvig.frc.world.field.TestFields.WIDTH;
 import static com.michaelgrundvig.frc.world.field.TestFields.assertPose;
+import static com.michaelgrundvig.frc.world.field.TestFields.pose;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import java.util.List;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Pose3d;
@@ -19,18 +20,22 @@ import org.wpilib.math.geometry.Translation2d;
 import org.wpilib.math.geometry.Translation3d;
 
 class SymmetryTest {
-  @Test
-  void rotatedTurnsAPoseHalfATurnAboutTheCenter() {
-    Pose2d image = Symmetry.ROTATED.apply(pose(1, 2, 30), LENGTH, WIDTH);
-
-    assertPose(image, 15, 6, 210);
-  }
-
-  @Test
-  void mirroredReflectsAPoseAcrossTheCenterLine() {
-    Pose2d image = Symmetry.MIRRORED.apply(pose(1, 2, 30), LENGTH, WIDTH);
-
-    assertPose(image, 15, 2, 150);
+  @ParameterizedTest
+  @CsvSource({
+    "ROTATED,  1, 2,  30, 15, 6, 210",
+    "MIRRORED, 1, 2,  30, 15, 2, 150",
+    "ROTATED,  8, 4,   0,  8, 4, 180",
+    "MIRRORED, 8, 4,   0,  8, 4, 180"
+  })
+  void aPoseIsTurnedHalfATurnOrReflectedAcrossTheCenterLine(
+      Symmetry symmetry,
+      double x,
+      double y,
+      double degrees,
+      double imageX,
+      double imageY,
+      double imageDegrees) {
+    assertPose(symmetry.apply(pose(x, y, degrees), LENGTH, WIDTH), imageX, imageY, imageDegrees);
   }
 
   @ParameterizedTest
@@ -115,9 +120,5 @@ class SymmetryTest {
     assertThat(Math.min(turn, 2 * Math.PI - turn)).isLessThan(1e-9);
     assertThat(symmetry.apply(pose.getRotation()))
         .isEqualTo(symmetry.apply(pose, LENGTH, WIDTH).getRotation());
-  }
-
-  private static Pose2d pose(double x, double y, double degrees) {
-    return new Pose2d(x, y, Rotation2d.fromDegrees(degrees));
   }
 }

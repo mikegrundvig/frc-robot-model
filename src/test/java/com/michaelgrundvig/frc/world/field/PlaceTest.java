@@ -1,48 +1,57 @@
 package com.michaelgrundvig.frc.world.field;
 
+import static com.michaelgrundvig.frc.world.field.Alliance.BLUE;
+import static com.michaelgrundvig.frc.world.field.Alliance.RED;
+import static com.michaelgrundvig.frc.world.field.TestFields.FIELD;
 import static com.michaelgrundvig.frc.world.field.TestFields.assertPose;
+import static com.michaelgrundvig.frc.world.field.TestFields.pose;
+import static com.michaelgrundvig.frc.world.field.TestFields.refused;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 
 import java.util.List;
+import java.util.stream.Stream;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.fields.FieldTag;
 import org.wpilib.math.geometry.Pose2d;
-import org.wpilib.math.geometry.Rotation2d;
 
 class PlaceTest {
-  private final FieldModel field = TestFields.model();
-
-  @Test
-  void aPlaceWrittenForBlueIsItsImageForRed() {
-    Place start = Place.at("Start", new Pose2d(1, 2, Rotation2d.ZERO));
-
-    assertPose(start.on(field, Alliance.BLUE), 1, 2, 0);
-    assertPose(start.on(field, Alliance.RED), 15, 6, 180);
+  /** The places the tables name, built as each test runs. */
+  private static Place place(String name) {
+    return switch (name) {
+      case "start" -> Place.at("Start", pose(1, 2, 0));
+      case "spot" -> Place.at("Spot", pose(1, 2, 0), pose(14, 1, 180));
+      case "hub" -> Place.between("Hub", 2, 3);
+      case "loading" -> Place.facing("Loading", 4, 1.5);
+      default -> throw new AssertionError(name);
+    };
   }
 
-  @Test
-  void whereTheFieldIsNotSymmetricRedsIsWrittenToo() {
-    Place spot =
-        Place.at("Spot", new Pose2d(1, 2, Rotation2d.ZERO), new Pose2d(14, 1, Rotation2d.PI));
-
-    assertPose(spot.on(field, Alliance.BLUE), 1, 2, 0);
-    assertPose(spot.on(field, Alliance.RED), 14, 1, 180);
+  static Stream<Arguments> places() {
+    return Stream.of(
+        argumentSet("a start for blue is as written", "start", BLUE, 1, 2, 0),
+        argumentSet("a start for red is its image", "start", RED, 15, 6, 180),
+        argumentSet("an asymmetric spot for blue", "spot", BLUE, 1, 2, 0),
+        argumentSet("an asymmetric spot is written for red too", "spot", RED, 14, 1, 180),
+        argumentSet("between tags, blue's own tags", "hub", BLUE, 4.5, 4, 0),
+        argumentSet("between tags, red's own tags", "hub", RED, 11.5, 4, 180),
+        argumentSet("facing a tag, blue stands before it", "loading", BLUE, 1.5, 2, 180),
+        argumentSet("facing a tag, red stands before it", "loading", RED, 14.5, 6, 0));
   }
 
-  @Test
-  void betweenTagsIsMidwayBetweenEachAlliancesOwnTags() {
-    Place hub = Place.between("Hub", 2, 3);
-
-    assertPose(hub.on(field, Alliance.BLUE), 4.5, 4, 0);
-    assertPose(hub.on(field, Alliance.RED), 11.5, 4, 180);
+  @ParameterizedTest
+  @MethodSource("places")
+  void aPlaceIsWrittenForBlueAndItsImageForRed(
+      String place, Alliance alliance, double x, double y, double degrees) {
+    assertPose(place(place).on(FIELD, alliance), x, y, degrees);
   }
 
-  /**
-   * Fields differ from the published layout by centimeters, so events are measured. Each alliance's
-   * places come from its own tags, so the measurement corrects both, and flipping blue's numbers
-   * would have missed red's.
-   */
+  /** Each alliance's places come from its own tags, so a measurement corrects both. */
   @Test
   void aMeasuredLayoutMovesEachAlliancesPlacesWithItsOwnTags() {
     List<FieldTag> measured = TestFields.tags();
@@ -50,34 +59,34 @@ class PlaceTest {
     var model =
         new FieldModel(
             TestFields.layout(measured), Symmetry.ROTATED, List.of(), List.of(), List.of());
-    Place hub = Place.between("Hub", 2, 3);
 
-    assertPose(hub.on(model, Alliance.RED), 11.52, 4, 180);
-    assertPose(hub.on(model, Alliance.BLUE), 4.5, 4, 0);
-  }
-
-  @Test
-  void facingATagStandsOutInFrontOfItAndFacesIt() {
-    Place loading = Place.facing("Loading", 4, 1.5);
-
-    assertPose(loading.on(field, Alliance.BLUE), 1.5, 2, 180);
-    assertPose(loading.on(field, Alliance.RED), 14.5, 6, 0);
+    assertPose(place("hub").on(model, RED), 11.52, 4, 180);
+    assertPose(place("hub").on(model, BLUE), 4.5, 4, 0);
   }
 
   /** A task lining up on a place trusts the tags it's found from: each alliance's own. */
   @Test
   void aPlaceNamesTheTagsItIsFoundFrom() {
-    assertThat(Place.between("Hub", 2, 3).tags(field, Alliance.BLUE)).containsExactly(2, 3);
-    assertThat(Place.between("Hub", 2, 3).tags(field, Alliance.RED)).containsExactly(12, 13);
-    assertThat(Place.facing("Loading", 4, 1.5).tags(field, Alliance.RED)).containsExactly(14);
-    assertThat(Place.at("Start", Pose2d.ZERO).tags(field, Alliance.BLUE)).isEmpty();
+    assertThat(place("hub").tags(FIELD, BLUE)).containsExactly(2, 3);
+    assertThat(place("hub").tags(FIELD, RED)).containsExactly(12, 13);
+    assertThat(place("loading").tags(FIELD, RED)).containsExactly(14);
+    assertThat(place("start").tags(FIELD, BLUE)).isEmpty();
   }
 
-  @Test
-  void aPlaceNeedsANameAndSomethingToStandOn() {
-    assertThatThrownBy(() -> Place.at(" ", Pose2d.ZERO)).hasMessage("a place needs a name");
-    assertThatThrownBy(() -> Place.between("Hub")).hasMessage("Hub needs at least one tag");
-    assertThatThrownBy(() -> Place.facing("Loading", 4, -1))
-        .hasMessage("Loading: the distance must be zero or more");
+  static Stream<Arguments> refusals() {
+    return Stream.of(
+        refused("no name", () -> Place.at(" ", Pose2d.ZERO), "a place needs a name"),
+        refused(
+            "no tag to stand between", () -> Place.between("Hub"), "Hub needs at least one tag"),
+        refused(
+            "a negative distance from a tag",
+            () -> Place.facing("Loading", 4, -1),
+            "Loading: the distance must be zero or more"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("refusals")
+  void aPlaceNeedsANameAndSomethingToStandOn(ThrowingCallable building, String message) {
+    assertThatThrownBy(building).hasMessage(message);
   }
 }
