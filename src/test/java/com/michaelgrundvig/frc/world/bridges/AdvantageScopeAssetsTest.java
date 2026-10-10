@@ -491,9 +491,13 @@ class AdvantageScopeAssetsTest {
   /** The smallest and largest x, y and z of a mesh's corners. */
   private static double[][] bounds(
       float[] positions, Rotation3d zeroed, Translation3d shift, Pose3d logged) {
+    return extent(corners(positions, zeroed, shift, logged));
+  }
+
+  private static double[][] extent(List<Translation3d> corners) {
     double[] low = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE};
     double[] high = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
-    for (Translation3d corner : corners(positions, zeroed, shift, logged)) {
+    for (Translation3d corner : corners) {
       double[] xyz = {corner.getX(), corner.getY(), corner.getZ()};
       for (int axis = 0; axis < 3; axis++) {
         low[axis] = Math.min(low[axis], xyz[axis]);
@@ -505,17 +509,9 @@ class AdvantageScopeAssetsTest {
 
   /** The middle of a solid's corners: for a wheel or a box, its center. */
   private static Translation3d centroid(List<Translation3d> corners) {
-    double[] low = {Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE};
-    double[] high = {-Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE};
-    for (Translation3d corner : corners) {
-      double[] xyz = {corner.getX(), corner.getY(), corner.getZ()};
-      for (int axis = 0; axis < 3; axis++) {
-        low[axis] = Math.min(low[axis], xyz[axis]);
-        high[axis] = Math.max(high[axis], xyz[axis]);
-      }
-    }
+    double[][] box = extent(corners);
     return new Translation3d(
-        (low[0] + high[0]) / 2, (low[1] + high[1]) / 2, (low[2] + high[2]) / 2);
+        (box[0][0] + box[1][0]) / 2, (box[0][1] + box[1][1]) / 2, (box[0][2] + box[1][2]) / 2);
   }
 
   private static List<String> names(Path folder) throws IOException {
