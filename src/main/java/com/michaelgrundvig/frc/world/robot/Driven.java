@@ -329,6 +329,15 @@ public record Driven(
       return port.map(MechanismWiring.PortEncoder::turnsPerRange).orElse(1.0);
     }
 
+    /**
+     * Whether the joint's motor controller runs its own loop on this encoder, not on its motor's
+     * encoder: a CANcoder read as remote, fused or synced, or a data port that closes the loop.
+     */
+    public boolean runsControllerLoop() {
+      return cancoder.filter(on -> on.feedback() != MechanismWiring.Feedback.ROTOR).isPresent()
+          || dataPort.filter(MechanismWiring.DataPortEncoder::closedLoop).isPresent();
+    }
+
     /** Whether the joint's motor controller reads it: a CANcoder, or a SPARK's data port. */
     public boolean readByController() {
       return cancoder.isPresent() || dataPort.isPresent();

@@ -1029,19 +1029,25 @@ public sealed interface Joint extends Part permits Joint.Block {
 
     /** A limit switch, refused if where it trips is not measured as this joint's positions are. */
     private Driven.LimitSwitch ofThisKind(Driven.LimitSwitch limit) {
-      boolean turns = this instanceof Revolute;
-      boolean atAnAngle = limit.position().map(at -> at instanceof Angle).orElse(turns);
-      if (atAnAngle != turns) {
-        throw new IllegalArgumentException(
-            possessive(label())
-                + " "
-                + lowerOrUpper(limit.end())
-                + " limit switch trips at "
-                + (turns
-                    ? "a length, and the joint turns: give it an angle, .at(Degrees.of(...))"
-                    : "an angle, and the joint slides: give it a length, .at(Inches.of(...))"));
+      if (limit.position().isEmpty()) {
+        return limit;
       }
-      return limit;
+      Position.Kind tripsAt =
+          limit.position().get() instanceof Angle ? Position.Kind.ANGLE : Position.Kind.LENGTH;
+      if (tripsAt == Position.Kind.of(this)) {
+        return limit;
+      }
+      throw new IllegalArgumentException(
+          possessive(label())
+              + " "
+              + lowerOrUpper(limit.end())
+              + " limit switch trips at "
+              + switch (tripsAt) {
+                case LENGTH ->
+                    "a length, and the joint turns: give it an angle, .at(Degrees.of(...))";
+                case ANGLE ->
+                    "an angle, and the joint slides: give it a length, .at(Inches.of(...))";
+              });
     }
 
     /**

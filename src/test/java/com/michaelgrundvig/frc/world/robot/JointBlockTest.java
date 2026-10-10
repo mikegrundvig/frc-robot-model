@@ -601,6 +601,26 @@ class JointBlockTest {
   }
 
   /**
+   * An absolute encoder says whether its joint's motor controller runs its own loop on it: a
+   * CANcoder read as remote, fused or synced, or a data port that closes the loop. A Systemcore
+   * port's loop is the robot's, not the controller's.
+   */
+  @Test
+  void anEncoderSaysWhetherItsControllersLoopRunsOnIt() {
+    assertThat(Driven.AbsoluteEncoder.of().runsControllerLoop()).isFalse();
+    assertThat(on(CANCODER.can(7).offset(Rotations.of(0))).runsControllerLoop()).isFalse();
+    assertThat(on(CANCODER.can(7).offset(Rotations.of(0)).remote()).runsControllerLoop()).isTrue();
+    assertThat(on(DATA_PORT.offset(Rotations.of(0))).runsControllerLoop()).isFalse();
+    assertThat(on(DATA_PORT.offset(Rotations.of(0)).closesLoop()).runsControllerLoop()).isTrue();
+    assertThat(on(MechanismWiring.PortEncoder.dutyCycle(1).closesLoop()).runsControllerLoop())
+        .isFalse();
+  }
+
+  private static Driven.AbsoluteEncoder on(MechanismWiring.EncoderWiring wiring) {
+    return Driven.AbsoluteEncoder.of().on(wiring);
+  }
+
+  /**
    * A limit switch says where it trips as its joint is measured: an angle on a joint that turns, a
    * distance on one that slides. The other kind is refused where the block says it, and where a
    * practice robot changes it.
