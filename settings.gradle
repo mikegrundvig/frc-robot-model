@@ -1,0 +1,18 @@
+// The world model: what an FRC field and robot are, as data a robot program, a simulator and its
+// tools all read. One library, and the annotation processor that carries its configuration
+// records' documentation in its jar.
+
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    // Downloads the JDK the build asks for (java.toolchain), so ./gradlew works on any machine.
+    id "org.gradle.toolchains.foojay-resolver-convention" version "1.0.0"
+}
+
+rootProject.name = "world"
+
+include "docs-processor"
