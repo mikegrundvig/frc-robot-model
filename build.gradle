@@ -93,7 +93,7 @@ pitest {
     pitestVersion = libs.versions.pitest.core.get()
     junit5PluginVersion = libs.versions.pitest.junit5.get()
     // All of the model, or the classes -PpitClasses names, for a run of under a minute while
-    // working on one: ./gradlew :world:pitest -PpitClasses='com.michaelgrundvig.frc.world.robot.Interlock*'
+    // working on one: ./gradlew pitest -PpitClasses='com.michaelgrundvig.frc.world.robot.Interlock*'
     targetClasses = [
         project.findProperty("pitClasses") ?: "com.michaelgrundvig.frc.world.*"
     ]
