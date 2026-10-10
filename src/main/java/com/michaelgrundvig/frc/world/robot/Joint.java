@@ -23,7 +23,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Quaternion;
@@ -55,18 +54,23 @@ import org.wpilib.units.measure.Voltage;
  * what configurations and interlocks say about it: {@link #at}, {@link #atLeast(Position)}, {@link
  * #atMost(Position)} and {@link #between}.
  *
- * <p>Its block says each thing once. What a joint has one of (its link, its positions, its outputs,
- * its motors, its absolute encoder, a limit switch at each end, its control) is refused said again,
- * in its block or on the finished joint, saying how to change it; what it has several of (servos,
- * interlocks) adds up. Its hard stops and where it rests are each one verb, {@code range(...)} and
- * {@code rest(...)}, that says them in its block and changes them on the finished joint. A finished
- * joint is changed one thing at a time, the rest kept: its motors re-wired ({@link #motorsOn}) or
- * re-geared ({@code gearing}), its absolute encoder re-wired ({@code encoderOn}) or offset
- * otherwise ({@code encoderOffset}), a limit switch ({@link #limitSwitchOn}), its control re-tuned
- * ({@link #retuned}), one of its named positions or outputs placed otherwise, its name kept ({@code
- * replaced}), its hard stops moved, where it rests kept ({@code range(...)}), or where it rests
- * moved, its stops kept ({@code rest(...)}). That's how a practice robot is written, so a CAD
- * revision that regears the competition robot reaches it.
+ * <p>Its block ({@link Block}) declares it one call at a time. A joint has one link, one set of
+ * named positions and of outputs, one set of motors, one absolute encoder, one limit switch at each
+ * end and one control: a block that says any of these twice is refused, with how to change it. It
+ * may have several servos and interlocks, which add up.
+ *
+ * <p>The parts describe themselves. Motors, an absolute encoder and a limit switch are values that
+ * carry their own options ({@link Driven.Motors}, {@link Driven.AbsoluteEncoder}, {@link
+ * Driven.LimitSwitch}), and the block takes each whole: {@code .motors(Motors.of(Motor.KRAKEN_X60,
+ * Gearing.of(25)).on(TALON_FX.can(32)))}.
+ *
+ * <p>A practice robot is written as the competition robot's joints with a few things changed, so a
+ * later change to the competition robot reaches it. A part is changed by naming it and saying what
+ * differs, in the part's own words: {@code PIVOT.motors(motors -> motors.on(TALON_FX.can(33)))},
+ * {@code ARM.absoluteEncoder(encoder -> encoder.offset(Rotations.of(0.47)))}, {@code
+ * ARM.retuned(control -> control.withKg(0.3))}. A named position or output is put elsewhere with
+ * {@code replaced(...)}, and its stops and where it rests with {@code range(...)} and {@code
+ * rest(...)}, which a finished joint takes as its block does.
  *
  * <p>Its positions and outputs are names on it, and their values the robot's: code that names one,
  * a move, a configuration or an interlock, finds it where the robot running it puts it ({@link
@@ -230,39 +234,40 @@ public sealed interface Joint extends Part permits Joint.Block {
   Joint control(MechanismControl control);
 
   /**
-   * The same joint, its control changed and the rest of it kept: a practice robot's arm, lighter,
-   * {@code ARM.retuned(control -> control.withKg(0.3))}. Equal to this one, so a robot that has it
-   * takes this one in its place ({@code RobotDefinition.with}), and a change to the competition
-   * robot's control reaches it.
+   * The same joint with its control changed: a practice robot's lighter arm, {@code
+   * ARM.retuned(control -> control.withKg(0.3))}.
    *
    * @throws IllegalArgumentException if it has no control to change
    */
   Joint retuned(UnaryOperator<MechanismControl> change);
 
   /**
-   * The same joint, its motors on other controllers, the leader first, their motor, count and
-   * gearing kept: a practice robot's, {@code PIVOT.motorsOn(TALON_FX.can(33).pdh(4, Amps.of(40)))}.
-   * With none, they run in the simulator alone.
+   * The same joint with its motors changed: a practice robot's on another controller, {@code
+   * PIVOT.motors(motors -> motors.on(TALON_FX.can(33).pdh(4, Amps.of(40))))}, or geared otherwise,
+   * {@code PIVOT.motors(motors -> motors.gearing(Gearing.of(20)))}.
    *
-   * @throws IllegalArgumentException if no motors turn it, or the controllers aren't one each
+   * @throws IllegalArgumentException if it has no motors, or the change leaves another number
    */
-  Joint motorsOn(MechanismWiring.Device... controllers);
+  Joint motors(UnaryOperator<Driven.Motors> change);
 
   /**
-   * The same joint, its limit switch at an end on another input, where it trips kept: {@code
-   * ELEVATOR.limitSwitchOn(End.LOWER, SensorWiring.port(5).normallyClosed())}.
+   * The same joint with its absolute encoder changed: a practice robot's magnet, {@code
+   * ARM.absoluteEncoder(encoder -> encoder.offset(Rotations.of(0.47)))}, or its CANcoder at another
+   * ID, {@code TURRET.absoluteEncoder(encoder ->
+   * encoder.on(CANCODER.can(35).offset(Rotations.of(0.11))))}.
+   *
+   * @throws IllegalArgumentException if it has no absolute encoder
+   */
+  Joint absoluteEncoder(UnaryOperator<Driven.AbsoluteEncoder> change);
+
+  /**
+   * The same joint with its limit switch at an end changed: a practice robot's on another input,
+   * {@code ELEVATOR.limitSwitch(End.LOWER, limit ->
+   * limit.on(SensorWiring.port(5).normallyClosed()))}.
    *
    * @throws IllegalArgumentException if it has no limit switch at that end
    */
-  Joint limitSwitchOn(Sensor.Switch.Limit.End end, SensorWiring.Connection connection);
-
-  /**
-   * The same joint, its limit switch at an end on its own motor controller's limit pin, where it
-   * trips kept: {@code ELEVATOR.limitSwitchOn(End.LOWER, Direction.REVERSE.normallyClosed())}.
-   *
-   * @throws IllegalArgumentException if it has no limit switch at that end
-   */
-  Joint limitSwitchOn(Sensor.Switch.Limit.End end, SensorWiring.Pin pin);
+  Joint limitSwitch(Sensor.Switch.Limit.End end, UnaryOperator<Driven.LimitSwitch> change);
 
   /**
    * A position on it, or a distance along it, as every message shows one: degrees for a joint that
@@ -362,11 +367,12 @@ public sealed interface Joint extends Part permits Joint.Block {
                         .absolute(true)
                         .build()));
     for (Driven.LimitSwitch each : driven().limitSwitches()) {
+      String label = limitLabel(each.end());
       Sensor.Switch made =
-          each.position().isPresent()
-              ? Sensor.Switch.limit(limitLabel(each.end()), this, each.end(), each.position().get())
-              : Sensor.Switch.limit(limitLabel(each.end()), this, each.end());
-      sensors.add(each.wiring().map(made::on).orElse(made));
+          each.position()
+              .map(at -> Sensor.Switch.limit(label, this, each.end(), inJointUnits(at)))
+              .orElseGet(() -> Sensor.Switch.limit(label, this, each.end()));
+      sensors.add(each.wiring().map(wiring -> made.on(wiring.of(this))).orElse(made));
     }
     return sensors;
   }
@@ -451,12 +457,17 @@ public sealed interface Joint extends Part permits Joint.Block {
       }
     }
     throw new IllegalArgumentException(
-        label() + " has no limit switch at its " + end.name().toLowerCase(Locale.ROOT) + " end");
+        label() + " has no limit switch at its " + lowerOrUpper(end) + " end");
   }
 
   /** A limit switch's label, after its joint and its end: "arm lower limit". */
   private String limitLabel(Sensor.Switch.Limit.End end) {
-    return label() + " " + end.name().toLowerCase(Locale.ROOT) + " limit";
+    return label() + " " + lowerOrUpper(end) + " limit";
+  }
+
+  /** An end of a joint's travel as a sentence names it: "lower" or "upper". */
+  private static String lowerOrUpper(Sensor.Switch.Limit.End end) {
+    return end.name().toLowerCase(Locale.ROOT);
   }
 
   /**
@@ -816,19 +827,28 @@ public sealed interface Joint extends Part permits Joint.Block {
 
     /** What it moves. */
     default J carries(Link link) {
-      onceLink(this);
+      saidOnce(
+          !link().equals(Link.unseen(label())),
+          "carries " + link().label(),
+          "it moves one link, so give it once, with everything it carries");
       return withLink(link);
     }
 
     /** Its places by name: {@code .positions(ARM_STOWED, ARM_SCORING)}. */
     default J positions(Position... positions) {
-      oncePositions(this);
+      saidOnce(
+          !positions().isEmpty(),
+          "has its positions, " + String.join(", ", names(positions(), List.of())),
+          "name them all in one positions(...); to put one elsewhere, replaced(...)");
       return withPositions(List.of(positions), formerPositions());
     }
 
     /** What it runs at, by name: {@code .outputs(INTAKING, OUTTAKING)}. */
     default J outputs(Output... outputs) {
-      onceOutputs(this);
+      saidOnce(
+          !outputs().isEmpty(),
+          "has its outputs, " + String.join(", ", names(List.of(), outputs())),
+          "name them all in one outputs(...); to run one otherwise, replaced(...)");
       return withOutputs(List.of(outputs), formerOutputs());
     }
 
@@ -886,23 +906,39 @@ public sealed interface Joint extends Part permits Joint.Block {
           replacedOutput(this, replacing), former(formerOutputs(), own(output), replacing));
     }
 
-    @Override
-    default J motorsOn(MechanismWiring.Device... controllers) {
-      return driven(drivenWith().motors(rewired(this, controllers)).build());
-    }
-
     /**
-     * The same joint, its motors through another gearing, on the controllers they have: a second
-     * robot of the design, geared otherwise.
-     *
-     * @throws IllegalArgumentException if it has no motors
+     * The motors that drive it: {@code .motors(Motors.of(Motor.KRAKEN_X60,
+     * Gearing.of(25)).on(TALON_FX.can(32)))}. A joint that slides says its drum as well: {@code
+     * Motors.of(Motor.KRAKEN_X60, Gearing.of(5)).drum(Inches.of(0.75))}.
      */
-    default J gearing(Gearing gearing) {
-      return driven(drivenWith().motors(regeared(this, gearing)).build());
+    default J motors(Driven.Motors motors) {
+      saidOnce(
+          driven().motors().isPresent(),
+          "has its motors",
+          "to re-wire them, motors(motors -> motors.on(...)); to re-gear them, motors(motors ->"
+              + " motors.gearing(...))");
+      return driven(drivenWith().motors(motors).build());
+    }
+
+    @Override
+    default J motors(UnaryOperator<Driven.Motors> change) {
+      Driven.Motors had = toChange(driven().motors(), "motors to change", ".motors(...) first");
+      Driven.Motors changed = change.apply(had);
+      if (changed.count() != had.count()) {
+        throw new IllegalArgumentException(
+            label()
+                + " has "
+                + had.count()
+                + " motors, and motors.on(...) names "
+                + changed.count()
+                + ": name a controller for each, the leader first");
+      }
+      return driven(drivenWith().motors(changed).build());
     }
 
     /**
-     * A servo pushing between its parent and its link, under its own label.
+     * A servo pushing between its parent and its link, under its own label. A joint may have
+     * several.
      *
      * @param onParent where its body is fixed, from the joint's origin, in the parent's frame
      * @param onLink where its rod meets the link, in the joint's frame
@@ -920,127 +956,92 @@ public sealed interface Joint extends Part permits Joint.Block {
       return driven(drivenWith().servos(servos).build());
     }
 
-    /** An absolute encoder turning with it, which only the simulator reads until it is wired. */
-    default J absoluteEncoder() {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of());
-    }
-
-    /** An absolute encoder turning with it, read by a CANcoder through its TalonFX. */
-    default J absoluteEncoder(MechanismWiring.Cancoder cancoder) {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(cancoder));
-    }
-
-    /** An absolute encoder turning with it, on its SPARK's data port. */
-    default J absoluteEncoder(MechanismWiring.DataPortEncoder dataPort) {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(dataPort));
-    }
-
-    /** An absolute encoder turning with it, on one of Systemcore's ports, read by the robot. */
-    default J absoluteEncoder(MechanismWiring.PortEncoder port) {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(port));
-    }
-
     /**
-     * An absolute encoder written in full, geared or not: {@code
-     * .absoluteEncoder(AbsoluteEncoder.of().ratio(0.536).on(cancoder))}. On a joint that turns it
-     * is on the axle; on one that slides it is on the drum's shaft, and its ratio is its turns for
-     * each turn of the drum.
+     * An absolute encoder turning with it, written in full: geared, {@code
+     * .absoluteEncoder(AbsoluteEncoder.of().ratio(0.536).on(cancoder))}, or one only the simulator
+     * reads, {@code .absoluteEncoder(AbsoluteEncoder.of())}. On a joint that turns it is on the
+     * axle. On one that slides it is on the drum's shaft, and its ratio is its turns for each turn
+     * of the drum.
      */
     default J absoluteEncoder(Driven.AbsoluteEncoder encoder) {
-      onceEncoder(this);
+      saidOnce(
+          driven().absoluteEncoder().isPresent(),
+          "has an absolute encoder",
+          "to re-wire it, absoluteEncoder(encoder -> encoder.on(...)); to offset it,"
+              + " absoluteEncoder(encoder -> encoder.offset(...)); a decoded pair isn't supported"
+              + " yet");
       return driven(drivenWith().absoluteEncoder(encoder).build());
     }
 
     /**
-     * The same joint, its absolute encoder read by another CANcoder: a practice robot's, {@code
-     * TURRET.encoderOn(CANCODER.can(35).offset(Rotations.of(0.11)))}. Its ratio is kept, and so is
-     * how its loop reads it, unless the CANcoder says its own.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder
+     * An absolute encoder turning with it one to one, read by a CANcoder, its SPARK's data port or
+     * one of Systemcore's ports: {@code
+     * .absoluteEncoder(CANCODER.can(34).offset(Rotations.of(0.82)))}.
      */
-    default J encoderOn(MechanismWiring.Cancoder cancoder) {
-      return encoderRewired(encoder(this).on(loopKept(this, cancoder)));
-    }
-
-    /**
-     * The same joint, its absolute encoder on its SPARK's data port, its ratio kept.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder
-     */
-    default J encoderOn(MechanismWiring.DataPortEncoder dataPort) {
-      return encoderRewired(encoder(this).on(loopKept(this, dataPort)));
-    }
-
-    /**
-     * The same joint, its absolute encoder on one of Systemcore's ports, its ratio kept.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder
-     */
-    default J encoderOn(MechanismWiring.PortEncoder port) {
-      return encoderRewired(encoder(this).on(loopKept(this, port)));
-    }
-
-    /**
-     * The same joint, its absolute encoder offset otherwise, on the wiring it has: a practice
-     * robot's magnet, {@code ARM.encoderOffset(Rotations.of(0.47))}.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder, or one that is not wired
-     */
-    default J encoderOffset(Angle offset) {
-      return encoderRewired(offset(this, offset));
-    }
-
-    private J encoderRewired(Driven.AbsoluteEncoder encoder) {
-      return driven(drivenWith().absoluteEncoder(encoder).build());
-    }
-
-    /** A limit switch at an end, tripping at a position, in the simulator alone until wired. */
-    default J limitSwitch(Sensor.Switch.Limit.End end, P at) {
-      return limit(end, Optional.of(inJointUnits(at)), Optional.empty());
-    }
-
-    /**
-     * A limit switch at an end whose position is not known: it stops the joint, but cannot home it.
-     */
-    default J limitSwitch(Sensor.Switch.Limit.End end) {
-      return limit(end, Optional.empty(), Optional.empty());
-    }
-
-    /** A limit switch at an end whose position is not known, on an input. */
-    default J limitSwitch(Sensor.Switch.Limit.End end, SensorWiring.Connection connection) {
-      return limit(end, Optional.empty(), Optional.of(connection));
-    }
-
-    /** A limit switch at an end whose position is not known, on its own controller's limit pin. */
-    default J limitSwitch(Sensor.Switch.Limit.End end, SensorWiring.Pin pin) {
-      return limitSwitch(end, pin.of(this));
-    }
-
-    /** A limit switch at an end, tripping at a position, on an input. */
-    default J limitSwitch(Sensor.Switch.Limit.End end, P at, SensorWiring.Connection connection) {
-      return limit(end, Optional.of(inJointUnits(at)), Optional.of(connection));
-    }
-
-    /** A limit switch at an end, tripping at a position, on its own controller's limit pin. */
-    default J limitSwitch(Sensor.Switch.Limit.End end, P at, SensorWiring.Pin pin) {
-      return limitSwitch(end, at, pin.of(this));
-    }
-
-    private J limit(
-        Sensor.Switch.Limit.End end,
-        Optional<Double> at,
-        Optional<SensorWiring.Connection> wiring) {
-      return driven(drivenWith().limitSwitches(switchAdded(this, end, at, wiring)).build());
+    default J absoluteEncoder(MechanismWiring.EncoderWiring wiring) {
+      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(wiring));
     }
 
     @Override
-    default J limitSwitchOn(Sensor.Switch.Limit.End end, SensorWiring.Connection connection) {
-      return driven(drivenWith().limitSwitches(switchRewired(this, end, connection)).build());
+    default J absoluteEncoder(UnaryOperator<Driven.AbsoluteEncoder> change) {
+      Driven.AbsoluteEncoder had =
+          toChange(
+              driven().absoluteEncoder(),
+              "absolute encoder to change",
+              "one, .absoluteEncoder(...)");
+      return driven(drivenWith().absoluteEncoder(change.apply(had)).build());
+    }
+
+    /**
+     * A limit switch at one end of its travel: {@code
+     * .limitSwitch(LimitSwitch.lower().at(Degrees.of(0)).on(SensorWiring.port(1).normallyClosed()))}.
+     * One that does not say where it trips can stop the joint but cannot home it.
+     *
+     * @throws IllegalArgumentException if it trips at a distance and the joint turns, or at an
+     *     angle and the joint slides
+     */
+    default J limitSwitch(Driven.LimitSwitch limit) {
+      String end = lowerOrUpper(limit.end());
+      saidOnce(
+          limitAt(limit.end()).isPresent(),
+          "has a limit switch at its " + end + " end",
+          "to re-wire it, limitSwitch(End." + limit.end().name() + ", limit -> limit.on(...))");
+      List<Driven.LimitSwitch> limits = new ArrayList<>(driven().limitSwitches());
+      limits.add(ofThisKind(limit));
+      return driven(drivenWith().limitSwitches(limits).build());
     }
 
     @Override
-    default J limitSwitchOn(Sensor.Switch.Limit.End end, SensorWiring.Pin pin) {
-      return limitSwitchOn(end, pin.of(this));
+    default J limitSwitch(Sensor.Switch.Limit.End end, UnaryOperator<Driven.LimitSwitch> change) {
+      Driven.LimitSwitch had =
+          toChange(
+              limitAt(end),
+              "limit switch at its " + lowerOrUpper(end) + " end to change",
+              "one, .limitSwitch(LimitSwitch." + lowerOrUpper(end) + "()...)");
+      List<Driven.LimitSwitch> limits = new ArrayList<>(driven().limitSwitches());
+      limits.set(limits.indexOf(had), ofThisKind(change.apply(had)));
+      return driven(drivenWith().limitSwitches(limits).build());
+    }
+
+    private Optional<Driven.LimitSwitch> limitAt(Sensor.Switch.Limit.End end) {
+      return driven().limitSwitches().stream().filter(each -> each.end() == end).findFirst();
+    }
+
+    /** A limit switch, refused if where it trips is not measured as this joint's positions are. */
+    private Driven.LimitSwitch ofThisKind(Driven.LimitSwitch limit) {
+      boolean turns = this instanceof Revolute;
+      boolean atAnAngle = limit.position().map(at -> at instanceof Angle).orElse(turns);
+      if (atAnAngle != turns) {
+        throw new IllegalArgumentException(
+            possessive(label())
+                + " "
+                + lowerOrUpper(limit.end())
+                + " limit switch trips at "
+                + (turns
+                    ? "a length, and the joint turns: give it an angle, .at(Degrees.of(...))"
+                    : "an angle, and the joint slides: give it a length, .at(Inches.of(...))"));
+      }
+      return limit;
     }
 
     /**
@@ -1068,13 +1069,43 @@ public sealed interface Joint extends Part permits Joint.Block {
 
     @Override
     default J control(MechanismControl control) {
-      onceControl(this);
+      saidOnce(
+          driven().control().isPresent(),
+          "has its control",
+          "to re-tune it, retuned(control -> control.withKg(...))");
       return driven(drivenWith().control(control).build());
     }
 
     @Override
     default J retuned(UnaryOperator<MechanismControl> change) {
-      return driven(drivenWith().control(change.apply(controlOf(this))).build());
+      MechanismControl had =
+          toChange(driven().control(), "control to re-tune", "one, .control(...)");
+      return driven(drivenWith().control(change.apply(had)).build());
+    }
+
+    /**
+     * The rule that a joint has one of each part its block says once: one link, one set of
+     * positions, of outputs and of motors, one absolute encoder, one limit switch at each end, and
+     * one control. A block that says one again is refused, with how to change the one it has.
+     *
+     * @param has what the joint already has, as the refusal says it: "has its motors"
+     * @param instead what to write instead
+     */
+    private void saidOnce(boolean alreadySaid, String has, String instead) {
+      if (alreadySaid) {
+        throw new IllegalArgumentException(label() + " already " + has + ": " + instead);
+      }
+    }
+
+    /**
+     * A part of this joint that a practice robot is changing, refused if the joint has none.
+     *
+     * @param what the part, and what was to be done with it: "motors to change"
+     * @param give how its block gives the joint one: ".motors(...) first"
+     */
+    private <T> T toChange(Optional<T> part, String what, String give) {
+      return part.orElseThrow(
+          () -> new IllegalArgumentException(label() + " has no " + what + ": give it " + give));
     }
 
     private DrivenBuilder drivenWith() {
@@ -1161,34 +1192,6 @@ public sealed interface Joint extends Part permits Joint.Block {
       return identityHash(this);
     }
 
-    /** A motor turning it through a gearing, in the simulator alone until it's wired. */
-    public Revolute motor(Motor motor, Gearing gearing) {
-      return motors(motor, gearing, 1);
-    }
-
-    /** A motor turning it through a gearing, on a controller: {@code TALON_FX.can(32)}. */
-    public Revolute motor(Motor motor, Gearing gearing, MechanismWiring.Device controller) {
-      return motors(motor, gearing, controller);
-    }
-
-    /** Motors turning it together through a gearing, in the simulator alone until they're wired. */
-    public Revolute motors(Motor motor, Gearing gearing, int count) {
-      onceMotors(this);
-      return driven(
-          drivenWith().motors(turning(motor, count, gearing, Optional.empty(), List.of())).build());
-    }
-
-    /** Motors turning it together through a gearing, each on its controller, the leader first. */
-    public Revolute motors(Motor motor, Gearing gearing, MechanismWiring.Device... controllers) {
-      onceMotors(this);
-      return driven(
-          drivenWith()
-              .motors(
-                  turning(
-                      motor, controllers.length, gearing, Optional.empty(), List.of(controllers)))
-              .build());
-    }
-
     @Override
     public Revolute range(Range range) {
       return with().range(range).build();
@@ -1221,10 +1224,6 @@ public sealed interface Joint extends Part permits Joint.Block {
 
     private JointRevoluteBuilder with() {
       return JointRevoluteBuilder.builder(this);
-    }
-
-    private DrivenBuilder drivenWith() {
-      return DrivenBuilder.builder(driven);
     }
   }
 
@@ -1314,46 +1313,6 @@ public sealed interface Joint extends Part permits Joint.Block {
       return identityHash(this);
     }
 
-    /**
-     * A motor driving it through a gearing onto a drum, in the simulator alone until it's wired.
-     *
-     * @param pitchRadius where the belt, chain or rack meets the drum, sprocket or pinion
-     */
-    public Prismatic motor(Motor motor, Gearing gearing, Distance pitchRadius) {
-      return motors(motor, gearing, pitchRadius, 1);
-    }
-
-    /** A motor driving it through a gearing onto a drum, on a controller. */
-    public Prismatic motor(
-        Motor motor, Gearing gearing, Distance pitchRadius, MechanismWiring.Device controller) {
-      return motors(motor, gearing, pitchRadius, controller);
-    }
-
-    /** Motors driving it together onto a drum, in the simulator alone until they're wired. */
-    public Prismatic motors(Motor motor, Gearing gearing, Distance pitchRadius, int count) {
-      onceMotors(this);
-      return driven(
-          drivenWith()
-              .motors(turning(motor, count, gearing, Optional.of(pitchRadius), List.of()))
-              .build());
-    }
-
-    /** Motors driving it together onto a drum, each on its controller, the leader first. */
-    public Prismatic motors(
-        Motor motor, Gearing gearing, Distance pitchRadius, MechanismWiring.Device... controllers) {
-      onceMotors(this);
-      return driven(
-          drivenWith()
-              .motors(
-                  turning(
-                      motor,
-                      controllers.length,
-                      gearing,
-                      Optional.of(pitchRadius),
-                      List.of(controllers)))
-              .build());
-    }
-
     @Override
     public Prismatic range(Range range) {
       return with().range(range).build();
@@ -1386,10 +1345,6 @@ public sealed interface Joint extends Part permits Joint.Block {
 
     private JointPrismaticBuilder with() {
       return JointPrismaticBuilder.builder(this);
-    }
-
-    private DrivenBuilder drivenWith() {
-      return DrivenBuilder.builder(driven);
     }
   }
 
@@ -1437,166 +1392,6 @@ public sealed interface Joint extends Part permits Joint.Block {
       case LinearVelocity sliding -> sliding.in(MetersPerSecond);
       default -> throw new IllegalArgumentException(measure + " is not a position or a speed");
     };
-  }
-
-  /**
-   * Refuses a block saying again what a joint has one of, in its block or on the finished joint.
-   *
-   * @param why what it has, and how to change it
-   */
-  private static void once(boolean said, Supplier<String> why) {
-    if (said) {
-      throw new IllegalArgumentException(why.get());
-    }
-  }
-
-  /** Refuses a second link. */
-  private static void onceLink(Joint joint) {
-    once(
-        !joint.link().equals(Link.unseen(joint.label())),
-        () ->
-            joint.label()
-                + " already carries "
-                + joint.link().label()
-                + ": it moves one link, so give it once, with everything it carries");
-  }
-
-  /** Refuses its positions said twice. */
-  private static void oncePositions(Joint joint) {
-    once(
-        !joint.positions().isEmpty(),
-        () ->
-            joint.label()
-                + " already has its positions, "
-                + String.join(", ", names(joint.positions(), List.of()))
-                + ": name them all in one positions(...); to put one elsewhere, replaced(...)");
-  }
-
-  /** Refuses its outputs said twice. */
-  private static void onceOutputs(Joint joint) {
-    once(
-        !joint.outputs().isEmpty(),
-        () ->
-            joint.label()
-                + " already has its outputs, "
-                + String.join(", ", names(List.of(), joint.outputs()))
-                + ": name them all in one outputs(...); to run one otherwise, replaced(...)");
-  }
-
-  /** Refuses its motors said twice. */
-  private static void onceMotors(Joint joint) {
-    once(
-        joint.driven().motors().isPresent(),
-        () ->
-            joint.label()
-                + " already has its motors: to re-wire them, motorsOn(...); to re-gear them,"
-                + " gearing(...)");
-  }
-
-  /** Refuses its absolute encoder said twice: a pair isn't decoded yet. */
-  private static void onceEncoder(Joint joint) {
-    once(
-        joint.driven().absoluteEncoder().isPresent(),
-        () ->
-            joint.label()
-                + " already has an absolute encoder: to re-wire it, encoderOn(...); to offset it,"
-                + " encoderOffset(...); a decoded pair isn't supported yet");
-  }
-
-  /** Refuses its control said twice. */
-  private static void onceControl(Joint joint) {
-    once(
-        joint.driven().control().isPresent(),
-        () ->
-            joint.label()
-                + " already has its control: to re-tune it, retuned(control ->"
-                + " control.withKg(...))");
-  }
-
-  /** A joint's control, to change. */
-  private static MechanismControl controlOf(Joint joint) {
-    return joint
-        .driven()
-        .control()
-        .orElseThrow(
-            () ->
-                new IllegalArgumentException(
-                    joint.label() + " has no control to re-tune: give it one, .control(...)"));
-  }
-
-  /**
-   * A CANcoder a joint's absolute encoder moves to ({@code encoderOn}), keeping how the joint's
-   * loop reads the CANcoder it was on: one written as read once at startup, as a fresh {@code
-   * CANCODER.can(35).offset(...)} is, runs the loop as the one before did, fused, remote or synced,
-   * so a practice robot that only moved its CANcoder's ID runs as the competition robot does. One
-   * written with its own way, {@code .remote()}, has it. One from another kind of input is as
-   * written: a SPARK's data port or a Systemcore port says its own, {@code .closesLoop()}.
-   */
-  private static MechanismWiring.Cancoder loopKept(Joint joint, MechanismWiring.Cancoder cancoder) {
-    if (cancoder.feedback() != MechanismWiring.Feedback.ROTOR) {
-      return cancoder;
-    }
-    return joint
-        .driven()
-        .absoluteEncoder()
-        .flatMap(Driven.AbsoluteEncoder::cancoder)
-        .map(
-            was ->
-                MechanismWiringCancoderBuilder.builder(cancoder).feedback(was.feedback()).build())
-        .orElse(cancoder);
-  }
-
-  /**
-   * A data port a joint's absolute encoder moves to, keeping whether its loop closes on the data
-   * port it was on, as a CANcoder keeps how it's read ({@link #loopKept(Joint,
-   * MechanismWiring.Cancoder)}).
-   */
-  private static MechanismWiring.DataPortEncoder loopKept(
-      Joint joint, MechanismWiring.DataPortEncoder dataPort) {
-    boolean closed =
-        joint
-            .driven()
-            .absoluteEncoder()
-            .flatMap(Driven.AbsoluteEncoder::dataPort)
-            .map(MechanismWiring.DataPortEncoder::closedLoop)
-            .orElse(false);
-    return closed && !dataPort.closedLoop() ? dataPort.closesLoop() : dataPort;
-  }
-
-  /**
-   * A Systemcore port a joint's absolute encoder moves to, keeping whether its loop closes on the
-   * port it was on, as a CANcoder keeps how it's read ({@link #loopKept(Joint,
-   * MechanismWiring.Cancoder)}).
-   */
-  private static MechanismWiring.PortEncoder loopKept(
-      Joint joint, MechanismWiring.PortEncoder port) {
-    boolean closed =
-        joint
-            .driven()
-            .absoluteEncoder()
-            .flatMap(Driven.AbsoluteEncoder::port)
-            .map(MechanismWiring.PortEncoder::closedLoop)
-            .orElse(false);
-    return closed && !port.closedLoop() ? port.closesLoop() : port;
-  }
-
-  /** A joint's absolute encoder, its ratio kept, unwired: to wire again. */
-  private static Driven.AbsoluteEncoder encoder(Joint joint) {
-    Driven.AbsoluteEncoder encoder =
-        joint
-            .driven()
-            .absoluteEncoder()
-            .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        joint.label()
-                            + " has no absolute encoder to re-wire: give it one,"
-                            + " .absoluteEncoder(...)"));
-    return DrivenAbsoluteEncoderBuilder.builder(encoder)
-        .cancoder(Optional.empty())
-        .dataPort(Optional.empty())
-        .port(Optional.empty())
-        .build();
   }
 
   /**
@@ -1669,137 +1464,6 @@ public sealed interface Joint extends Part permits Joint.Block {
       had.add(now);
     }
     return had;
-  }
-
-  /** A joint's absolute encoder offset otherwise, the rest of it and its wiring as they are. */
-  private static Driven.AbsoluteEncoder offset(Joint joint, Angle offset) {
-    Driven.AbsoluteEncoder encoder =
-        joint
-            .driven()
-            .absoluteEncoder()
-            .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        joint.label()
-                            + " has no absolute encoder to offset: give it one,"
-                            + " .absoluteEncoder(...)"));
-    DrivenAbsoluteEncoderBuilder offsetOne = DrivenAbsoluteEncoderBuilder.builder(encoder);
-    if (encoder.cancoder().isPresent()) {
-      offsetOne.cancoder(
-          Optional.of(
-              MechanismWiringCancoderBuilder.builder(encoder.cancoder().get())
-                  .offset(offset)
-                  .build()));
-    } else if (encoder.dataPort().isPresent()) {
-      offsetOne.dataPort(
-          Optional.of(
-              MechanismWiringDataPortEncoderBuilder.builder(encoder.dataPort().get())
-                  .offset(offset)
-                  .build()));
-    } else if (encoder.port().isPresent()) {
-      offsetOne.port(encoder.port().get().offset(offset));
-    } else {
-      throw new IllegalArgumentException(
-          possessive(joint.label())
-              + " absolute encoder isn't wired, so it has no offset: the simulator alone reads"
-              + " it. Wire it, encoderOn(...)");
-    }
-    return offsetOne.build();
-  }
-
-  /** A joint's motors on other controllers, the rest as they are. */
-  private static Driven.Motors rewired(Joint joint, MechanismWiring.Device... controllers) {
-    Driven.Motors motors =
-        joint
-            .driven()
-            .motors()
-            .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        joint.label() + " has no motors to re-wire: give it .motor(...) first"));
-    if (controllers.length != 0 && controllers.length != motors.count()) {
-      throw new IllegalArgumentException(
-          joint.label()
-              + " has "
-              + motors.count()
-              + " motors, and motorsOn(...) names "
-              + controllers.length
-              + ": name a controller for each, the leader first");
-    }
-    return DrivenMotorsBuilder.builder(motors).controllers(List.of(controllers)).build();
-  }
-
-  /** A joint's limit switches with one more, at an end it has none. */
-  private static List<Driven.LimitSwitch> switchAdded(
-      Joint joint,
-      Sensor.Switch.Limit.End end,
-      Optional<Double> at,
-      Optional<SensorWiring.Connection> wiring) {
-    once(
-        joint.driven().limitSwitches().stream().anyMatch(each -> each.end() == end),
-        () ->
-            joint.label()
-                + " already has a limit switch at its "
-                + end.name().toLowerCase(Locale.ROOT)
-                + " end: to re-wire it, limitSwitchOn(End."
-                + end.name()
-                + ", ...)");
-    List<Driven.LimitSwitch> switches = new ArrayList<>(joint.driven().limitSwitches());
-    switches.add(DrivenLimitSwitchBuilder.builder().end(end).position(at).wiring(wiring).build());
-    return switches;
-  }
-
-  /** A joint's limit switches, the one at an end on another input, where it trips kept. */
-  private static List<Driven.LimitSwitch> switchRewired(
-      Joint joint, Sensor.Switch.Limit.End end, SensorWiring.Connection connection) {
-    List<Driven.LimitSwitch> switches = new ArrayList<>();
-    boolean found = false;
-    for (Driven.LimitSwitch each : joint.driven().limitSwitches()) {
-      found |= each.end() == end;
-      switches.add(
-          each.end() == end
-              ? DrivenLimitSwitchBuilder.builder(each).wiring(connection).build()
-              : each);
-    }
-    if (!found) {
-      throw new IllegalArgumentException(
-          joint.label()
-              + " has no limit switch at its "
-              + end.name().toLowerCase(Locale.ROOT)
-              + " end to re-wire: give it one, .limitSwitch(End."
-              + end.name()
-              + ", ...)");
-    }
-    return switches;
-  }
-
-  /** A joint's motors through another gearing, the rest as they are. */
-  private static Driven.Motors regeared(Joint joint, Gearing gearing) {
-    Driven.Motors motors =
-        joint
-            .driven()
-            .motors()
-            .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        joint.label() + " has no motors to gear: give it .motor(...) first"));
-    return DrivenMotorsBuilder.builder(motors).gearing(gearing).build();
-  }
-
-  /** Motors as a joint's block says them. */
-  private static Driven.Motors turning(
-      Motor motor,
-      int count,
-      Gearing gearing,
-      Optional<Distance> pitchRadius,
-      List<MechanismWiring.Device> controllers) {
-    return Driven.Motors.builder()
-        .motor(motor)
-        .count(count)
-        .gearing(gearing)
-        .controllers(controllers)
-        .pitchRadius(pitchRadius)
-        .build();
   }
 
   /**

@@ -20,6 +20,9 @@ import com.michaelgrundvig.frc.world.physical.MassProperties;
 import com.michaelgrundvig.frc.world.physical.Material;
 import com.michaelgrundvig.frc.world.physical.Shape;
 import com.michaelgrundvig.frc.world.physical.Vector3;
+import com.michaelgrundvig.frc.world.robot.Driven.AbsoluteEncoder;
+import com.michaelgrundvig.frc.world.robot.Driven.LimitSwitch;
+import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -81,8 +84,10 @@ class JointBlockTest {
             .rest(Meters.of(0))
             .positions(clear)
             .motors(
-                Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1), TALON_FX.can(5), TALON_FX.can(6))
-            .limitSwitch(Sensor.Switch.Limit.End.LOWER, Meters.of(0));
+                Motors.of(Motor.KRAKEN_X60, Gearing.of(10))
+                    .drum(Inches.of(1))
+                    .on(TALON_FX.can(5), TALON_FX.can(6)))
+            .limitSwitch(LimitSwitch.lower().at(Meters.of(0)));
 
     assertThat(elevator.axis()).isEqualTo(Vector3.UP);
     assertThat(elevator.range()).contains(Range.meters(0, 1.2));
@@ -112,9 +117,11 @@ class JointBlockTest {
         Joint.pivot("arm", Part.CHASSIS, AXLE, Joint.PITCH_UP)
             .range(Range.degrees(-30, 120))
             .rest(Degrees.of(-20))
-            .motors(Motor.KRAKEN_X60, Gearing.of(60), 2);
+            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(60)).count(2));
     Joint.Revolute wired =
-        sim.motorsOn(TALON_FX.can(CANIVORE, 20), TALON_FX.can(CANIVORE, 21).clockwise())
+        sim.motors(
+                motors ->
+                    motors.on(TALON_FX.can(CANIVORE, 20), TALON_FX.can(CANIVORE, 21).clockwise()))
             .absoluteEncoder(CANCODER.can(CANIVORE, 22).offset(Rotations.of(0.12)).fused());
 
     Drive drive = sim.ownDrives().getFirst();
@@ -145,13 +152,13 @@ class JointBlockTest {
         Joint.pivot("arm", Part.CHASSIS, AXLE, Joint.PITCH_UP)
             .range(Range.degrees(-30, 120))
             .rest(Degrees.of(-20))
-            .motor(Motor.KRAKEN_X60, Gearing.of(60), TALON_FX.can(20));
+            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(60)).on(TALON_FX.can(20)));
     MechanismWiring.Cancoder cancoder = CANCODER.can(22).offset(Rotations.of(0.12)).fused();
     MechanismWiring.DataPortEncoder dataPort = DATA_PORT.offset(Rotations.of(0.3));
     MechanismWiring.PortEncoder pot =
         MechanismWiring.PortEncoder.analog(2, 10).offset(Rotations.of(-2.5));
 
-    assertThat(arm.absoluteEncoder().driven().absoluteEncoder())
+    assertThat(arm.absoluteEncoder(AbsoluteEncoder.of()).driven().absoluteEncoder())
         .contains(Driven.AbsoluteEncoder.of());
     assertThat(arm.absoluteEncoder(cancoder).driven().absoluteEncoder())
         .contains(Driven.AbsoluteEncoder.of().on(cancoder));
@@ -207,9 +214,11 @@ class JointBlockTest {
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
-                Driven.AbsoluteEncoder.of()
-                    .on(MechanismWiring.PortEncoder.dutyCycle(0))
-                    .on(DATA_PORT.offset(Rotations.of(0))))
+                DrivenAbsoluteEncoderBuilder.builder()
+                    .ratio(1)
+                    .port(MechanismWiring.PortEncoder.dutyCycle(0))
+                    .dataPort(DATA_PORT.offset(Rotations.of(0)))
+                    .build())
         .withMessageContaining("it's read one way");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> Driven.AbsoluteEncoder.of().ratio(0))
@@ -239,11 +248,9 @@ class JointBlockTest {
             .range(Range.meters(0, 1.2))
             .rest(Meters.of(0))
             .motors(
-                Motor.KRAKEN_X60,
-                Gearing.of(10),
-                Inches.of(1),
-                TALON_FX.can(CANIVORE, 5),
-                TALON_FX.can(CANIVORE, 6))
+                Motors.of(Motor.KRAKEN_X60, Gearing.of(10))
+                    .drum(Inches.of(1))
+                    .on(TALON_FX.can(CANIVORE, 5), TALON_FX.can(CANIVORE, 6)))
             .absoluteEncoder(Driven.AbsoluteEncoder.of().ratio(1.0 / 9).on(cancoder));
     double perMeter = 1.0 / 9 / (2 * Math.PI * 0.0254); // a ninth of a turn per 2π inches
 
@@ -254,7 +261,8 @@ class JointBlockTest {
     assertThat(encoder.terms().getFirst().pitchRadius()).contains(Inches.of(1));
     assertThat(encoder.ratio(elevator)).isCloseTo(perMeter, within(1e-9));
     assertThat(
-            ((Sensor.Encoder) elevator.gearing(Gearing.of(12)).ownSensors().getFirst())
+            ((Sensor.Encoder)
+                    elevator.motors(had -> had.gearing(Gearing.of(12))).ownSensors().getFirst())
                 .ratio(elevator))
         .as("regeared motors turn the same drum")
         .isCloseTo(perMeter, within(1e-9));
@@ -264,29 +272,34 @@ class JointBlockTest {
     assertThatIllegalArgumentException()
         .isThrownBy(() -> elevator.absoluteEncoder(cancoder))
         .withMessage(
-            "elevator already has an absolute encoder: to re-wire it, encoderOn(...); to offset"
-                + " it, encoderOffset(...); a decoded pair isn't supported yet");
+            "elevator already has an absolute encoder: to re-wire it, absoluteEncoder(encoder ->"
+                + " encoder.on(...)); to offset it, absoluteEncoder(encoder ->"
+                + " encoder.offset(...)); a decoded pair isn't supported yet");
 
-    Joint.Prismatic practice = elevator.encoderOffset(Rotations.of(0.64));
+    Joint.Prismatic practice = elevator.absoluteEncoder(wired -> wired.offset(Rotations.of(0.64)));
     assertThat(practice).isEqualTo(elevator);
     assertThat(practice.driven().absoluteEncoder().orElseThrow().cancoder())
         .contains(CANCODER.can(CANIVORE, 7).offset(Rotations.of(0.64)));
     assertThat(practice.driven().absoluteEncoder().orElseThrow().ratio()).isEqualTo(1.0 / 9);
     MechanismWiring.DataPortEncoder dataPort = DATA_PORT.offset(Rotations.of(0.2)).closesLoop();
     Driven.AbsoluteEncoder onSpark =
-        elevator.encoderOn(dataPort).driven().absoluteEncoder().orElseThrow();
+        elevator
+            .absoluteEncoder(wired -> wired.on(dataPort))
+            .driven()
+            .absoluteEncoder()
+            .orElseThrow();
     assertThat(onSpark.cancoder()).as("read one way").isEmpty();
     assertThat(onSpark.dataPort()).contains(dataPort);
     assertThat(onSpark.ratio()).isEqualTo(1.0 / 9);
     MechanismWiring.PortEncoder port = MechanismWiring.PortEncoder.dutyCycle(1);
     Driven.AbsoluteEncoder onPort =
-        elevator.encoderOn(port).driven().absoluteEncoder().orElseThrow();
+        elevator.absoluteEncoder(wired -> wired.on(port)).driven().absoluteEncoder().orElseThrow();
     assertThat(onPort.port()).contains(port);
     assertThat(onPort.ratio()).isEqualTo(1.0 / 9);
     assertThat(
             elevator
-                .encoderOn(port)
-                .encoderOffset(Rotations.of(0.4))
+                .absoluteEncoder(wired -> wired.on(port))
+                .absoluteEncoder(wired -> wired.offset(Rotations.of(0.4)))
                 .driven()
                 .absoluteEncoder()
                 .orElseThrow()
@@ -296,7 +309,7 @@ class JointBlockTest {
     // On the drum's shaft: a ten-turn potentiometer reads a tenth of its signal per drum turn.
     MechanismWiring.PortEncoder pot = MechanismWiring.PortEncoder.analog(2, 10);
     Joint.Prismatic bare = Joint.elevator("lift", Part.CHASSIS, AXLE);
-    assertThat(bare.absoluteEncoder().driven().absoluteEncoder())
+    assertThat(bare.absoluteEncoder(AbsoluteEncoder.of()).driven().absoluteEncoder())
         .contains(Driven.AbsoluteEncoder.of());
     assertThat(bare.absoluteEncoder(cancoder).driven().absoluteEncoder())
         .contains(Driven.AbsoluteEncoder.of().on(cancoder));
@@ -305,7 +318,7 @@ class JointBlockTest {
     assertThat(bare.absoluteEncoder(pot).ownSensors()).as("no motors, no drum").isEmpty();
     Sensor.Encoder onShaft =
         (Sensor.Encoder)
-            bare.motors(Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1), 2)
+            bare.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)).count(2))
                 .absoluteEncoder(pot)
                 .ownSensors()
                 .getFirst();
@@ -313,8 +326,8 @@ class JointBlockTest {
     assertThat(onShaft.ratio(onShaft.joint()))
         .isCloseTo(0.1 / (2 * Math.PI * 0.0254), within(1e-9));
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> bare.encoderOn(cancoder))
-        .withMessage("lift has no absolute encoder to re-wire: give it one, .absoluteEncoder(...)");
+        .isThrownBy(() -> bare.absoluteEncoder(wired -> wired.on(cancoder)))
+        .withMessage("lift has no absolute encoder to change: give it one, .absoluteEncoder(...)");
   }
 
   /**
@@ -327,11 +340,11 @@ class JointBlockTest {
         Joint.pivot("pivot", Part.CHASSIS, AXLE, Joint.PITCH_DOWN)
             .range(Range.degrees(0, 135))
             .rest(IN)
-            .limitSwitch(Sensor.Switch.Limit.End.LOWER, Degrees.of(0))
+            .limitSwitch(LimitSwitch.lower().at(Degrees.of(0)))
             .limitSwitch(
-                Sensor.Switch.Limit.End.UPPER,
-                Degrees.of(135),
-                SensorWiring.Direction.FORWARD.normallyClosed());
+                LimitSwitch.upper()
+                    .at(Degrees.of(135))
+                    .on(SensorWiring.Direction.FORWARD.normallyClosed()));
 
     Sensor.Switch lower = pivot.switchAt(Sensor.Switch.Limit.End.LOWER);
     Sensor.Switch upper = pivot.switchAt(Sensor.Switch.Limit.End.UPPER);
@@ -347,12 +360,10 @@ class JointBlockTest {
         .isThrownBy(
             () ->
                 pivot.limitSwitch(
-                    Sensor.Switch.Limit.End.LOWER,
-                    Degrees.of(0),
-                    SensorWiring.port(1).normallyOpen()))
+                    LimitSwitch.lower().at(Degrees.of(0)).on(SensorWiring.port(1).normallyOpen())))
         .withMessage(
             "pivot already has a limit switch at its lower end: to re-wire it,"
-                + " limitSwitchOn(End.LOWER, ...)");
+                + " limitSwitch(End.LOWER, limit -> limit.on(...))");
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
@@ -362,8 +373,8 @@ class JointBlockTest {
         Joint.elevator("climber", Part.CHASSIS, AXLE)
             .range(Range.meters(0, 0.5))
             .rest(Meters.of(0))
-            .limitSwitch(Sensor.Switch.Limit.End.LOWER)
-            .limitSwitch(Sensor.Switch.Limit.End.UPPER, SensorWiring.port(2).normallyClosed());
+            .limitSwitch(LimitSwitch.lower())
+            .limitSwitch(LimitSwitch.upper().on(SensorWiring.port(2).normallyClosed()));
     Sensor.Switch.Limit lowest =
         (Sensor.Switch.Limit) unknown.switchAt(Sensor.Switch.Limit.End.LOWER).kind();
     assertThat(lowest.position()).as("where it trips isn't known").isEmpty();
@@ -408,11 +419,11 @@ class JointBlockTest {
             .range(Range.degrees(0, 135))
             .rest(IN)
             .positions(IN, OUT)
-            .motor(Motor.KRAKEN_X60, Gearing.of(25))
+            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)))
             .control(MechanismControl.position(30));
     Joint.Revolute practice =
         pivot
-            .motorsOn(TALON_FX.can(33))
+            .motors(had -> had.on(TALON_FX.can(33)))
             .retuned(control -> MechanismControl.position(25))
             .replaced(OUT, Degrees.of(128));
 
@@ -450,9 +461,9 @@ class JointBlockTest {
             .carries(
                 Link.box("arm", new Translation3d(0, 0, 0.2), new Translation3d(0.05, 0.5, 0.36)))
             .positions(IN, OUT)
-            .motor(Motor.KRAKEN_X60, Gearing.of(25), TALON_FX.can(32))
+            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)).on(TALON_FX.can(32)))
             .absoluteEncoder(CANCODER.can(34).offset(Rotations.of(0.82)))
-            .limitSwitch(Sensor.Switch.Limit.End.LOWER, Degrees.of(0))
+            .limitSwitch(LimitSwitch.lower().at(Degrees.of(0)))
             .control(MechanismControl.position(30));
     Joint.Revolute roller =
         Joint.roller("roller", Part.CHASSIS, AXLE).outputs(INTAKING).rest(Degrees.of(10));
@@ -460,19 +471,21 @@ class JointBlockTest {
         Joint.elevator("elevator", Part.CHASSIS, AXLE)
             .range(Range.meters(0, 1.2))
             .rest(Meters.of(0))
-            .motors(Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1), 2)
+            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)).count(2))
             .control(MechanismControl.position(60));
 
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> pivot.motor(Motor.KRAKEN_X60, Gearing.of(30), TALON_FX.can(33)))
+        .isThrownBy(
+            () -> pivot.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(30)).on(TALON_FX.can(33))))
         .withMessage(
-            "pivot already has its motors: to re-wire them, motorsOn(...); to re-gear them,"
-                + " gearing(...)");
+            "pivot already has its motors: to re-wire them, motors(motors -> motors.on(...)); to"
+                + " re-gear them, motors(motors -> motors.gearing(...))");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> pivot.absoluteEncoder(CANCODER.can(35).offset(Rotations.of(0.1))))
         .withMessage(
-            "pivot already has an absolute encoder: to re-wire it, encoderOn(...); to offset it,"
-                + " encoderOffset(...); a decoded pair isn't supported yet");
+            "pivot already has an absolute encoder: to re-wire it, absoluteEncoder(encoder ->"
+                + " encoder.on(...)); to offset it, absoluteEncoder(encoder ->"
+                + " encoder.offset(...)); a decoded pair isn't supported yet");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> pivot.control(MechanismControl.position(25)))
         .withMessage(
@@ -480,12 +493,10 @@ class JointBlockTest {
                 + " control.withKg(...))");
     assertThatIllegalArgumentException()
         .isThrownBy(
-            () ->
-                pivot.limitSwitch(
-                    Sensor.Switch.Limit.End.LOWER, SensorWiring.port(5).normallyClosed()))
+            () -> pivot.limitSwitch(LimitSwitch.lower().on(SensorWiring.port(5).normallyClosed())))
         .withMessage(
             "pivot already has a limit switch at its lower end: to re-wire it,"
-                + " limitSwitchOn(End.LOWER, ...)");
+                + " limitSwitch(End.LOWER, limit -> limit.on(...))");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> pivot.carries(Link.unseen("roller")))
         .withMessage(
@@ -510,16 +521,15 @@ class JointBlockTest {
         .as("a roller's block says none: it starts at 0")
         .isEmpty();
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> elevator.motors(Motor.KRAKEN_X60, Gearing.of(12), Inches.of(1), 2))
+        .isThrownBy(
+            () ->
+                elevator.motors(
+                    Motors.of(Motor.KRAKEN_X60, Gearing.of(12)).drum(Inches.of(1)).count(2)))
         .withMessageStartingWith("elevator already has its motors");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> elevator.control(MechanismControl.position(50)))
         .withMessageStartingWith("elevator already has its control");
-    assertThat(
-            pivot
-                .limitSwitch(Sensor.Switch.Limit.End.UPPER, Degrees.of(135))
-                .driven()
-                .limitSwitches())
+    assertThat(pivot.limitSwitch(LimitSwitch.upper().at(Degrees.of(135))).driven().limitSwitches())
         .as("a switch at its other end adds up")
         .hasSize(2);
   }
@@ -536,25 +546,31 @@ class JointBlockTest {
   void reWiredItsLoopReadsItsEncoderAsBefore() {
     Joint.Revolute fused =
         Joint.roller("turret", Part.CHASSIS, AXLE, Vector3.UP)
-            .motor(Motor.KRAKEN_X60, Gearing.of(50), TALON_FX.can(20))
+            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(50)).on(TALON_FX.can(20)))
             .absoluteEncoder(CANCODER.can(22).offset(Rotations.of(0.1)).fused());
     Joint.Revolute onDataPort =
         Joint.roller("turret", Part.CHASSIS, AXLE, Vector3.UP)
-            .motor(Motor.NEO, Gearing.of(50), SPARK_MAX.can(20))
+            .motors(Motors.of(Motor.NEO, Gearing.of(50)).on(SPARK_MAX.can(20)))
             .absoluteEncoder(DATA_PORT.offset(Rotations.of(0.1)).closesLoop());
     MechanismWiring.PortEncoder port = MechanismWiring.PortEncoder.dutyCycle(1);
     Joint.Revolute onPort =
         Joint.roller("turret", Part.CHASSIS, AXLE, Vector3.UP)
-            .motor(Motor.KRAKEN_X60, Gearing.of(50), TALON_FX.can(20))
+            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(50)).on(TALON_FX.can(20)))
             .absoluteEncoder(port.closesLoop());
 
-    assertThat(cancoder(fused.encoderOn(CANCODER.can(35).offset(Rotations.of(0.4)))))
+    assertThat(
+            cancoder(
+                fused.absoluteEncoder(
+                    wired -> wired.on(CANCODER.can(35).offset(Rotations.of(0.4))))))
         .isEqualTo(CANCODER.can(35).offset(Rotations.of(0.4)).fused());
-    assertThat(cancoder(fused.encoderOn(CANCODER.can(35).offset(Rotations.of(0.4)).remote())))
+    assertThat(
+            cancoder(
+                fused.absoluteEncoder(
+                    wired -> wired.on(CANCODER.can(35).offset(Rotations.of(0.4)).remote()))))
         .isEqualTo(CANCODER.can(35).offset(Rotations.of(0.4)).remote());
     assertThat(
             onDataPort
-                .encoderOn(DATA_PORT.offset(Rotations.of(0.3)))
+                .absoluteEncoder(wired -> wired.on(DATA_PORT.offset(Rotations.of(0.3))))
                 .driven()
                 .absoluteEncoder()
                 .orElseThrow()
@@ -562,7 +578,7 @@ class JointBlockTest {
         .contains(DATA_PORT.offset(Rotations.of(0.3)).closesLoop());
     assertThat(
             onPort
-                .encoderOn(MechanismWiring.PortEncoder.dutyCycle(2))
+                .absoluteEncoder(wired -> wired.on(MechanismWiring.PortEncoder.dutyCycle(2)))
                 .driven()
                 .absoluteEncoder()
                 .orElseThrow()
@@ -570,7 +586,7 @@ class JointBlockTest {
         .contains(MechanismWiring.PortEncoder.dutyCycle(2).closesLoop());
     assertThat(
             fused
-                .encoderOn(DATA_PORT.offset(Rotations.of(0.3)))
+                .absoluteEncoder(wired -> wired.on(DATA_PORT.offset(Rotations.of(0.3))))
                 .driven()
                 .absoluteEncoder()
                 .orElseThrow()
@@ -581,6 +597,46 @@ class JointBlockTest {
 
   private static MechanismWiring.Cancoder cancoder(Joint joint) {
     return joint.driven().absoluteEncoder().flatMap(Driven.AbsoluteEncoder::cancoder).orElseThrow();
+  }
+
+  /**
+   * A limit switch says where it trips as its joint is measured: an angle on a joint that turns, a
+   * distance on one that slides. The other kind is refused where the block says it, and where a
+   * practice robot changes it.
+   */
+  @Test
+  void aLimitSwitchTripsWhereItsJointIsMeasured() {
+    Joint.Revolute pivot = Joint.pivot("pivot", Part.CHASSIS, AXLE, Joint.PITCH_UP);
+    Joint.Prismatic lift = Joint.elevator("lift", Part.CHASSIS, AXLE);
+
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> pivot.limitSwitch(LimitSwitch.lower().at(Inches.of(1))))
+        .withMessage(
+            "pivot's lower limit switch trips at a length, and the joint turns: give it an angle,"
+                + " .at(Degrees.of(...))");
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> lift.limitSwitch(LimitSwitch.upper().at(Degrees.of(90))))
+        .withMessage(
+            "lift's upper limit switch trips at an angle, and the joint slides: give it a length,"
+                + " .at(Inches.of(...))");
+    Joint.Prismatic stopped = lift.limitSwitch(LimitSwitch.upper().at(Inches.of(40)));
+    assertThatIllegalArgumentException()
+        .isThrownBy(
+            () ->
+                stopped.limitSwitch(
+                    Sensor.Switch.Limit.End.UPPER, limit -> limit.at(Degrees.of(90))))
+        .withMessageStartingWith("lift's upper limit switch trips at an angle");
+    assertThat(
+            ((Sensor.Switch.Limit)
+                    stopped
+                        .limitSwitch(
+                            Sensor.Switch.Limit.End.UPPER, limit -> limit.at(Inches.of(39)))
+                        .switchAt(Sensor.Switch.Limit.End.UPPER)
+                        .kind())
+                .position())
+        .hasValueSatisfying(at -> assertThat(at).isCloseTo(39 * 0.0254, within(1e-12)));
+    assertThat(pivot.limitSwitch(LimitSwitch.lower()).driven().limitSwitches())
+        .containsExactly(LimitSwitch.lower());
   }
 
   /**
@@ -595,28 +651,33 @@ class JointBlockTest {
     Joint.Revolute turret =
         Joint.roller("turret", Part.CHASSIS, AXLE, Vector3.UP)
             .motors(
-                Motor.KRAKEN_X60, Gearing.of(50), TALON_FX.can(20), TALON_FX.can(21).clockwise())
+                Motors.of(Motor.KRAKEN_X60, Gearing.of(50))
+                    .on(TALON_FX.can(20), TALON_FX.can(21).clockwise()))
             .absoluteEncoder(
                 Driven.AbsoluteEncoder.of()
                     .ratio(92.0 / 18)
                     .on(CANCODER.can(22).offset(Rotations.of(0.1))))
-            .limitSwitch(Sensor.Switch.Limit.End.LOWER, SensorWiring.port(1).normallyClosed())
+            .limitSwitch(LimitSwitch.lower().on(SensorWiring.port(1).normallyClosed()))
             .control(MechanismControl.position(20).withKd(1));
     Joint.Prismatic elevator =
         Joint.elevator("elevator", Part.CHASSIS, AXLE)
             .range(Range.meters(0, 1.2))
             .rest(Meters.of(0))
             .motors(
-                Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1), TALON_FX.can(5), TALON_FX.can(6))
+                Motors.of(Motor.KRAKEN_X60, Gearing.of(10))
+                    .drum(Inches.of(1))
+                    .on(TALON_FX.can(5), TALON_FX.can(6)))
             .limitSwitch(
-                Sensor.Switch.Limit.End.LOWER, Meters.of(0), SensorWiring.port(1).normallyClosed())
+                LimitSwitch.lower().at(Meters.of(0)).on(SensorWiring.port(1).normallyClosed()))
             .control(MechanismControl.position(60));
 
     Joint.Revolute practice =
         turret
-            .motorsOn(TALON_FX.can(30), TALON_FX.can(31).clockwise())
-            .encoderOn(CANCODER.can(32).offset(Rotations.of(0.4)))
-            .limitSwitchOn(Sensor.Switch.Limit.End.LOWER, SensorWiring.port(2).normallyClosed())
+            .motors(had -> had.on(TALON_FX.can(30), TALON_FX.can(31).clockwise()))
+            .absoluteEncoder(wired -> wired.on(CANCODER.can(32).offset(Rotations.of(0.4))))
+            .limitSwitch(
+                Sensor.Switch.Limit.End.LOWER,
+                limit -> limit.on(SensorWiring.port(2).normallyClosed()))
             .retuned(control -> control.withKd(2));
 
     assertThat(practice).isEqualTo(turret);
@@ -631,7 +692,7 @@ class JointBlockTest {
     assertThat(encoder.cancoder()).contains(CANCODER.can(32).offset(Rotations.of(0.4)));
     Driven.AbsoluteEncoder onPort =
         practice
-            .encoderOn(MechanismWiring.PortEncoder.dutyCycle(3))
+            .absoluteEncoder(wired -> wired.on(MechanismWiring.PortEncoder.dutyCycle(3)))
             .driven()
             .absoluteEncoder()
             .orElseThrow();
@@ -640,7 +701,7 @@ class JointBlockTest {
     assertThat(onPort.ratio()).isEqualTo(92.0 / 18);
     assertThat(
             practice
-                .encoderOn(DATA_PORT.offset(Rotations.of(0.2)))
+                .absoluteEncoder(wired -> wired.on(DATA_PORT.offset(Rotations.of(0.2))))
                 .driven()
                 .absoluteEncoder()
                 .orElseThrow()
@@ -655,8 +716,9 @@ class JointBlockTest {
                 .build());
     assertThat(
             practice
-                .limitSwitchOn(
-                    Sensor.Switch.Limit.End.LOWER, SensorWiring.Direction.REVERSE.normallyClosed())
+                .limitSwitch(
+                    Sensor.Switch.Limit.End.LOWER,
+                    limit -> limit.on(SensorWiring.Direction.REVERSE.normallyClosed()))
                 .switchAt(Sensor.Switch.Limit.End.LOWER)
                 .wiring())
         .contains(
@@ -665,15 +727,16 @@ class JointBlockTest {
                 SensorWiring.Polarity.NORMALLY_CLOSED));
     assertThat(practice.driven().control().orElseThrow().gains().kD()).isEqualTo(2);
     assertThat(practice.driven().control().orElseThrow().gains().kP()).isEqualTo(20);
-    assertThat(turret.motorsOn().driven().motors().orElseThrow().controllers())
+    assertThat(turret.motors(had -> had.on()).driven().motors().orElseThrow().controllers())
         .as("none: in the simulator alone")
         .isEmpty();
 
     Joint.Prismatic lifted =
         elevator
-            .motorsOn(TALON_FX.can(7), TALON_FX.can(8).clockwise())
-            .limitSwitchOn(
-                Sensor.Switch.Limit.End.LOWER, SensorWiring.Direction.REVERSE.normallyClosed())
+            .motors(had -> had.on(TALON_FX.can(7), TALON_FX.can(8).clockwise()))
+            .limitSwitch(
+                Sensor.Switch.Limit.End.LOWER,
+                limit -> limit.on(SensorWiring.Direction.REVERSE.normallyClosed()))
             .retuned(control -> control.withKg(0.5));
     assertThat(lifted.driven().motors().orElseThrow().pitchRadius()).contains(Inches.of(1));
     assertThat(lifted.driven().motors().orElseThrow().controllers())
@@ -687,24 +750,26 @@ class JointBlockTest {
 
     Joint.Revolute bare = Joint.roller("bare", Part.CHASSIS, AXLE);
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> bare.motorsOn(TALON_FX.can(30)))
-        .withMessage("bare has no motors to re-wire: give it .motor(...) first");
+        .isThrownBy(() -> bare.motors(had -> had.on(TALON_FX.can(30))))
+        .withMessage("bare has no motors to change: give it .motors(...) first");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> turret.motorsOn(TALON_FX.can(30)))
+        .isThrownBy(() -> turret.motors(had -> had.on(TALON_FX.can(30))))
         .withMessage(
-            "turret has 2 motors, and motorsOn(...) names 1: name a controller for each, the"
+            "turret has 2 motors, and motors.on(...) names 1: name a controller for each, the"
                 + " leader first");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> bare.encoderOn(CANCODER.can(32).offset(Rotations.of(0))))
-        .withMessage("bare has no absolute encoder to re-wire: give it one, .absoluteEncoder(...)");
+        .isThrownBy(
+            () -> bare.absoluteEncoder(wired -> wired.on(CANCODER.can(32).offset(Rotations.of(0)))))
+        .withMessage("bare has no absolute encoder to change: give it one, .absoluteEncoder(...)");
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
-                turret.limitSwitchOn(
-                    Sensor.Switch.Limit.End.UPPER, SensorWiring.port(2).normallyClosed()))
+                turret.limitSwitch(
+                    Sensor.Switch.Limit.End.UPPER,
+                    limit -> limit.on(SensorWiring.port(2).normallyClosed())))
         .withMessage(
-            "turret has no limit switch at its upper end to re-wire: give it one,"
-                + " .limitSwitch(End.UPPER, ...)");
+            "turret has no limit switch at its upper end to change: give it one,"
+                + " .limitSwitch(LimitSwitch.upper()...)");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> bare.retuned(control -> control.withKd(2)))
         .withMessage("bare has no control to re-tune: give it one, .control(...)");
@@ -859,7 +924,10 @@ class JointBlockTest {
                             .remote()));
 
     Driven.AbsoluteEncoder offset =
-        arm.encoderOffset(Rotations.of(0.47)).driven().absoluteEncoder().orElseThrow();
+        arm.absoluteEncoder(wired -> wired.offset(Rotations.of(0.47)))
+            .driven()
+            .absoluteEncoder()
+            .orElseThrow();
 
     assertThat(offset.cancoder())
         .contains(
@@ -869,36 +937,45 @@ class JointBlockTest {
                 .clockwise()
                 .remote());
     assertThat(offset.ratio()).isEqualTo(2);
-    assertThat(arm.encoderOffset(Rotations.of(0.47))).isEqualTo(arm);
+    assertThat(arm.absoluteEncoder(wired -> wired.offset(Rotations.of(0.47)))).isEqualTo(arm);
     assertThat(
-            arm.encoderOn(DATA_PORT.offset(Rotations.of(0.1)).inverted().closesLoop())
-                .encoderOffset(Rotations.of(-0.2))
+            arm.absoluteEncoder(
+                    encoder ->
+                        encoder.on(DATA_PORT.offset(Rotations.of(0.1)).inverted().closesLoop()))
+                .absoluteEncoder(wired -> wired.offset(Rotations.of(-0.2)))
                 .driven()
                 .absoluteEncoder()
                 .orElseThrow()
                 .dataPort())
         .contains(DATA_PORT.offset(Rotations.of(-0.2)).inverted().closesLoop());
     assertThat(
-            arm.encoderOn(
-                    MechanismWiring.PortEncoder.analog(2, 10).offset(Rotations.of(1)).inverted())
-                .encoderOffset(Rotations.of(3.127))
+            arm.absoluteEncoder(
+                    encoder ->
+                        encoder.on(
+                            MechanismWiring.PortEncoder.analog(2, 10)
+                                .offset(Rotations.of(1))
+                                .inverted()))
+                .absoluteEncoder(wired -> wired.offset(Rotations.of(3.127)))
                 .driven()
                 .absoluteEncoder()
                 .orElseThrow()
                 .port())
         .contains(MechanismWiring.PortEncoder.analog(2, 10).offset(Rotations.of(3.127)).inverted());
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> Joint.roller("bare", Part.CHASSIS, AXLE).encoderOffset(Rotations.of(0.1)))
-        .withMessage("bare has no absolute encoder to offset: give it one, .absoluteEncoder(...)");
+        .isThrownBy(
+            () ->
+                Joint.roller("bare", Part.CHASSIS, AXLE)
+                    .absoluteEncoder(wired -> wired.offset(Rotations.of(0.1))))
+        .withMessage("bare has no absolute encoder to change: give it one, .absoluteEncoder(...)");
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
                 Joint.roller("unwired", Part.CHASSIS, AXLE)
-                    .absoluteEncoder()
-                    .encoderOffset(Rotations.of(0.1)))
+                    .absoluteEncoder(AbsoluteEncoder.of())
+                    .absoluteEncoder(wired -> wired.offset(Rotations.of(0.1))))
         .withMessage(
-            "unwired's absolute encoder isn't wired, so it has no offset: the simulator alone"
-                + " reads it. Wire it, encoderOn(...)");
+            "an absolute encoder that isn't wired has no offset: the simulator alone reads it."
+                + " Wire it, on(...)");
   }
 
   @Test
@@ -910,10 +987,13 @@ class JointBlockTest {
 
     assertThatIllegalArgumentException()
         .isThrownBy(
-            () -> arm.motors(Motor.KRAKEN_X60, Gearing.of(60), TALON_FX.can(20), SPARK_MAX.can(21)))
+            () ->
+                arm.motors(
+                    Motors.of(Motor.KRAKEN_X60, Gearing.of(60))
+                        .on(TALON_FX.can(20), SPARK_MAX.can(21))))
         .withMessageContaining("a joint's motors are on one kind of controller, on one bus");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> arm.motor(Motor.NEO, Gearing.of(60), TALON_FX.can(20)))
+        .isThrownBy(() -> arm.motors(Motors.of(Motor.NEO, Gearing.of(60)).on(TALON_FX.can(20))))
         .withMessageContaining(
             "its NEO is on a TalonFX, which doesn't drive one: a TalonFXS or a SPARK MAX or a SPARK"
                 + " Flex does");
@@ -927,7 +1007,9 @@ class JointBlockTest {
         .isThrownBy(
             () ->
                 robot(
-                    arm.motor(Motor.KRAKEN_X60, Gearing.of(60), TALON_FX.can(CANIVORE, 20))
+                    arm.motors(
+                            Motors.of(Motor.KRAKEN_X60, Gearing.of(60))
+                                .on(TALON_FX.can(CANIVORE, 20)))
                         .absoluteEncoder(CANCODER.can(21).offset(Rotations.of(0.1)))))
         .withMessage(
             "RobotDefinition[test].joints: arm's CANcoder is on Systemcore's CAN_S0 port, and its"
@@ -936,7 +1018,9 @@ class JointBlockTest {
     assertThat(
             robot(
                     arm.absoluteEncoder(CANCODER.can(CANIVORE, 21).offset(Rotations.of(0.1)))
-                        .motor(Motor.KRAKEN_X60, Gearing.of(60), TALON_FX.can(CANIVORE, 20)))
+                        .motors(
+                            Motors.of(Motor.KRAKEN_X60, Gearing.of(60))
+                                .on(TALON_FX.can(CANIVORE, 20))))
                 .joints())
         .as("its encoder written before its motors: the definition judges the whole block")
         .hasSize(1);
@@ -1000,14 +1084,15 @@ class JointBlockTest {
     Joint.Prismatic held = hopper.rest(Meters.of(0.1));
     Joint.Revolute shooter =
         Joint.roller("shooter", Part.CHASSIS, AXLE)
-            .motors(Motor.KRAKEN_X60, Gearing.of(1), TALON_FX.can(1), TALON_FX.can(2).clockwise());
-    Joint.Revolute regeared = shooter.gearing(Gearing.of(1.5));
+            .motors(
+                Motors.of(Motor.KRAKEN_X60, Gearing.of(1))
+                    .on(TALON_FX.can(1), TALON_FX.can(2).clockwise()));
+    Joint.Revolute regeared = shooter.motors(had -> had.gearing(Gearing.of(1.5)));
     Joint.Prismatic topped =
         Joint.elevator("elevator", Part.CHASSIS, AXLE)
             .range(Range.meters(0, 1.2))
             .rest(Meters.of(0))
-            .limitSwitch(
-                Sensor.Switch.Limit.End.UPPER, SensorWiring.Direction.FORWARD.normallyClosed());
+            .limitSwitch(LimitSwitch.upper().on(SensorWiring.Direction.FORWARD.normallyClosed()));
 
     assertThat(spindexer.axis()).isEqualTo(Vector3.UP);
     assertThat(hopper.axis()).isEqualTo(new Vector3(1, 0, 0));
@@ -1022,8 +1107,8 @@ class JointBlockTest {
                 SensorWiring.ControllerLimit.of(topped, SensorWiring.Direction.FORWARD),
                 SensorWiring.Polarity.NORMALLY_CLOSED));
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> spindexer.gearing(Gearing.of(2)))
-        .withMessage("spindexer has no motors to gear: give it .motor(...) first");
+        .isThrownBy(() -> spindexer.motors(had -> had.gearing(Gearing.of(2))))
+        .withMessage("spindexer has no motors to change: give it .motors(...) first");
     assertThat(
             Joint.pivot("tilt", Part.CHASSIS, AXLE, Joint.PITCH_UP)
                 .range(Range.degrees(12, 90))
@@ -1148,12 +1233,13 @@ class JointBlockTest {
             .positions(low)
             .outputs(raising)
             .rest(low)
-            .motor(Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1), TALON_FX.can(5))
+            .motors(
+                Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)).on(TALON_FX.can(5)))
             .absoluteEncoder(cancoder)
             .limitSwitch(
-                Sensor.Switch.Limit.End.LOWER,
-                Meters.of(0),
-                SensorWiring.Direction.REVERSE.normallyClosed())
+                LimitSwitch.lower()
+                    .at(Meters.of(0))
+                    .on(SensorWiring.Direction.REVERSE.normallyClosed()))
             .servo(
                 "lift brake",
                 linear,
@@ -1180,7 +1266,7 @@ class JointBlockTest {
             "lift runs only when pivot at least 110°",
             "lift keeps out of 0.5 m to 0.7 m while pivot at most 20°");
     assertThat(
-            lift.encoderOn(CANCODER.can(8).offset(Rotations.of(0.4)))
+            lift.absoluteEncoder(wired -> wired.on(CANCODER.can(8).offset(Rotations.of(0.4))))
                 .driven()
                 .absoluteEncoder()
                 .orElseThrow()
@@ -1205,7 +1291,11 @@ class JointBlockTest {
         .withMessageStartingWith("lift already has its outputs, raising");
     assertThatIllegalArgumentException()
         .isThrownBy(
-            () -> lift.motors(Motor.KRAKEN_X60, Gearing.of(12), Inches.of(1), TALON_FX.can(9)))
+            () ->
+                lift.motors(
+                    Motors.of(Motor.KRAKEN_X60, Gearing.of(12))
+                        .drum(Inches.of(1))
+                        .on(TALON_FX.can(9))))
         .withMessageStartingWith("lift already has its motors");
   }
 
@@ -1219,13 +1309,12 @@ class JointBlockTest {
     Joint.Revolute pivot =
         Joint.pivot("pivot", Part.CHASSIS, AXLE, Joint.PITCH_DOWN)
             .range(Range.degrees(0, 135))
-            .motors(Motor.KRAKEN_X60, Gearing.of(25), 2)
-            .limitSwitch(
-                Sensor.Switch.Limit.End.UPPER, SensorWiring.Direction.FORWARD.normallyClosed())
+            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)).count(2))
+            .limitSwitch(LimitSwitch.upper().on(SensorWiring.Direction.FORWARD.normallyClosed()))
             .runsOnlyWhen(lift.atLeast(Inches.of(10)));
 
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> pivot.motors(Motor.KRAKEN_X60, Gearing.of(30), 2))
+        .isThrownBy(() -> pivot.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(30)).count(2)))
         .withMessageStartingWith("pivot already has its motors");
     Sensor.Switch upper = pivot.switchAt(Sensor.Switch.Limit.End.UPPER);
     assertThat(((Sensor.Switch.Limit) upper.kind()).position()).isEmpty();

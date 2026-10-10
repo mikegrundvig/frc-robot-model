@@ -27,13 +27,13 @@ static final Joint.Revolute PIVOT =
         .range(Range.degrees(0, 135))
         .rest(PIVOT_IN)
         .positions(PIVOT_IN, PIVOT_OUT)
-        .motor(Motor.KRAKEN_X60, Gearing.of(25), TALON_FX.can(32))
+        .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)).on(TALON_FX.can(32)))
         .control(MechanismControl.position(30));
 
 static final Joint.Revolute ROLLER =
     Joint.roller("roller", PIVOT, new Translation3d(0, 0, 0.35))
         .outputs(INTAKING)
-        .motor(Motor.KRAKEN_X60, Gearing.of(3), TALON_FX.can(31))
+        .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(3)).on(TALON_FX.can(31)))
         // The roller runs only once the pivot is out of the frame.
         .runsOnlyWhen(PIVOT.atLeast(Degrees.of(110)))
         .control(MechanismControl.velocity(0.02));

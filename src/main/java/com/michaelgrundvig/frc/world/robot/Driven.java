@@ -13,13 +13,15 @@ import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Translation3d;
+import org.wpilib.units.Measure;
+import org.wpilib.units.measure.Angle;
 import org.wpilib.units.measure.Distance;
 
 /**
  * How a joint is driven, and how its devices are wired: everything its block says beyond its shape
  * and its places. Its motors or servos, its own sensors (an absolute encoder on its axle, limit
  * switches at its ends), their wiring, and how the program drives it. A joint's block writes it a
- * call at a time ({@code .motor(...)}, {@code .control(...)}); {@link #NONE} is a joint nothing
+ * call at a time ({@code .motors(...)}, {@code .control(...)}); {@link #NONE} is a joint nothing
  * drives.
  *
  * <p>It isn't part of the joint's identity: a joint that differs only here is the same joint,
@@ -105,6 +107,49 @@ public record Driven(
     /** Starts describing motors, one named value at a time. */
     public static DrivenMotorsBuilder.MotorStage builder() {
       return DrivenMotorsBuilder.builder();
+    }
+
+    /**
+     * One motor turning a joint through a gearing, which only the simulator runs until it is on a
+     * controller: {@code Motors.of(Motor.KRAKEN_X60, Gearing.of(25)).on(TALON_FX.can(32))}.
+     */
+    public static Motors of(Motor motor, Gearing gearing) {
+      return builder().motor(motor).count(1).gearing(gearing).build();
+    }
+
+    /**
+     * This many of the motor turning the joint together: {@code .count(4)}. Motors on controllers
+     * need not say it, since {@link #on} counts them.
+     */
+    public Motors count(int count) {
+      return DrivenMotorsBuilder.builder(this).count(count).build();
+    }
+
+    /**
+     * The same motors, driving a sliding joint through a drum, a sprocket or a pinion: {@code
+     * .drum(Inches.of(0.75))}.
+     *
+     * @param pitchRadius where the belt, chain or rack meets it
+     */
+    public Motors drum(Distance pitchRadius) {
+      return DrivenMotorsBuilder.builder(this).pitchRadius(pitchRadius).build();
+    }
+
+    /** The same motors through another gearing. */
+    public Motors gearing(Gearing gearing) {
+      return DrivenMotorsBuilder.builder(this).gearing(gearing).build();
+    }
+
+    /**
+     * The same motors, each on its controller, the leader first: {@code .on(TALON_FX.can(20),
+     * TALON_FX.can(21).clockwise())}. There are as many motors as controllers. With no controllers
+     * the motors keep their count and run in the simulator alone.
+     */
+    public Motors on(MechanismWiring.Device... controllers) {
+      return DrivenMotorsBuilder.builder(this)
+          .count(controllers.length == 0 ? count : controllers.length)
+          .controllers(List.of(controllers))
+          .build();
     }
 
     /** Why a joint's controllers can't be its motors', or null when they can be. */
@@ -218,24 +263,68 @@ public record Driven(
       return DrivenAbsoluteEncoderBuilder.builder(this).ratio(ratio).build();
     }
 
-    /** The same encoder, read by a CANcoder through the joint's TalonFX. */
-    public AbsoluteEncoder on(MechanismWiring.Cancoder cancoder) {
-      return DrivenAbsoluteEncoderBuilder.builder(this).cancoder(cancoder).build();
+    /**
+     * The same encoder, read another way: by a CANcoder, on the joint's SPARK's data port, or on
+     * one of Systemcore's ports. An encoder that was wired the same way before keeps how the
+     * joint's loop reads it, so a practice robot that only moved a CANcoder to another ID runs as
+     * the competition robot does.
+     */
+    public AbsoluteEncoder on(MechanismWiring.EncoderWiring wiring) {
+      Optional<MechanismWiring.EncoderWiring> before = wiring();
+      if (before.isEmpty()) {
+        return readBy(wiring);
+      }
+      return readBy(wiring.keepingLoopOf(before.get()));
     }
 
-    /** The same encoder, on the joint's SPARK's data port. */
-    public AbsoluteEncoder on(MechanismWiring.DataPortEncoder dataPort) {
-      return DrivenAbsoluteEncoderBuilder.builder(this).dataPort(dataPort).build();
+    /**
+     * The same encoder, its reading offset otherwise, on the wiring it has: a practice robot's
+     * magnet, {@code encoder.offset(Rotations.of(0.47))}.
+     *
+     * @throws IllegalArgumentException if it is not wired
+     */
+    public AbsoluteEncoder offset(Angle offset) {
+      MechanismWiring.EncoderWiring wiring =
+          wiring()
+              .orElseThrow(
+                  () ->
+                      new IllegalArgumentException(
+                          "an absolute encoder that isn't wired has no offset: the simulator alone"
+                              + " reads it. Wire it, on(...)"));
+      return readBy(wiring.offset(offset));
     }
 
-    /** The same encoder, on one of Systemcore's ports, read by the robot. */
-    public AbsoluteEncoder on(MechanismWiring.PortEncoder port) {
-      return DrivenAbsoluteEncoderBuilder.builder(this).port(port).build();
+    /** What reads it, or none for an encoder only the simulator reads. */
+    public Optional<MechanismWiring.EncoderWiring> wiring() {
+      if (cancoder.isPresent()) {
+        return Optional.of(cancoder.get());
+      }
+      if (dataPort.isPresent()) {
+        return Optional.of(dataPort.get());
+      }
+      if (port.isPresent()) {
+        return Optional.of(port.get());
+      }
+      return Optional.empty();
+    }
+
+    /** The same encoder, read by this wiring and no other. */
+    private AbsoluteEncoder readBy(MechanismWiring.EncoderWiring wiring) {
+      DrivenAbsoluteEncoderBuilder unwired =
+          DrivenAbsoluteEncoderBuilder.builder(this)
+              .cancoder(Optional.empty())
+              .dataPort(Optional.empty())
+              .port(Optional.empty());
+      return switch (wiring) {
+        case MechanismWiring.Cancoder onCancoder -> unwired.cancoder(onCancoder).build();
+        case MechanismWiring.DataPortEncoder onDataPort -> unwired.dataPort(onDataPort).build();
+        case MechanismWiring.PortEncoder onPort -> unwired.port(onPort).build();
+      };
     }
 
     /** Whether it's wired at all: a CANcoder, a data port or a Systemcore port. */
     public boolean wired() {
-      return cancoder.isPresent() || dataPort.isPresent() || port.isPresent();
+      return wiring().isPresent();
     }
 
     /**
@@ -266,18 +355,52 @@ public record Driven(
   }
 
   /**
-   * A switch the joint presses at one end of its travel.
+   * A switch the joint presses at one end of its travel: {@code
+   * LimitSwitch.lower().at(Degrees.of(0)).on(SensorWiring.port(1).normallyClosed())}.
    *
    * @param end which end
-   * @param position where along the joint it trips, in the joint's units; empty if that isn't
-   *     known, so it can stop the joint but not home it
+   * @param position where along the joint it trips, an angle on a joint that turns and a distance
+   *     on one that slides; empty if that isn't known, so it can stop the joint but not home it
    * @param wiring where it's connected, or none for the simulator alone
    */
   @ConfigRecord
   public record LimitSwitch(
       Sensor.Switch.Limit.End end,
-      Optional<Double> position,
-      Optional<SensorWiring.Connection> wiring) {}
+      Optional<Measure<?>> position,
+      Optional<SensorWiring.LimitWiring> wiring) {
+    /**
+     * A switch at the lower end of a joint's travel, where it trips and its wiring still to say.
+     */
+    public static LimitSwitch lower() {
+      return DrivenLimitSwitchBuilder.builder().end(Sensor.Switch.Limit.End.LOWER).build();
+    }
+
+    /**
+     * A switch at the upper end of a joint's travel, where it trips and its wiring still to say.
+     */
+    public static LimitSwitch upper() {
+      return DrivenLimitSwitchBuilder.builder().end(Sensor.Switch.Limit.End.UPPER).build();
+    }
+
+    /** The same switch, tripping at an angle of a joint that turns. */
+    public LimitSwitch at(Angle position) {
+      return DrivenLimitSwitchBuilder.builder(this).position(position).build();
+    }
+
+    /** The same switch, tripping at a distance along a joint that slides. */
+    public LimitSwitch at(Distance position) {
+      return DrivenLimitSwitchBuilder.builder(this).position(position).build();
+    }
+
+    /**
+     * The same switch, on an input ({@code SensorWiring.port(1).normallyClosed()}, {@code
+     * CANDI.can(30).s1().normallyClosed()}) or on one of its joint's own controller's limit pins
+     * ({@code Direction.REVERSE.normallyClosed()}), where the controller stops the motor itself.
+     */
+    public LimitSwitch on(SensorWiring.LimitWiring wiring) {
+      return DrivenLimitSwitchBuilder.builder(this).wiring(wiring).build();
+    }
+  }
 
   /** The ends with two limit switches, or null when each has one at most. */
   private static @Nullable String twice(List<LimitSwitch> switches) {

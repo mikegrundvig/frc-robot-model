@@ -8,6 +8,7 @@ import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.Rotations;
 
+import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -21,12 +22,15 @@ class EncoderGapTest {
 
   private static final Joint.Revolute PIVOT =
       StandardRobot.PIVOT
-          .motor(Motor.KRAKEN_X60, MechanismFixtures.gearing(25, 1))
+          .motors(Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(25, 1)))
           .control(MechanismControl.position(30));
 
   private static final Joint.Prismatic ELEVATOR =
       StandardRobot.ELEVATOR
-          .motors(Motor.KRAKEN_X60, MechanismFixtures.gearing(10, 1), Inches.of(1), 2)
+          .motors(
+              Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(10, 1))
+                  .drum(Inches.of(1))
+                  .count(2))
           .control(MechanismControl.position(60));
 
   /** A turret that turns freely. */
@@ -35,7 +39,7 @@ class EncoderGapTest {
               StandardRobot.lightPivot("turret", Optional.empty()),
               List.of(Position.degrees("front", 0)),
               List.of())
-          .motor(Motor.KRAKEN_X60, MechanismFixtures.gearing(50, 1))
+          .motors(Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(50, 1)))
           .control(MechanismControl.position(20));
 
   private static double margin(Joint joint) {
@@ -52,7 +56,9 @@ class EncoderGapTest {
   @Test
   void itsMarginIsTheLeastOrEightCountsAtTheJoint() {
     Joint.Revolute onCancoder =
-        PIVOT.motorsOn(TALON_FX.can(21)).absoluteEncoder(CANCODER.can(34).offset(Rotations.of(0)));
+        PIVOT
+            .motors(motors -> motors.on(TALON_FX.can(21)))
+            .absoluteEncoder(CANCODER.can(34).offset(Rotations.of(0)));
     Joint.Revolute onPot =
         PIVOT.absoluteEncoder(MechanismWiring.PortEncoder.analog(2, 10).offset(Rotations.of(0)));
     Joint.Prismatic elevator =

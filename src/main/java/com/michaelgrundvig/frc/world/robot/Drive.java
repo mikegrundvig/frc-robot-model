@@ -12,7 +12,7 @@ import org.wpilib.units.measure.Distance;
 /**
  * What moves a mechanism: an actuator's force, and where it goes. An arm's two motors through its
  * gearbox are one drive, and the gas spring holding it up another. The common case is a joint's own
- * shorthand: {@code arm.motors(Motor.KRAKEN_X60, 2, gearing)}.
+ * shorthand: {@code arm.motors(Motors.of(Motor.KRAKEN_X60, gearing).count(2))}.
  *
  * <p>Motors turn a shaft, so they go through a gearing, a drum, or a combination of joints; a
  * cylinder and a gas spring push along a line, so they go between two parts. A spring or a team's

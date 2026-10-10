@@ -5,6 +5,7 @@ import static com.michaelgrundvig.frc.world.robot.MechanismWiring.Controller.TAL
 import static com.michaelgrundvig.frc.world.robot.SensorWiring.CANDI;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -33,12 +34,13 @@ class ControllerPinsTest {
   @Test
   void eachJointsControllerLimitsComeFromTheWiring() {
     Joint.Revolute onSpark =
-        PIVOT.motor(Motor.NEO, MechanismFixtures.gearing(25, 1), SPARK_MAX.can(21));
+        PIVOT.motors(Motors.of(Motor.NEO, MechanismFixtures.gearing(25, 1)).on(SPARK_MAX.can(21)));
     Joint.Revolute onTalon =
-        PIVOT.motor(Motor.FALCON_500, MechanismFixtures.gearing(25, 1), TALON_FX.can(21));
+        PIVOT.motors(
+            Motors.of(Motor.FALCON_500, MechanismFixtures.gearing(25, 1)).on(TALON_FX.can(21)));
     Joint.Revolute roller =
-        StandardRobot.ROLLER.motor(
-            Motor.KRAKEN_X60, MechanismFixtures.gearing(3, 1), TALON_FX.can(22));
+        StandardRobot.ROLLER.motors(
+            Motors.of(Motor.KRAKEN_X60, MechanismFixtures.gearing(3, 1)).on(TALON_FX.can(22)));
     Sensor.Switch up =
         limit("pivot up", PIVOT, Sensor.Switch.Limit.End.UPPER)
             .on(CANDI.can(BUS, 31).s2().normallyClosed());

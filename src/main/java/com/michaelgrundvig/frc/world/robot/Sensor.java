@@ -170,7 +170,7 @@ public sealed interface Sensor permits Sensor.Encoder, Sensor.Placed {
     /**
      * A limit switch, or a hall sensor, at one end of a joint's travel: tripped with the joint at
      * or past its position. Mounted on the joint's parent, where it's pressed. What a joint's block
-     * makes of its own ({@code .limitSwitch(End.LOWER, Degrees.of(0), ...)}), named for it.
+     * makes of its own ({@code .limitSwitch(LimitSwitch.lower().at(Degrees.of(0)))}), named for it.
      *
      * @param end which end of the joint's travel it marks
      * @param position where it trips, in the joint's units, if known: inside the joint's range

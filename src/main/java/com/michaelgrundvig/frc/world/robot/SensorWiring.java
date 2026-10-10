@@ -9,10 +9,10 @@ import com.michaelgrundvig.frc.world.config.ConfigRecord;
 
 /**
  * Where the robot's sensors are connected: the inputs a switch or a rangefinder is on, which each
- * sensor carries, a joint's limit switch in its block ({@code .limitSwitch(End.LOWER,
- * Degrees.of(0), SensorWiring.port(1).normallyClosed())}) and any other with {@code .on(...)}. What
- * the sensor is and where it sits are the definition's; this is only how it's connected, as a
- * joint's wiring is ({@link MechanismWiring}).
+ * sensor carries, a joint's limit switch in its block ({@code
+ * .limitSwitch(LimitSwitch.lower().on(SensorWiring.port(1).normallyClosed()))}) and any other with
+ * {@code .on(...)}. What the sensor is and where it sits are the definition's; this is only how
+ * it's connected, as a joint's wiring is ({@link MechanismWiring}).
  *
  * <p>A block names an input as it names a motor's controller: {@code SensorWiring.port(1)}, {@code
  * CANDI.can(CANIVORE, 30).s1()}, {@code CANRANGE.can(CANIVORE, 31)}.
@@ -169,6 +169,15 @@ public final class SensorWiring {
     }
   }
 
+  /**
+   * Where a joint's own limit switch is wired: an input anywhere on the robot ({@link Connection}),
+   * or one of the limit pins of the joint's own leading controller ({@link Pin}).
+   */
+  public sealed interface LimitWiring permits Connection, Pin {
+    /** The connection it is for a joint, whose own controller a pin is on. */
+    Connection of(Joint joint);
+  }
+
   /** Which of a motor controller's two limit inputs. */
   public enum Direction {
     FORWARD,
@@ -176,7 +185,7 @@ public final class SensorWiring {
 
     /**
      * A joint's limit switch on this pin of its own controller, normally open: {@code
-     * .limitSwitch(End.UPPER, Degrees.of(135), Direction.FORWARD.normallyOpen())}.
+     * LimitSwitch.upper().at(Degrees.of(135)).on(Direction.FORWARD.normallyOpen())}.
      */
     public Pin normallyOpen() {
       return new Pin(this, Polarity.NORMALLY_OPEN);
@@ -184,7 +193,7 @@ public final class SensorWiring {
 
     /**
      * A joint's limit switch on this pin of its own controller, normally closed, the safe way:
-     * {@code .limitSwitch(End.LOWER, Degrees.of(0), Direction.REVERSE.normallyClosed())}.
+     * {@code LimitSwitch.lower().at(Degrees.of(0)).on(Direction.REVERSE.normallyClosed())}.
      */
     public Pin normallyClosed() {
       return new Pin(this, Polarity.NORMALLY_CLOSED);
@@ -199,8 +208,9 @@ public final class SensorWiring {
    * @param direction its forward or reverse limit pin, as the controller labels them
    * @param polarity which raw signal means tripped
    */
-  public record Pin(Direction direction, Polarity polarity) {
+  public record Pin(Direction direction, Polarity polarity) implements LimitWiring {
     /** Where it's connected, on this joint's leading controller. */
+    @Override
     public Connection of(Joint joint) {
       return new Connection(ControllerLimit.of(joint, direction), polarity);
     }
@@ -213,7 +223,12 @@ public final class SensorWiring {
    * @param input where it's connected: an input a switch can be on, never a CANrange
    * @param polarity which raw signal means tripped
    */
-  public record Connection(SwitchInput input, Polarity polarity) {}
+  public record Connection(SwitchInput input, Polarity polarity) implements LimitWiring {
+    @Override
+    public Connection of(Joint joint) {
+      return this;
+    }
+  }
 
   /**
    * Which raw signal means tripped. A limit switch wired normally closed reads tripped with its

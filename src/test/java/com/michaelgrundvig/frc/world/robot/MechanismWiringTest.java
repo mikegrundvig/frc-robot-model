@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.wpilib.units.Units.Rotations;
 
+import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.wpilib.math.geometry.Translation3d;
@@ -16,7 +17,7 @@ class MechanismWiringTest {
   /** A joint's motors on TalonFXs at these IDs, the first leading. */
   private static Joint.Revolute onTalons(MechanismWiring.Device... controllers) {
     return Joint.pivot("arm", Part.CHASSIS, new Translation3d(), Joint.PITCH_UP)
-        .motors(Motor.KRAKEN_X60, Gearing.of(60), controllers);
+        .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(60)).on(controllers));
   }
 
   @Test
@@ -54,7 +55,8 @@ class MechanismWiringTest {
    */
   @Test
   void itTakesAMotorAndNoIdTwice() {
-    assertThatThrownBy(() -> onTalons()).hasMessage("Motors.count: 0 must be positive");
+    assertThatThrownBy(() -> Motors.of(Motor.KRAKEN_X60, Gearing.of(60)).count(0))
+        .hasMessage("Motors.count: 0 must be positive");
     assertThatThrownBy(
             () ->
                 RobotDefinitionBuilder.builder(ConfigFixtures.definition(List.of()))
@@ -92,7 +94,13 @@ class MechanismWiringTest {
     // Reversed, offset a quarter turn back: reading -0.35 turns, it reads 0.1 raw.
     assertThat(port.raw(-0.35)).isCloseTo(0.1, within(1e-12));
     assertThat(port.raw(0.65)).isCloseTo(0.1, within(1e-12));
-    assertThatThrownBy(() -> Driven.AbsoluteEncoder.of().on(cancoder).on(port))
+    assertThatThrownBy(
+            () ->
+                DrivenAbsoluteEncoderBuilder.builder()
+                    .ratio(1)
+                    .cancoder(cancoder)
+                    .dataPort(port)
+                    .build())
         .hasMessage(
             "AbsoluteEncoder.port: names more than one of a CANcoder, a data port and a Systemcore"
                 + " port: it's read one way");

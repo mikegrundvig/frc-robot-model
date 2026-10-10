@@ -137,6 +137,23 @@ public final class MechanismWiring {
   }
 
   /**
+   * What reads a joint's absolute encoder: a CANcoder, its SPARK's data port, or one of
+   * Systemcore's ports. A joint's block takes any of them ({@code .absoluteEncoder(...)}).
+   */
+  public sealed interface EncoderWiring permits Cancoder, DataPortEncoder, PortEncoder {
+    /** The same wiring, its reading offset otherwise. */
+    EncoderWiring offset(Angle offset);
+
+    /**
+     * This wiring as it replaces the one an encoder was read by. Wiring of the same kind keeps how
+     * the joint's loop read the encoder, unless this wiring says its own way: a CANcoder written
+     * without {@code .remote()}, {@code .fused()} or {@code .sync()} is read as the one before it
+     * was, and a data port or a Systemcore port whose loop was closed stays closed.
+     */
+    EncoderWiring keepingLoopOf(EncoderWiring before);
+  }
+
+  /**
    * One motor's controller, as a joint's block names it: its kind, its bus and ID, which way its
    * motor turns for positive, and the PDH channel that feeds it. {@code
    * TALON_FX.can(32).clockwise().pdh(4, Amps.of(40))}.
@@ -206,7 +223,8 @@ public final class MechanismWiring {
    */
   @ConfigRecord
   public record Cancoder(
-      CanBus bus, int id, Angle offset, boolean turnsClockwise, Feedback feedback) {
+      CanBus bus, int id, Angle offset, boolean turnsClockwise, Feedback feedback)
+      implements EncoderWiring {
     public Cancoder {
       Checks.on(Cancoder.class)
           .field("id", id, between(0, 62))
@@ -254,6 +272,20 @@ public final class MechanismWiring {
     private Cancoder readAs(Feedback feedback) {
       return MechanismWiringCancoderBuilder.builder(this).feedback(feedback).build();
     }
+
+    @Override
+    public Cancoder offset(Angle offset) {
+      return MechanismWiringCancoderBuilder.builder(this).offset(offset).build();
+    }
+
+    @Override
+    public Cancoder keepingLoopOf(EncoderWiring before) {
+      boolean saysItsOwn = feedback != Feedback.ROTOR;
+      if (saysItsOwn || !(before instanceof Cancoder was)) {
+        return this;
+      }
+      return readAs(was.feedback());
+    }
   }
 
   /** An absolute encoder on the leading SPARK's data port, its offset still to say. */
@@ -290,7 +322,8 @@ public final class MechanismWiring {
    *     told once where the joint is
    */
   @ConfigRecord
-  public record DataPortEncoder(Angle offset, boolean reversed, boolean closedLoop) {
+  public record DataPortEncoder(Angle offset, boolean reversed, boolean closedLoop)
+      implements EncoderWiring {
     public DataPortEncoder {
       Checks.on(DataPortEncoder.class)
           .field("offset", offset, between(Rotations.of(-1), Rotations.of(1)))
@@ -316,6 +349,16 @@ public final class MechanismWiring {
      */
     public DataPortEncoder closesLoop() {
       return MechanismWiringDataPortEncoderBuilder.builder(this).closedLoop(true).build();
+    }
+
+    @Override
+    public DataPortEncoder offset(Angle offset) {
+      return MechanismWiringDataPortEncoderBuilder.builder(this).offset(offset).build();
+    }
+
+    @Override
+    public DataPortEncoder keepingLoopOf(EncoderWiring before) {
+      return before instanceof DataPortEncoder was && was.closedLoop() ? closesLoop() : this;
     }
 
     /**
@@ -352,7 +395,8 @@ public final class MechanismWiring {
       double turnsPerRange,
       Angle offset,
       boolean reversed,
-      boolean closedLoop) {
+      boolean closedLoop)
+      implements EncoderWiring {
     // @start region=checks
     public PortEncoder {
       Checks.on(PortEncoder.class)
@@ -408,6 +452,7 @@ public final class MechanismWiring {
     }
 
     /** The same encoder, its reading offset so it reads zero with the joint at zero. */
+    @Override
     public PortEncoder offset(Angle offset) {
       return MechanismWiringPortEncoderBuilder.builder(this).offset(offset).build();
     }
@@ -428,6 +473,11 @@ public final class MechanismWiring {
      */
     public PortEncoder closesLoop() {
       return MechanismWiringPortEncoderBuilder.builder(this).closedLoop(true).build();
+    }
+
+    @Override
+    public PortEncoder keepingLoopOf(EncoderWiring before) {
+      return before instanceof PortEncoder was && was.closedLoop() ? closesLoop() : this;
     }
 
     /**

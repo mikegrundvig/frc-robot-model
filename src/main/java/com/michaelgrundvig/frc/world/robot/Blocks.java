@@ -272,27 +272,27 @@ final class Blocks {
     }
     boolean lower = to.end() == Sensor.Switch.Limit.End.LOWER;
     Sensor.Switch onSwitch = math.limitSwitch(joint, to.end());
-    String end = lower ? "LOWER" : "UPPER";
     String at = joint instanceof Joint.Revolute ? "Degrees.of(...)" : "Inches.of(...)";
     if (onSwitch == null) {
       return joint.label()
           + " homes to its "
           + (lower ? "lower" : "upper")
-          + " limit switch, and its block has none: give it one where it trips, .limitSwitch(End."
-          + end
-          + ", "
+          + " limit switch, and its block has none: give it one where it trips,"
+          + " .limitSwitch(LimitSwitch."
+          + (lower ? "lower" : "upper")
+          + "().at("
           + at
-          + ", ...)";
+          + ")...)";
     }
     if (((Sensor.Switch.Limit) onSwitch.kind()).position().isEmpty()) {
       return joint.label()
           + " homes to "
           + onSwitch.label()
-          + ", whose position isn't known: measure where it trips and give it, .limitSwitch(End."
-          + end
-          + ", "
+          + ", whose position isn't known: measure where it trips and give it, LimitSwitch."
+          + (lower ? "lower" : "upper")
+          + "().at("
           + at
-          + ", ...), or home another way";
+          + "), or home another way";
     }
     return null;
   }
@@ -309,7 +309,7 @@ final class Blocks {
     if (joint.driven().motors().flatMap(Driven.Motors::pitchRadius).isEmpty()) {
       return possessive(joint.label())
           + " absolute encoder turns with its drum, and its block has no motors to say the drum's"
-          + " pitch radius: give them, .motors(motor, gearing, pitchRadius, ...)";
+          + " pitch radius: give them, .motors(Motors.of(motor, gearing).drum(pitchRadius))";
     }
     if (joint.range().isEmpty()) {
       return joint.label()

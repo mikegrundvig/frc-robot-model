@@ -18,6 +18,9 @@ import static org.wpilib.units.Units.Rotations;
 
 import com.michaelgrundvig.frc.world.config.Finding;
 import com.michaelgrundvig.frc.world.physical.Vector3;
+import com.michaelgrundvig.frc.world.robot.Driven.AbsoluteEncoder;
+import com.michaelgrundvig.frc.world.robot.Driven.LimitSwitch;
+import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -48,14 +51,14 @@ class BlocksTest {
           .range(Range.degrees(0, 135))
           .rest(IN)
           .positions(IN, RUN, OUT)
-          .motor(Motor.KRAKEN_X60, Gearing.of(25))
+          .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)))
           .control(HELD);
 
   /** Its roller, only run at its outputs. */
   static final Joint.Revolute ROLLER =
       Joint.roller("roller", PIVOT, new Translation3d(0.3, 0, 0))
           .outputs(INTAKING)
-          .motor(Motor.KRAKEN_X60, Gearing.of(3))
+          .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(3)))
           .control(MechanismControl.velocity(0.02));
 
   /** An elevator, 0 to 1.2 m, its top at 1.1 m. */
@@ -64,7 +67,7 @@ class BlocksTest {
           .range(Range.meters(0, 1.2))
           .rest(DOWN)
           .positions(DOWN, TOP)
-          .motors(Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1), 2)
+          .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)).count(2))
           .control(
               MechanismControl.position(60).withHoming(MechanismControl.Homing.assumeAtRest()));
 
@@ -72,7 +75,7 @@ class BlocksTest {
   static final Joint.Revolute TURRET =
       Joint.pivot("turret", Part.CHASSIS, new Translation3d(0, 0, 0.5), Vector3.UP)
           .positions(Position.degrees("front", 0))
-          .motor(Motor.KRAKEN_X60, Gearing.of(50))
+          .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(50)))
           .control(HELD);
 
   /**
@@ -200,14 +203,18 @@ class BlocksTest {
             "RobotDefinition[test].joints: pivot has no absolute encoder, so where it is at power"
                 + " on is a guess: give its control a homing recipe, Homing.toHardStop,"
                 + " Homing.toSwitch or Homing.assumeAtRest()");
-    assertThat(robot(PIVOT.absoluteEncoder().retuned(control -> unhomed)).joints())
+    assertThat(
+            robot(PIVOT.absoluteEncoder(AbsoluteEncoder.of()).retuned(control -> unhomed)).joints())
         .as("in the simulator alone, its encoder unwired")
         .hasSize(1);
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
                 robot(
-                    PIVOT.motorsOn(TALON_FX.can(32)).absoluteEncoder().retuned(control -> unhomed)))
+                    PIVOT
+                        .motors(motors -> motors.on(TALON_FX.can(32)))
+                        .absoluteEncoder(AbsoluteEncoder.of())
+                        .retuned(control -> unhomed)))
         .withMessage(
             "RobotDefinition[test].joints: pivot homes by its absolute encoder, and its wiring"
                 + " names no CANcoder, data port or Systemcore port to read it on: wire it in its"
@@ -220,8 +227,8 @@ class BlocksTest {
             () ->
                 robot(
                     unmotored(PIVOT)
-                        .motor(Motor.NEO_VORTEX, Gearing.of(25), SPARK_FLEX.can(32))
-                        .absoluteEncoder()
+                        .motors(Motors.of(Motor.NEO_VORTEX, Gearing.of(25)).on(SPARK_FLEX.can(32)))
+                        .absoluteEncoder(AbsoluteEncoder.of())
                         .retuned(control -> unhomed)))
         .withMessage(
             "RobotDefinition[test].joints: pivot homes by its absolute encoder, and its wiring"
@@ -231,7 +238,7 @@ class BlocksTest {
     assertThat(
             robot(
                     PIVOT
-                        .motorsOn(TALON_FX.can(32))
+                        .motors(motors -> motors.on(TALON_FX.can(32)))
                         .absoluteEncoder(CANCODER.can(34).offset(Rotations.of(0.2)))
                         .retuned(control -> unhomed))
                 .joints())
@@ -262,14 +269,14 @@ class BlocksTest {
         .isThrownBy(() -> robot(homing))
         .withMessage(
             "RobotDefinition[test].joints: pivot homes to its lower limit switch, and its block"
-                + " has none: give it one where it trips, .limitSwitch(End.LOWER, Degrees.of(...),"
-                + " ...)");
+                + " has none: give it one where it trips,"
+                + " .limitSwitch(LimitSwitch.lower().at(Degrees.of(...))...)");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> robot(homing.limitSwitch(Sensor.Switch.Limit.End.LOWER)))
+        .isThrownBy(() -> robot(homing.limitSwitch(LimitSwitch.lower())))
         .withMessage(
             "RobotDefinition[test].joints: pivot homes to pivot lower limit, whose position isn't"
-                + " known: measure where it trips and give it, .limitSwitch(End.LOWER,"
-                + " Degrees.of(...), ...), or home another way");
+                + " known: measure where it trips and give it,"
+                + " LimitSwitch.lower().at(Degrees.of(...)), or home another way");
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
@@ -282,9 +289,9 @@ class BlocksTest {
                     .build())
         .withMessage(
             "RobotDefinition[test].joints: pivot homes to pivot down, whose position isn't known:"
-                + " measure where it trips and give it, .limitSwitch(End.LOWER, Degrees.of(...),"
-                + " ...), or home another way");
-    assertThat(robot(homing.limitSwitch(Sensor.Switch.Limit.End.LOWER, Degrees.of(0))).joints())
+                + " measure where it trips and give it, LimitSwitch.lower().at(Degrees.of(...)),"
+                + " or home another way");
+    assertThat(robot(homing.limitSwitch(LimitSwitch.lower().at(Degrees.of(0)))).joints())
         .hasSize(1);
   }
 
@@ -300,7 +307,7 @@ class BlocksTest {
     MechanismControl unhomed = MechanismControl.position(30);
     Joint.Revolute onSpark =
         unmotored(PIVOT)
-            .motor(Motor.NEO, Gearing.of(25), SPARK_MAX.can(23))
+            .motors(Motors.of(Motor.NEO, Gearing.of(25)).on(SPARK_MAX.can(23)))
             .absoluteEncoder(DATA_PORT.offset(Rotations.of(0)).closesLoop());
 
     assertThat(robot(PIVOT.absoluteEncoder(closing).retuned(control -> unhomed)).joints())
@@ -355,7 +362,8 @@ class BlocksTest {
         .as("its loop closed on it")
         .hasSize(1);
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> robot(ELEVATOR.absoluteEncoder().retuned(control -> unhomed)))
+        .isThrownBy(
+            () -> robot(ELEVATOR.absoluteEncoder(AbsoluteEncoder.of()).retuned(control -> unhomed)))
         .withMessage(
             "RobotDefinition[test].joints: elevator's absolute encoder turns 7.519 times over its"
                 + " travel, 0 m to 1.2 m: one of its turns must cover the travel, with a fortieth"
@@ -390,8 +398,8 @@ class BlocksTest {
                     Joint.pivot("turret", Part.CHASSIS, new Translation3d(0, 0, 0.5), Vector3.UP)
                         .range(Range.degrees(-200, 200))
                         .rest(Degrees.of(0))
-                        .motor(Motor.KRAKEN_X60, Gearing.of(50))
-                        .absoluteEncoder()
+                        .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(50)))
+                        .absoluteEncoder(AbsoluteEncoder.of())
                         .control(MechanismControl.position(20))))
         .withMessage(
             "RobotDefinition[test].joints: turret's absolute encoder turns 1.111 times over its"
@@ -403,7 +411,7 @@ class BlocksTest {
         Joint.elevator("elevator", Part.CHASSIS, new Translation3d(-0.2, 0, 0))
             .range(Range.meters(0.991, 1.804))
             .rest(Meters.of(0.991))
-            .motors(Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1), 2)
+            .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)).count(2))
             .absoluteEncoder(ninth)
             .control(unhomed);
     assertThatIllegalArgumentException()
@@ -422,8 +430,9 @@ class BlocksTest {
                     Joint.elevator("elevator", Part.CHASSIS, new Translation3d(-0.2, 0, 0))
                         .range(Range.meters(0.991, 1.804))
                         .rest(Meters.of(0.991))
-                        .motors(Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1), 2)
-                        .absoluteEncoder()
+                        .motors(
+                            Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)).count(2))
+                        .absoluteEncoder(AbsoluteEncoder.of())
                         .control(unhomed)))
         .withMessage(
             "RobotDefinition[test].joints: elevator's absolute encoder turns 5.094 times over its"
@@ -443,14 +452,14 @@ class BlocksTest {
                         .absoluteEncoder(ninth)))
         .withMessage(
             "RobotDefinition[test].joints: lift's absolute encoder turns with its drum, and its"
-                + " block has no motors to say the drum's pitch radius: give them, .motors(motor,"
-                + " gearing, pitchRadius, ...)");
+                + " block has no motors to say the drum's pitch radius: give them,"
+                + " .motors(Motors.of(motor, gearing).drum(pitchRadius))");
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
                 robot(
                     Joint.slide("hopper", Part.CHASSIS, new Translation3d(0, 0, 0), Vector3.UP)
-                        .motor(Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1))
+                        .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1)))
                         .absoluteEncoder(ninth)
                         .control(MechanismControl.velocity(0.02))))
         .withMessage(
@@ -467,7 +476,7 @@ class BlocksTest {
             () ->
                 robot(
                     PIVOT
-                        .motorsOn(TALON_FX.can(23))
+                        .motors(motors -> motors.on(TALON_FX.can(23)))
                         .absoluteEncoder(DATA_PORT.offset(Rotations.of(0)))
                         .retuned(control -> MechanismControl.position(30))))
         .withMessage(
@@ -484,7 +493,9 @@ class BlocksTest {
         .isThrownBy(
             () ->
                 robot(
-                    unmotored(PIVOT).motor(Motor.NEO, Gearing.of(25), SPARK_MAX.can(canivore, 41))))
+                    unmotored(PIVOT)
+                        .motors(
+                            Motors.of(Motor.NEO, Gearing.of(25)).on(SPARK_MAX.can(canivore, 41)))))
         .withMessage(
             "RobotDefinition[test].joints: pivot's SPARKs are on a CANivore: a SPARK is on"
                 + " Systemcore's own CAN");
@@ -493,7 +504,7 @@ class BlocksTest {
             () ->
                 robot(
                     unmotored(PIVOT)
-                        .motor(Motor.NEO, Gearing.of(25), SPARK_MAX.can(41))
+                        .motors(Motors.of(Motor.NEO, Gearing.of(25)).on(SPARK_MAX.can(41)))
                         .absoluteEncoder(CANCODER.can(43).offset(Rotations.of(0)))))
         .withMessage(
             "RobotDefinition[test].joints: pivot's wiring names a CANcoder, which a SPARK doesn't"
@@ -550,8 +561,9 @@ class BlocksTest {
    */
   @Test
   void eachInputHasOneSensorAndAControllersLimitInputIsItsJoints() {
-    Joint.Revolute onSpark = unmotored(PIVOT).motor(Motor.NEO, Gearing.of(25), SPARK_MAX.can(21));
-    Joint.Revolute onKraken = ROLLER.motorsOn(TALON_FX.can(22));
+    Joint.Revolute onSpark =
+        unmotored(PIVOT).motors(Motors.of(Motor.NEO, Gearing.of(25)).on(SPARK_MAX.can(21)));
+    Joint.Revolute onKraken = ROLLER.motors(motors -> motors.on(TALON_FX.can(22)));
     Sensor.Switch beam =
         Sensor.Switch.beam("claw beam", PIVOT)
             .on(
@@ -626,11 +638,11 @@ class BlocksTest {
     assertThat(
             robot(
                     unmotored(PIVOT)
-                        .motor(Motor.FALCON_500, Gearing.of(25), TALON_FX.can(24))
+                        .motors(Motors.of(Motor.FALCON_500, Gearing.of(25)).on(TALON_FX.can(24)))
                         .limitSwitch(
-                            Sensor.Switch.Limit.End.LOWER,
-                            Degrees.of(0),
-                            SensorWiring.Direction.REVERSE.normallyClosed()))
+                            LimitSwitch.lower()
+                                .at(Degrees.of(0))
+                                .on(SensorWiring.Direction.REVERSE.normallyClosed())))
                 .joints())
         .as("a Falcon's TalonFX has its limit inputs")
         .hasSize(1);

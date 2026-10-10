@@ -48,13 +48,13 @@
  * which reads this, as its fields read a robot's body).
  *
  * <p>A robot's joints, their places and its configurations are constants in {@code Robots}, each
- * joint written in one block: {@code Joint.pivot(...).range(...).positions(...).motor(...)
+ * joint written in one block: {@code Joint.pivot(...).range(...).positions(...).motors(...)
  * .control(...)}. Behavior code names the constants themselves ({@code joints.of(PIVOT)}, {@code
  * pivot.goTo(PIVOT_OUT)}), so a part missing or misnamed fails to compile, and nothing is ever
  * found by its label. Each block says each thing once. A practice robot of the same design is the
- * same definition with its differences ({@code COMPETITION.with(PIVOT.motorsOn(...))}), each joint
- * changed one thing at a time and the rest kept: a joint re-wired or re-tuned is still the same
- * joint.
+ * same definition with its differences ({@code COMPETITION.with(PIVOT.motors(motors ->
+ * motors.on(...)))}), each joint changed one thing at a time and the rest kept: a joint re-wired or
+ * re-tuned is still the same joint.
  *
  * <p>It's set where the rest of a robot's configuration is, in {@code Robots}, and checked the same
  * way: each record checks its own values with the validation kit ({@code

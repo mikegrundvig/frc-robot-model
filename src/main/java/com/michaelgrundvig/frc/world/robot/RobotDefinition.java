@@ -162,13 +162,13 @@ public record RobotDefinition(
 
   /**
    * The same robot with some of its joints wired, tuned or placed otherwise: a practice robot of
-   * its design, {@code COMPETITION.with(PIVOT.motorsOn(TALON_FX.can(33)))}. Each joint given
-   * replaces the robot's joint it's equal to, the same in all but how it's driven, its stops, where
-   * it rests and where its places are, so everything that names that joint or its places, behavior
-   * included, finds this one's. Each is the robot's joint changed one thing at a time ({@code
-   * motorsOn}, {@code gearing}, {@code encoderOn}, {@code encoderOffset}, {@code limitSwitchOn},
-   * {@code retuned}, {@code replaced}, {@code range}, {@code rest}), the rest kept, so a change to
-   * the robot's own block reaches this one.
+   * its design, {@code COMPETITION.with(PIVOT.motors(motors -> motors.on(TALON_FX.can(33))))}. Each
+   * joint given replaces the robot's joint it's equal to, the same in all but how it's driven, its
+   * stops, where it rests and where its places are, so everything that names that joint or its
+   * places, behavior included, finds this one's. Each is the robot's joint changed one thing at a
+   * time ({@code motors}, {@code absoluteEncoder} and {@code limitSwitch} with what changes on the
+   * part, {@code retuned}, {@code replaced}, {@code range}, {@code rest}), the rest kept, so a
+   * change to the robot's own block reaches this one.
    *
    * @throws IllegalArgumentException for a joint the robot has no equal of, or one given twice
    */
@@ -193,7 +193,8 @@ public record RobotDefinition(
    * The same robot with some of its sensors wired otherwise: a beam on another CANdi, {@code
    * COMPETITION.with(CLAW_BEAM.on(CANDI.can(36).s1().normallyOpen()))}. Each replaces the robot's
    * sensor it's equal to, the same but for its wiring. A joint's own limit switch or absolute
-   * encoder is re-wired with its joint ({@code limitSwitchOn}, {@code encoderOn}).
+   * encoder is re-wired with its joint ({@code limitSwitch(end, limit -> ...)}, {@code
+   * absoluteEncoder(encoder -> ...)}).
    *
    * @throws IllegalArgumentException for a sensor the robot has no equal of, or one given twice
    */
@@ -208,8 +209,8 @@ public record RobotDefinition(
                   + " own: re-wire it with its joint, "
                   + (sensor instanceof Sensor.Switch onSwitch
                           && onSwitch.kind() instanceof Sensor.Switch.Limit limit
-                      ? "limitSwitchOn(End." + limit.end().name() + ", ...)"
-                      : "encoderOn(...)"));
+                      ? "limitSwitch(End." + limit.end().name() + ", limit -> limit.on(...))"
+                      : "absoluteEncoder(encoder -> encoder.on(...))"));
         }
       }
     }

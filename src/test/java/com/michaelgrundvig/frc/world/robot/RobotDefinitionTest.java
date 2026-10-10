@@ -13,6 +13,8 @@ import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Rotations;
 
+import com.michaelgrundvig.frc.world.robot.Driven.LimitSwitch;
+import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -145,7 +147,8 @@ class RobotDefinitionTest {
   void aRegearOfTheCompetitionRobotReachesThePracticeRobot() {
     for (double ratio : new double[] {25, 30}) {
       Joint.Revolute pivot = pivot(Gearing.of(ratio));
-      RobotDefinition practice = robot(pivot).with(pivot.motorsOn(TALON_FX.can(33)));
+      RobotDefinition practice =
+          robot(pivot).with(pivot.motors(motors -> motors.on(TALON_FX.can(33))));
 
       Driven.Motors motors = practice.joints().getFirst().driven().motors().orElseThrow();
       assertThat(motors.gearing()).isEqualTo(Gearing.of(ratio));
@@ -153,8 +156,11 @@ class RobotDefinitionTest {
     }
     assertThatIllegalArgumentException()
         .isThrownBy(
-            () -> pivot(Gearing.of(30)).motor(Motor.KRAKEN_X60, Gearing.of(25), TALON_FX.can(33)))
-        .withMessageStartingWith("pivot already has its motors: to re-wire them, motorsOn(...)");
+            () ->
+                pivot(Gearing.of(30))
+                    .motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)).on(TALON_FX.can(33))))
+        .withMessageStartingWith(
+            "pivot already has its motors: to re-wire them, motors(motors -> motors.on(...))");
   }
 
   /**
@@ -169,9 +175,7 @@ class RobotDefinitionTest {
         pivot(Gearing.of(25))
             .absoluteEncoder(CANCODER.can(34).offset(Rotations.of(0.2)))
             .limitSwitch(
-                Sensor.Switch.Limit.End.LOWER,
-                Degrees.of(0),
-                SensorWiring.port(1).normallyClosed());
+                LimitSwitch.lower().at(Degrees.of(0)).on(SensorWiring.port(1).normallyClosed()));
     Sensor.Switch beam =
         Sensor.Switch.beam("claw beam", pivot).on(SensorWiring.port(2).normallyOpen());
     RobotDefinition competition =
@@ -190,9 +194,10 @@ class RobotDefinitionTest {
         competition
             .with(
                 pivot
-                    .motorsOn(TALON_FX.can(33))
-                    .limitSwitchOn(
-                        Sensor.Switch.Limit.End.LOWER, SensorWiring.port(3).normallyClosed()))
+                    .motors(motors -> motors.on(TALON_FX.can(33)))
+                    .limitSwitch(
+                        Sensor.Switch.Limit.End.LOWER,
+                        limit -> limit.on(SensorWiring.port(3).normallyClosed())))
             .with(beam.on(CANDI.can(36).s1().normallyOpen()))
             .with(competition.drivetrain().wired(wiring));
 
@@ -216,7 +221,8 @@ class RobotDefinitionTest {
         .isThrownBy(
             () ->
                 competition.with(
-                    pivot.motorsOn(TALON_FX.can(33)), pivot.retuned(control -> control.withKd(1))))
+                    pivot.motors(motors -> motors.on(TALON_FX.can(33))),
+                    pivot.retuned(control -> control.withKd(1))))
         .withMessage(
             "pivot is given twice, and the second would drop the first's change: give it once,"
                 + " its changes one after another");
@@ -232,11 +238,12 @@ class RobotDefinitionTest {
                         .on(SensorWiring.port(4).normallyClosed())))
         .withMessage(
             "pivot lower limit is pivot's own: re-wire it with its joint,"
-                + " limitSwitchOn(End.LOWER, ...)");
+                + " limitSwitch(End.LOWER, limit -> limit.on(...))");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> competition.with(pivot.ownSensors().getFirst()))
         .withMessage(
-            "pivot absolute encoder is pivot's own: re-wire it with its joint, encoderOn(...)");
+            "pivot absolute encoder is pivot's own: re-wire it with its joint,"
+                + " absoluteEncoder(encoder -> encoder.on(...))");
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
@@ -281,7 +288,7 @@ class RobotDefinitionTest {
 
       RobotDefinition practice =
           competition
-              .with(pivot.encoderOffset(Rotations.of(0.47)))
+              .with(pivot.absoluteEncoder(encoder -> encoder.offset(Rotations.of(0.47))))
               .with(
                   competition
                       .drivetrain()
@@ -395,7 +402,7 @@ class RobotDefinitionTest {
     return Joint.pivot("pivot", Part.CHASSIS, AXLE, Joint.PITCH_DOWN)
         .range(Range.degrees(0, 135))
         .rest(Degrees.of(1.5))
-        .motor(Motor.KRAKEN_X60, gearing, TALON_FX.can(32))
+        .motors(Motors.of(Motor.KRAKEN_X60, gearing).on(TALON_FX.can(32)))
         .control(
             MechanismControl.position(30)
                 .withHoming(MechanismControl.Homing.toHardStop(Sensor.Switch.Limit.End.LOWER)));

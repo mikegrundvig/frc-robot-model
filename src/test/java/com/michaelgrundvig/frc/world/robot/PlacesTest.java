@@ -27,6 +27,7 @@ import static org.wpilib.units.Units.RotationsPerSecondPerSecond;
 import static org.wpilib.units.Units.Volts;
 
 import com.michaelgrundvig.frc.world.physical.Vector3;
+import com.michaelgrundvig.frc.world.robot.Driven.Motors;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.DoubleSupplier;
@@ -83,7 +84,7 @@ class PlacesTest {
   // Rollers named at 2.5 times what their motor turns them at, and at 13 V, past the battery's 12.
   private static final Joint.Revolute TOO_FAST = named(ROLLER, List.of(), List.of(Output.rpm("intaking", 5000), Output.rpm("feeding", 1900)));
   private static final Joint.Revolute PUSHING = named(ROLLER, List.of(), List.of(Output.volts("pushing", 13), Output.dutyCycle("eject", -0.8)));
-  private static final Joint.Revolute GEARED_PIVOT = PIVOT.motor(Motor.KRAKEN_X60, Gearing.of(25));
+  private static final Joint.Revolute GEARED_PIVOT = PIVOT.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(25)));
   private static final Joint.Revolute COASTING = named(lightPivot("coasting", Optional.empty()), List.of(), List.of(Output.rpm("spinning", 100)));
 
   // A joint that rests above the low place it is at most, and a pivot that rests out, past its run.
@@ -414,7 +415,7 @@ class PlacesTest {
                 + " speed, 1440°/s: its motors can't turn it that fast, so its moves would lag"
                 + " their profile; give it a cruise under its free speed"),
         refuses("bands in angles for a roller",
-            () -> robotOf(PIVOT, ROLLER.motor(Motor.KRAKEN_X60, Gearing.of(3))
+            () -> robotOf(PIVOT, ROLLER.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(3)))
                 .control(MechanismControl.velocity(0.02).withBands(Degrees.of(2), Degrees.of(4)))),
             "RobotDefinition[test].joints: roller only runs at outputs, so its bands are shares of"
                 + " the speed it's asked for, not angles: withBands(Percent.of(3), Percent.of(6))"
@@ -541,11 +542,11 @@ class PlacesTest {
         refuses("a band of one place", () -> ARM.between(Degrees.of(10), Degrees.of(10)),
             "is at it"),
         refuses("a profile that cruises past what the motors turn the elevator at",
-            () -> robotOf(ELEVATOR.motor(Motor.KRAKEN_X60, Gearing.of(10), Inches.of(1)).control(
+            () -> robotOf(ELEVATOR.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(10)).drum(Inches.of(1))).control(
                 stowed(60).withProfile(MetersPerSecond.of(40), MetersPerSecondPerSecond.of(80)))),
             "elevator's profile cruises at 40 m/s"),
         refuses("a profile that cruises past what the motors turn the roller at, said in rpm",
-            () -> robotOf(PIVOT, ROLLER.motor(Motor.KRAKEN_X60, Gearing.of(1)).control(
+            () -> robotOf(PIVOT, ROLLER.motors(Motors.of(Motor.KRAKEN_X60, Gearing.of(1))).control(
                 MechanismControl.velocity(0.02).withProfile(RPM.of(7500), RotationsPerSecondPerSecond.of(200)))),
             "roller's profile cruises at 7500 rpm, 1.25 times its free speed, 6000 rpm:"));
   }
