@@ -16,7 +16,7 @@ It's unreleased: there are no versions yet, and anything may change.
 | `physical` | What both are made of: mass and inertia, shapes and materials. |
 | `config` | The validation kit every record is built and checked with. A definition that can't work is refused as it's built, saying why; one that's doubtful says so. |
 | `path` | Timed paths for a drivetrain: keyframes at poses or the field's places, and the trajectories planned through them or along a line under the limits they're given. |
-| `game` | What a season's game manual allows a robot to be, checked against its definition. |
+| `game` | A season's game: what its manual allows a robot to be, checked against its definition, and its field (`Rebuilt` for 2026, `Reefscape`, `Crescendo`), written once when the game is revealed. A new season's is added on kickoff day, in a new version of the model. |
 | `bridges` | Writers for other tools, such as AdvantageScope's robot assets. |
 
 A joint, as a definition writes it:

@@ -40,7 +40,7 @@
  * reads anything back: not the field, not localization, not the robot program. Interlocks speak
  * only of the robot's own joints; what the field or the game allows is the robot program's too (the
  * game's limits are checked against a definition in {@code com.michaelgrundvig.frc.world.game},
- * which reads this).
+ * which reads this, as its fields read a robot's body).
  *
  * <p>A robot's joints, their places and its configurations are constants in {@code Robots}, each
  * joint written in one block: {@code Joint.pivot(...).range(...).positions(...).motor(...)

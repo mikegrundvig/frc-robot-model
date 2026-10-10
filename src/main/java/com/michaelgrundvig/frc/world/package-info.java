@@ -14,16 +14,16 @@
  *       may disagree, which switches its controller reads.
  *   <li>{@code path}: the timed paths a drivetrain follows, through keyframes at poses or the
  *       field's places, under the limits they're given.
- *   <li>{@code game}: what a season's game manual allows a robot to be, checked against its
- *       definition.
+ *   <li>{@code game}: a season's game: what its manual allows a robot to be, checked against its
+ *       definition, and its field, written once when the game is revealed.
  * </ul>
  *
  * <p>The field and the robot don't know about each other, and the kit and the physical values know
- * about neither; paths read the field, and a season's limits read the robot, and neither is read by
- * them (the model's {@code ArchitectureTest}). None of it reads a clock or holds state, so the
- * robot, the simulator's parallel runs, and a replay all read the same model (the robot program's):
- * what a joint's definition means is worked out here from plain values, and what to remember
- * between loops is the robot program's.
+ * about neither; paths read the field, and a season's game reads the field, the physical values and
+ * the robot, and neither is read by them (the model's {@code ArchitectureTest}). None of it reads a
+ * clock or holds state, so the robot, the simulator's parallel runs, and a replay all read the same
+ * model (the robot program's): what a joint's definition means is worked out here from plain
+ * values, and what to remember between loops is the robot program's.
  */
 @NullMarked
 package com.michaelgrundvig.frc.world;

@@ -16,9 +16,10 @@ class ArchitectureTest {
    * The validation kit ({@code config}) is what every description is built with, and the physical
    * values ({@code physical}) what the field and the robot are both made of; the field and the
    * robot's definition know nothing of each other; the paths ({@code path}) read the field, and the
-   * game's limits ({@code game}) read the robot's definition, and neither is read by the field, the
-   * robot or the other; the writers for other tools ({@code bridges}) read all of it, and nothing
-   * reads them.
+   * games ({@code game}: a season's limits, which read the robot's definition, and its field, which
+   * reads the field, the physical values and the robot's body) read what they describe, and neither
+   * the paths nor the games are read by the field, the robot or the other; the writers for other
+   * tools ({@code bridges}) read all of it, and nothing reads them.
    */
   @Test
   void theModelsPackagesStayApart() {
@@ -41,9 +42,9 @@ class ArchitectureTest {
         .whereLayer("kit")
         .mayOnlyBeAccessedByLayers("physical", "field", "robot", "game", "bridges")
         .whereLayer("physical")
-        .mayOnlyBeAccessedByLayers("field", "robot", "bridges")
+        .mayOnlyBeAccessedByLayers("field", "robot", "game", "bridges")
         .whereLayer("field")
-        .mayOnlyBeAccessedByLayers("path", "bridges")
+        .mayOnlyBeAccessedByLayers("path", "game", "bridges")
         .whereLayer("robot")
         .mayOnlyBeAccessedByLayers("game", "bridges")
         .whereLayer("path")
