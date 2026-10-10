@@ -6,7 +6,7 @@
 # WPILib's own release uses: a robot program's GradleRIO brings the same.
 wpilib = "2027.0.0-alpha-7"
 avaje-jsonb = "3.14"
-ejml = "0.46.0"
+ejml = "0.46.1"
 quickbuf = "1.4"
 spotless = "8.10.4"
 # The formatters Spotless runs (gradle/quality.gradle), pinned rather than left to Spotless's
