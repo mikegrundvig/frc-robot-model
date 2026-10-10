@@ -4,17 +4,13 @@
 //   ./gradlew ci                               every check CI runs; run it before pushing
 //   ./gradlew test -Pquick --continuous        fast edit-test loop (skips the CI-only work)
 
-// Quick mode skips the work only CI needs (static analysis, auto-formatting, coverage, and the
-// build's time in BuildConstants), which costs seconds on every save, and the slow tests
-// (@SimulationTest, @EndToEndTest) unless --tests names what to run (docs/testing.md, the fast
-// loop). `ci` still enforces all of it, and refuses to run in quick mode.
+// Quick mode skips the work only CI needs (static analysis, auto-formatting, coverage), which
+// costs seconds on every save. `ci` still enforces all of it, and refuses to run in quick mode.
 def quick = project.hasProperty("quick")
 def testsNamed = gradle.startParameter.taskRequests.any { it.args.contains("--tests") }
 
-// NullAway checks the robot program's packages and the template's own libraries' (the world model,
-// localization, the simulation, Pitwall) in every project, so a project that reads another trusts
-// its @Nullable as its own: a library's null can't reach the robot program unchecked.
-def nullSafePackages = "frc.robot,com.michaelgrundvig.frc"
+// NullAway checks every package of the model's and its processor's.
+def nullSafePackages = "com.michaelgrundvig.frc"
 gradle.taskGraph.whenReady { graph ->
     if (quick && graph.allTasks.any { it.name == "ci" }) {
         throw new GradleException("-Pquick skips quality gates; run ci without it")
@@ -69,16 +65,14 @@ tasks.withType(JavaCompile).configureEach {
 
 // Javadoc's examples are compiled code: {@snippet class=... region=...} shows a region of a source
 // marked // @start region=... and // @end, found on these paths, and javadoc fails, naming it, on a
-// class or region that isn't there. The guide's examples (the robot program's
-// src/test/java/frc/robot/examples) serve every project's Javadoc. ci builds it, so a renamed
-// example fails the build. Its comments are checked as the compiler checks them: references only.
+// class or region that isn't there. ci builds it, so a renamed example fails the build. Its
+// comments are checked as the compiler checks them: references only.
 tasks.named("javadoc", Javadoc) {
     def snippets = [
         file("src/main/java"),
-        file("src/test/java"),
-        rootProject.file("src/test/java")
+        file("src/test/java")
     ]
-    .unique().findAll { it.directory }
+    .findAll { it.directory }
     inputs.files(snippets).withPropertyName("snippets").withPathSensitivity(PathSensitivity.RELATIVE)
     options.addStringOption("-snippet-path", snippets.join(File.pathSeparator))
     options.addBooleanOption("Xdoclint:reference", true)
@@ -90,18 +84,13 @@ tasks.named("javadoc", Javadoc) {
 // minutes (JUnit's default timeout; a test that needs longer says so with @Timeout): a hung test
 // fails instead of hanging the build.
 //
-// Each project's tests may use up to 1.5 GB of memory, on every computer. Left to itself, Java
-// takes up to a quarter of the computer's memory, so a runaway test could take 2 GB on one laptop
-// and 8 GB on another. The tests need far less: what they keep after Java's garbage collection
-// peaks near 80 MB for the robot's and 50 MB for Pitwall's. So the cap guards against a runaway;
-// it isn't what the tests need. A test that fails with "OutOfMemoryError: Java heap space" raises
-// the cap here.
+// Each project's tests may use up to 1.5 GB of memory, on every computer: left to itself, Java
+// takes up to a quarter of the computer's memory. The tests need far less, so the cap guards
+// against a runaway. A test that fails with "OutOfMemoryError: Java heap space" raises it here.
 //
-// At most two test JVMs run at once in a build, however many tasks Gradle runs in parallel: the
-// robot program's simulation tests grow theirs to a few GB, and a test JVM beside it for each
-// project would add up on a laptop. On a computer with 8 GB, make it one: testJvms=1 in the
-// gradle.properties of your Gradle user home, or -PtestJvms=1 (docs/testing.md, memory). Not
-// counted: build-logic's TestKit builds, and the robot programs ReplayEndToEndTest starts.
+// At most two test JVMs run at once in a build, however many tasks Gradle runs in parallel. On a
+// computer with 8 GB, make it one: testJvms=1 in the gradle.properties of your Gradle user home, or
+// -PtestJvms=1. A build that includes this one counts the model's among its own.
 def testJvmsAsked = (project.findProperty("testJvms") ?: "2").toString()
 if (!(testJvmsAsked.isInteger() && testJvmsAsked.toInteger() >= 1)) {
     throw new GradleException("testJvms is how many test JVMs may run at once, 1 or more, not ${testJvmsAsked}")
@@ -115,11 +104,6 @@ tasks.withType(Test).configureEach {
 tasks.named("test") {
     maxHeapSize = "1536m"
     systemProperty "junit.jupiter.execution.timeout.default", "2 m"
-    if (quick && !testsNamed) {
-        useJUnitPlatform {
-            excludeTags "simulation", "end-to-end"
-        }
-    }
     extensions.getByType(JacocoTaskExtension).enabled = !quick
     if (!quick) {
         finalizedBy "jacocoTestReport"
@@ -127,7 +111,7 @@ tasks.named("test") {
 }
 
 // --tests names tests by class or pattern, wherever they are: `./gradlew test --tests '*Arm*'` runs
-// them in whichever project has them (the robot program, a library in lib/, Pitwall). A project
+// them in whichever project has them (the model, its processor). A project
 // with none of them passes, rather than failing the build as Gradle would; but if no project ran a
 // test at all, the build fails, so a misspelled name can't pass quietly (testsMatched, below).
 if (testsNamed) {
@@ -291,7 +275,7 @@ if (System.getenv("CI") == null && !quick) {
 spotless {
     lineEndings = "UNIX"
     java {
-        target "src/**/*.java", "build-logic/src/**/*.java"
+        target "src/**/*.java"
         toggleOffOn()
         // It removes unused imports itself: Spotless's removeUnusedImports() step would run its own
         // version of google-java-format, not the catalog's.
@@ -300,15 +284,11 @@ spotless {
         endWithNewline()
     }
     groovyGradle {
-        target "*.gradle", "gradle/*.gradle", "build-logic/*.gradle"
+        target "*.gradle", "gradle/*.gradle"
         greclipse(libs.versions.greclipse.get())
         leadingTabsToSpaces(4)
         trimTrailingWhitespace()
         endWithNewline()
-    }
-    json {
-        target "vendordeps/*.json", "sim/*.json"
-        gson().version(libs.versions.gson.get()).indentWithSpaces(2)
     }
 }
 
@@ -317,14 +297,8 @@ tasks.register("ci") {
     group = "verification"
     description = "Run every check CI runs: formatting, the gated build and tests, coverage."
     dependsOn "spotlessCheck", "build", "javadoc"
-    // From the top of the build, every project's checks, and the build's own plugins' (build-logic/)
-    // while the build uses one of them: removing a plugin's line drops its tests too.
+    // From the top of the build, every project's checks.
     dependsOn project.subprojects.collect { it.path + ":ci" }
-    // The plugins build-logic/ holds: add each new tool's as it's added.
-    def toolConfigPlugins = ["frc.advantagescope-assets"]
-    if (project == rootProject && toolConfigPlugins.any { pluginManager.hasPlugin(it) }) {
-        dependsOn gradle.includedBuild("build-logic").task(":ci")
-    }
 }
 
 /** Counts the test JVMs running at once, for Gradle to keep to its limit; it holds nothing. */
