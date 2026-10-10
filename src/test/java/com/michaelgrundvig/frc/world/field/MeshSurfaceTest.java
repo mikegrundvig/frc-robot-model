@@ -1,6 +1,5 @@
 package com.michaelgrundvig.frc.world.field;
 
-import static com.michaelgrundvig.frc.world.field.TestFields.refused;
 import static com.michaelgrundvig.frc.world.field.TestFields.xy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -9,12 +8,7 @@ import static org.assertj.core.api.Assertions.within;
 import com.michaelgrundvig.frc.world.physical.TriangleMesh;
 import java.util.List;
 import java.util.Random;
-import java.util.stream.Stream;
-import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Translation2d;
 
 class MeshSurfaceTest {
@@ -54,24 +48,18 @@ class MeshSurfaceTest {
     assertThat(TestFields.tent().heightAt(xy(14.5, 1.5))).isCloseTo(0.2, within(1e-12));
   }
 
-  static Stream<Arguments> refusals() {
+  @Test
+  void aMeshSurfaceNeedsGroundAndHonestCrossings() {
     TriangleMesh slab = TestFields.tent().mesh();
     Crossing off = new Crossing("Off", xy(14.5, 1), xy(14.5, 4), Crossing.Kind.CREST);
     TriangleMesh.Builder wall = TriangleMesh.builder();
-    int a = wall.corner(0, 0, 0);
-    int b = wall.corner(1, 0, 0);
-    int c = wall.corner(1, 0, 1);
-    TriangleMesh walls = wall.triangle(a, b, c).build();
-    return Stream.of(
-        refused(
-            "a crossing off it", () -> new MeshSurface("T", slab, List.of(off)), "Off runs off it"),
-        refused("only walls", () -> new MeshSurface("W", walls, List.of()), "nothing to stand on"),
-        refused("no name", () -> new MeshSurface(" ", slab, List.of()), "name"));
-  }
+    TriangleMesh walls =
+        wall.triangle(wall.corner(0, 0, 0), wall.corner(1, 0, 0), wall.corner(1, 0, 1)).build();
 
-  @ParameterizedTest
-  @MethodSource("refusals")
-  void aMeshSurfaceNeedsGroundAndHonestCrossings(ThrowingCallable building, String message) {
-    assertThatThrownBy(building).hasMessageContaining(message);
+    assertThatThrownBy(() -> new MeshSurface("T", slab, List.of(off)))
+        .hasMessageContaining("Off runs off it");
+    assertThatThrownBy(() -> new MeshSurface("W", walls, List.of()))
+        .hasMessageContaining("nothing to stand on");
+    assertThatThrownBy(() -> new MeshSurface(" ", slab, List.of())).hasMessageContaining("name");
   }
 }

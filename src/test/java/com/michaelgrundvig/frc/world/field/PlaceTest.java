@@ -5,14 +5,12 @@ import static com.michaelgrundvig.frc.world.field.Alliance.RED;
 import static com.michaelgrundvig.frc.world.field.TestFields.FIELD;
 import static com.michaelgrundvig.frc.world.field.TestFields.assertPose;
 import static com.michaelgrundvig.frc.world.field.TestFields.pose;
-import static com.michaelgrundvig.frc.world.field.TestFields.refused;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 
 import java.util.List;
 import java.util.stream.Stream;
-import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -73,20 +71,11 @@ class PlaceTest {
     assertThat(place("start").tags(FIELD, BLUE)).isEmpty();
   }
 
-  static Stream<Arguments> refusals() {
-    return Stream.of(
-        refused("no name", () -> Place.at(" ", Pose2d.ZERO), "a place needs a name"),
-        refused(
-            "no tag to stand between", () -> Place.between("Hub"), "Hub needs at least one tag"),
-        refused(
-            "a negative distance from a tag",
-            () -> Place.facing("Loading", 4, -1),
-            "Loading: the distance must be zero or more"));
-  }
-
-  @ParameterizedTest
-  @MethodSource("refusals")
-  void aPlaceNeedsANameAndSomethingToStandOn(ThrowingCallable building, String message) {
-    assertThatThrownBy(building).hasMessage(message);
+  @Test
+  void aPlaceNeedsANameAndSomethingToStandOn() {
+    assertThatThrownBy(() -> Place.at(" ", Pose2d.ZERO)).hasMessage("a place needs a name");
+    assertThatThrownBy(() -> Place.between("Hub")).hasMessage("Hub needs at least one tag");
+    assertThatThrownBy(() -> Place.facing("Loading", 4, -1))
+        .hasMessage("Loading: the distance must be zero or more");
   }
 }

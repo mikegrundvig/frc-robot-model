@@ -1,18 +1,13 @@
 package com.michaelgrundvig.frc.world.field;
 
-import static com.michaelgrundvig.frc.world.field.TestFields.refused;
 import static com.michaelgrundvig.frc.world.field.TestFields.xy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
-import java.util.stream.Stream;
-import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Translation2d;
 
 /** A ramp on its own: one slope up from its foot to its top edge, then straight down. */
@@ -57,19 +52,15 @@ class RampTest {
     assertThat(top.middle()).isEqualTo(xy(3.2, 4));
   }
 
-  static Stream<Arguments> refusals() {
+  @Test
+  void aRampNeedsARealShape() {
     Translation2d here = xy(1, 1);
     Translation2d there = xy(2, 1);
-    return Stream.of(
-        refused("no name", () -> new Ramp(" ", here, there, 1, 1), "a ramp needs a name"),
-        refused("one point", () -> new Ramp("R", here, here, 1, 1), "two different points"),
-        refused("no width", () -> new Ramp("R", here, there, 0, 1), "must be positive"),
-        refused("endless", () -> new Ramp("R", here, there, 1, 1 / 0.0), "must be positive"));
-  }
-
-  @ParameterizedTest
-  @MethodSource("refusals")
-  void aRampNeedsARealShape(ThrowingCallable building, String message) {
-    assertThatThrownBy(building).hasMessageContaining(message);
+    assertThatThrownBy(() -> new Ramp(" ", here, there, 1, 1)).hasMessageContaining("name");
+    assertThatThrownBy(() -> new Ramp("R", here, here, 1, 1))
+        .hasMessageContaining("two different points");
+    assertThatThrownBy(() -> new Ramp("R", here, there, 0, 1)).hasMessageContaining("positive");
+    assertThatThrownBy(() -> new Ramp("R", here, there, 1, 1 / 0.0))
+        .hasMessageContaining("positive");
   }
 }
