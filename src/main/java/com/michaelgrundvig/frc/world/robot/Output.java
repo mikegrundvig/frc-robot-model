@@ -105,7 +105,7 @@ public record Output(String name, Kind kind, double value, Optional<Position.Kin
     return speed(name, speed.in(MetersPerSecond), Position.Kind.LENGTH);
   }
 
-  private static Output speed(String name, double value, Position.Kind motion) {
+  static Output speed(String name, double value, Position.Kind motion) {
     return builder().name(name).kind(Kind.VELOCITY).value(value).motion(motion).build();
   }
 

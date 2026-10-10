@@ -31,6 +31,7 @@ import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
 import org.wpilib.math.linalg.VecBuilder;
+import org.wpilib.units.Measure;
 import org.wpilib.units.measure.Angle;
 import org.wpilib.units.measure.AngularVelocity;
 import org.wpilib.units.measure.Dimensionless;
@@ -74,7 +75,7 @@ import org.wpilib.units.measure.Voltage;
  * robot's, which the team's constants hold. At any other value it's another joint's, or another
  * robot's, and refused, wherever it's given.
  */
-public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismatic {
+public sealed interface Joint extends Part permits Joint.Block {
   /**
    * An axis about which a link whose zero points forward swings up as its position grows: about the
    * robot's y, the other way round.
@@ -278,7 +279,58 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
    * Its own drives, as its block says them: its motors, under its label, and each servo, under its
    * own. A drive between joints, a differential's, is the robot's ({@code RobotDefinition.drives}).
    */
-  List<Drive> ownDrives();
+  default List<Drive> ownDrives() {
+    List<Drive> drives = new ArrayList<>();
+    driven()
+        .motors()
+        .ifPresent(
+            motors ->
+                drives.add(
+                    Drive.builder()
+                        .label(label())
+                        .actuator(
+                            Actuator.Motors.builder()
+                                .motor(motors.motor())
+                                .count(motors.count())
+                                .build())
+                        .transmission(through(motors))
+                        .build()));
+    for (Driven.Servo servo : driven().servos()) {
+      drives.add(
+          Drive.builder()
+              .label(servo.label())
+              .actuator(servo.servo())
+              .transmission(
+                  Transmission.Between.builder()
+                      .a(parent())
+                      .onA(
+                          origin()
+                              .getTranslation()
+                              .plus(servo.onParent().rotateBy(origin().getRotation())))
+                      .b(this)
+                      .onB(servo.onLink())
+                      .build())
+              .build());
+    }
+    return drives;
+  }
+
+  /**
+   * What carries its motors' turning to it: a gearing alone for a joint that turns, and a gearing
+   * onto a drum for one that slides.
+   */
+  private Transmission through(Driven.Motors motors) {
+    return switch (this) {
+      case Revolute turning ->
+          Transmission.Geared.builder().joint(turning).gearing(motors.gearing()).build();
+      case Prismatic sliding ->
+          Transmission.Drum.builder()
+              .joint(sliding)
+              .gearing(motors.gearing())
+              .pitchRadius(motors.pitchRadius().orElseThrow())
+              .build();
+    };
+  }
 
   /**
    * Its own sensors, as its block says them: its absolute encoder ("arm absolute encoder"), and its
@@ -377,7 +429,7 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
    * @param region where it may not be
    * @param adding the joint with the interlock added
    */
-  record KeepingOut<J extends Joint>(J joint, Range region, Function<Interlock, J> adding) {
+  record KeepingOut<J extends Joint>(Joint joint, Range region, Function<Interlock, J> adding) {
     /** While the condition holds: the joint, kept out meanwhile. */
     public J when(Condition condition) {
       return adding.apply(Interlock.that(joint).keepsOut(region).when(condition));
@@ -468,8 +520,8 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
   /**
    * It at one of its positions or beyond it, toward its range's upper end: {@code
    * PIVOT.atLeast(PIVOT_OUT)}, from "out" on. An edge that's a clearance rather than a place it
-   * goes is written as a number ({@link Revolute#atLeast(Angle)}). A position not its own is
-   * refused where the condition is used ({@link Condition}).
+   * goes is written as a number ({@link Block#atLeast(Measure)}). A position not its own is refused
+   * where the condition is used ({@link Condition}).
    *
    * @throws IllegalArgumentException for its lower end
    */
@@ -661,6 +713,376 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
   }
 
   /**
+   * A joint's block: everything its declaration can say, and everything a practice robot can change
+   * on the finished joint, written once for both kinds of joint. Each call returns a new joint, so
+   * a block is a chain of them.
+   *
+   * <p>The two kinds differ only in what they are measured in, which the type parameters carry, so
+   * the compiler refuses a length given to a joint that turns. Each kind supplies the six copies of
+   * itself that the rest of the block is written with.
+   *
+   * @param <J> the kind of joint the block declares, which every call returns
+   * @param <P> what its positions are measured in: an angle or a distance
+   * @param <S> what its speeds are measured in: an angular or a linear velocity
+   */
+  sealed interface Block<J extends Block<J, P, S>, P extends Measure<?>, S extends Measure<?>>
+      extends Joint permits Revolute, Prismatic {
+    /**
+     * Its hard stops: {@code .range(Range.degrees(0, 135))}. On a finished joint this moves its
+     * stops and keeps where it rests: a practice robot's turret, {@code
+     * TURRET.range(Range.degrees(-355, 5))}. The robot's definition checks everything else against
+     * them when it is built, so a practice robot may move its stops and its places in either order.
+     */
+    J range(Range range);
+
+    /** The same joint, driven otherwise. */
+    J driven(Driven driven);
+
+    /** The same joint, resting elsewhere, in its own units. */
+    J withRest(double rest);
+
+    /** The same joint, moving another link. */
+    J withLink(Link link);
+
+    /** The same joint with other named positions, and those it had before they were re-placed. */
+    J withPositions(List<Position> positions, List<Position> former);
+
+    /** The same joint with other named outputs, and those it had before they were re-valued. */
+    J withOutputs(List<Output> outputs, List<Output> former);
+
+    /**
+     * Where it rests as the robot starts, stowed: {@code .rest(Degrees.of(-30))}. Without one it
+     * rests at its zero. On a finished joint this moves where it rests and keeps its stops. The
+     * robot's definition checks that it is inside them.
+     */
+    default J rest(P rest) {
+      return withRest(inJointUnits(rest));
+    }
+
+    /**
+     * Where it rests as the robot starts, at one of its positions: {@code .rest(ARM_STOWED)}. The
+     * position is this joint's own of that name, so on a practice robot that re-placed it, the
+     * joint rests where the practice robot put it. A block may say this before it names its
+     * positions.
+     *
+     * @throws IllegalArgumentException if the position is another joint's, or of the other kind
+     */
+    default J rest(Position rest) {
+      return withRest(restAt(this, rest));
+    }
+
+    /**
+     * It at a position or beyond it, toward its upper stop: {@code PIVOT.atLeast(Degrees.of(110))}.
+     * An interlock's edge is usually a clearance like this one, not a place the joint goes, so it
+     * is written as a number.
+     *
+     * @throws IllegalArgumentException if it is outside its range, or its lower end
+     */
+    default Condition.AtLeast atLeast(P position) {
+      return ConditionAtLeastBuilder.builder().joint(this).position(inJointUnits(position)).build();
+    }
+
+    /**
+     * It at a position or short of it, toward its lower stop: {@code
+     * ELEVATOR.atMost(Inches.of(32))}.
+     *
+     * @throws IllegalArgumentException if it is outside its range, or its upper end
+     */
+    default Condition.AtMost atMost(P position) {
+      return ConditionAtMostBuilder.builder().joint(this).position(inJointUnits(position)).build();
+    }
+
+    /**
+     * It between two positions, both included, given in either order.
+     *
+     * @throws IllegalArgumentException if either is outside its range, or they are the same
+     */
+    default Condition.Between between(P from, P to) {
+      return ConditionBetweenBuilder.builder()
+          .joint(this)
+          .from(inJointUnits(from))
+          .to(inJointUnits(to))
+          .build();
+    }
+
+    /**
+     * It running forward at a speed or faster: {@code SHOOTER.upToSpeed(RPM.of(3000))}.
+     *
+     * @throws IllegalArgumentException for a speed that is not forward
+     */
+    default Condition.UpToSpeed upToSpeed(S speed) {
+      return ConditionUpToSpeedBuilder.builder().joint(this).speed(inJointUnits(speed)).build();
+    }
+
+    /** What it moves. */
+    default J carries(Link link) {
+      onceLink(this);
+      return withLink(link);
+    }
+
+    /** Its places by name: {@code .positions(ARM_STOWED, ARM_SCORING)}. */
+    default J positions(Position... positions) {
+      oncePositions(this);
+      return withPositions(List.of(positions), formerPositions());
+    }
+
+    /** What it runs at, by name: {@code .outputs(INTAKING, OUTTAKING)}. */
+    default J outputs(Output... outputs) {
+      onceOutputs(this);
+      return withOutputs(List.of(outputs), formerOutputs());
+    }
+
+    /**
+     * The same joint with one of its named positions somewhere else: a practice robot's, {@code
+     * PIVOT.replaced(PIVOT_OUT, Degrees.of(128))}. Code that names the position finds it there on
+     * the robot that has this joint, so the same code drives each robot to its own.
+     *
+     * @throws IllegalArgumentException if the position is not this joint's own
+     */
+    default J replaced(Position position, P at) {
+      Position replacing =
+          Position.builder()
+              .name(position.name())
+              .kind(Position.Kind.of(this))
+              .value(inJointUnits(at))
+              .build();
+      return withPositions(
+          replacedPosition(this, replacing), former(formerPositions(), own(position), replacing));
+    }
+
+    /**
+     * The same joint with one of its named outputs at another speed: {@code
+     * FEEDER.replaced(FEEDER_FEEDING, RPM.of(1200))}.
+     *
+     * @throws IllegalArgumentException if it has no output of the name
+     */
+    default J replaced(Output output, S speed) {
+      return revalued(
+          output, Output.speed(output.name(), inJointUnits(speed), Position.Kind.of(this)));
+    }
+
+    /**
+     * The same joint with one of its named outputs at another voltage: {@code
+     * ROLLER.replaced(OUTTAKING, Volts.of(-3))}.
+     *
+     * @throws IllegalArgumentException if it has no output of the name
+     */
+    default J replaced(Output output, Voltage voltage) {
+      return revalued(output, Output.of(output.name(), voltage));
+    }
+
+    /**
+     * The same joint with one of its named outputs at another share of the battery's voltage:
+     * {@code ROLLER.replaced(OUTTAKING, Percent.of(-30))}.
+     *
+     * @throws IllegalArgumentException if it has no output of the name
+     */
+    default J replaced(Output output, Dimensionless share) {
+      return revalued(output, Output.dutyCycle(output.name(), share.in(Value)));
+    }
+
+    private J revalued(Output output, Output replacing) {
+      return withOutputs(
+          replacedOutput(this, replacing), former(formerOutputs(), own(output), replacing));
+    }
+
+    @Override
+    default J motorsOn(MechanismWiring.Device... controllers) {
+      return driven(drivenWith().motors(rewired(this, controllers)).build());
+    }
+
+    /**
+     * The same joint, its motors through another gearing, on the controllers they have: a second
+     * robot of the design, geared otherwise.
+     *
+     * @throws IllegalArgumentException if it has no motors
+     */
+    default J gearing(Gearing gearing) {
+      return driven(drivenWith().motors(regeared(this, gearing)).build());
+    }
+
+    /**
+     * A servo pushing between its parent and its link, under its own label.
+     *
+     * @param onParent where its body is fixed, from the joint's origin, in the parent's frame
+     * @param onLink where its rod meets the link, in the joint's frame
+     */
+    default J servo(
+        String label, Actuator.Servo servo, Translation3d onParent, Translation3d onLink) {
+      List<Driven.Servo> servos = new ArrayList<>(driven().servos());
+      servos.add(
+          DrivenServoBuilder.builder()
+              .label(label)
+              .servo(servo)
+              .onParent(onParent)
+              .onLink(onLink)
+              .build());
+      return driven(drivenWith().servos(servos).build());
+    }
+
+    /** An absolute encoder turning with it, which only the simulator reads until it is wired. */
+    default J absoluteEncoder() {
+      return absoluteEncoder(Driven.AbsoluteEncoder.of());
+    }
+
+    /** An absolute encoder turning with it, read by a CANcoder through its TalonFX. */
+    default J absoluteEncoder(MechanismWiring.Cancoder cancoder) {
+      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(cancoder));
+    }
+
+    /** An absolute encoder turning with it, on its SPARK's data port. */
+    default J absoluteEncoder(MechanismWiring.DataPortEncoder dataPort) {
+      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(dataPort));
+    }
+
+    /** An absolute encoder turning with it, on one of Systemcore's ports, read by the robot. */
+    default J absoluteEncoder(MechanismWiring.PortEncoder port) {
+      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(port));
+    }
+
+    /**
+     * An absolute encoder written in full, geared or not: {@code
+     * .absoluteEncoder(AbsoluteEncoder.of().ratio(0.536).on(cancoder))}. On a joint that turns it
+     * is on the axle; on one that slides it is on the drum's shaft, and its ratio is its turns for
+     * each turn of the drum.
+     */
+    default J absoluteEncoder(Driven.AbsoluteEncoder encoder) {
+      onceEncoder(this);
+      return driven(drivenWith().absoluteEncoder(encoder).build());
+    }
+
+    /**
+     * The same joint, its absolute encoder read by another CANcoder: a practice robot's, {@code
+     * TURRET.encoderOn(CANCODER.can(35).offset(Rotations.of(0.11)))}. Its ratio is kept, and so is
+     * how its loop reads it, unless the CANcoder says its own.
+     *
+     * @throws IllegalArgumentException if it has no absolute encoder
+     */
+    default J encoderOn(MechanismWiring.Cancoder cancoder) {
+      return encoderRewired(encoder(this).on(loopKept(this, cancoder)));
+    }
+
+    /**
+     * The same joint, its absolute encoder on its SPARK's data port, its ratio kept.
+     *
+     * @throws IllegalArgumentException if it has no absolute encoder
+     */
+    default J encoderOn(MechanismWiring.DataPortEncoder dataPort) {
+      return encoderRewired(encoder(this).on(loopKept(this, dataPort)));
+    }
+
+    /**
+     * The same joint, its absolute encoder on one of Systemcore's ports, its ratio kept.
+     *
+     * @throws IllegalArgumentException if it has no absolute encoder
+     */
+    default J encoderOn(MechanismWiring.PortEncoder port) {
+      return encoderRewired(encoder(this).on(loopKept(this, port)));
+    }
+
+    /**
+     * The same joint, its absolute encoder offset otherwise, on the wiring it has: a practice
+     * robot's magnet, {@code ARM.encoderOffset(Rotations.of(0.47))}.
+     *
+     * @throws IllegalArgumentException if it has no absolute encoder, or one that is not wired
+     */
+    default J encoderOffset(Angle offset) {
+      return encoderRewired(offset(this, offset));
+    }
+
+    private J encoderRewired(Driven.AbsoluteEncoder encoder) {
+      return driven(drivenWith().absoluteEncoder(encoder).build());
+    }
+
+    /** A limit switch at an end, tripping at a position, in the simulator alone until wired. */
+    default J limitSwitch(Sensor.Switch.Limit.End end, P at) {
+      return limit(end, Optional.of(inJointUnits(at)), Optional.empty());
+    }
+
+    /**
+     * A limit switch at an end whose position is not known: it stops the joint, but cannot home it.
+     */
+    default J limitSwitch(Sensor.Switch.Limit.End end) {
+      return limit(end, Optional.empty(), Optional.empty());
+    }
+
+    /** A limit switch at an end whose position is not known, on an input. */
+    default J limitSwitch(Sensor.Switch.Limit.End end, SensorWiring.Connection connection) {
+      return limit(end, Optional.empty(), Optional.of(connection));
+    }
+
+    /** A limit switch at an end whose position is not known, on its own controller's limit pin. */
+    default J limitSwitch(Sensor.Switch.Limit.End end, SensorWiring.Pin pin) {
+      return limitSwitch(end, pin.of(this));
+    }
+
+    /** A limit switch at an end, tripping at a position, on an input. */
+    default J limitSwitch(Sensor.Switch.Limit.End end, P at, SensorWiring.Connection connection) {
+      return limit(end, Optional.of(inJointUnits(at)), Optional.of(connection));
+    }
+
+    /** A limit switch at an end, tripping at a position, on its own controller's limit pin. */
+    default J limitSwitch(Sensor.Switch.Limit.End end, P at, SensorWiring.Pin pin) {
+      return limitSwitch(end, at, pin.of(this));
+    }
+
+    private J limit(
+        Sensor.Switch.Limit.End end,
+        Optional<Double> at,
+        Optional<SensorWiring.Connection> wiring) {
+      return driven(drivenWith().limitSwitches(switchAdded(this, end, at, wiring)).build());
+    }
+
+    @Override
+    default J limitSwitchOn(Sensor.Switch.Limit.End end, SensorWiring.Connection connection) {
+      return driven(drivenWith().limitSwitches(switchRewired(this, end, connection)).build());
+    }
+
+    @Override
+    default J limitSwitchOn(Sensor.Switch.Limit.End end, SensorWiring.Pin pin) {
+      return limitSwitchOn(end, pin.of(this));
+    }
+
+    /**
+     * It kept out of a stretch of its travel while a condition holds, enforced beneath every
+     * command: {@code .keepsOut(Range.degrees(-180, -101)).when(ELEVATOR.atMost(Inches.of(32)))}.
+     * Its target is held at the stretch's edge, on the side it is on, until the condition clears.
+     */
+    default KeepingOut<J> keepsOut(Range region) {
+      return new KeepingOut<>(this, region, this::interlocked);
+    }
+
+    /**
+     * It moving only while a condition holds, enforced beneath every command: {@code
+     * .runsOnlyWhen(PIVOT.atLeast(Degrees.of(110)))}. Meanwhile it holds where it is, or stops.
+     */
+    default J runsOnlyWhen(Condition condition) {
+      return interlocked(Interlock.that(this).runsOnlyWhen(condition));
+    }
+
+    private J interlocked(Interlock interlock) {
+      List<Interlock> interlocks = new ArrayList<>(driven().interlocks());
+      interlocks.add(interlock);
+      return driven(drivenWith().interlocks(interlocks).build());
+    }
+
+    @Override
+    default J control(MechanismControl control) {
+      onceControl(this);
+      return driven(drivenWith().control(control).build());
+    }
+
+    @Override
+    default J retuned(UnaryOperator<MechanismControl> change) {
+      return driven(drivenWith().control(change.apply(controlOf(this))).build());
+    }
+
+    private DrivenBuilder drivenWith() {
+      return DrivenBuilder.builder(driven());
+    }
+  }
+
+  /**
    * A joint that turns about its axis, in radians: an arm, a wrist, a turret, a roller.
    *
    * @param label what logs and writers call it: unique among the robot's joints
@@ -695,7 +1117,7 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
       @RecordBuilder.Initializer(value = "of", source = List.class) List<Position> formerPositions,
       @RecordBuilder.Initializer(value = "of", source = List.class) List<Output> formerOutputs,
       @RecordBuilder.Initializer(value = "NONE", source = Driven.class) Driven driven)
-      implements Joint {
+      implements Block<Revolute, Angle, AngularVelocity> {
     public Revolute {
       positions = List.copyOf(positions);
       outputs = List.copyOf(outputs);
@@ -730,202 +1152,13 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
     }
 
     @Override
-    public List<Drive> ownDrives() {
-      return drives(
-          this,
-          motors -> Transmission.Geared.builder().joint(this).gearing(motors.gearing()).build());
-    }
-
-    /**
-     * Equal to another joint the same in everything but how it's driven ({@link #driven}), where
-     * its hard stops are, where it rests, and where its named places are: its positions and outputs
-     * are the same names, their values each robot's own ({@code replaced}), and it has stops or
-     * none, and rests, each robot's own ({@code range(range)}, {@code rest(...)}).
-     */
-    @Override
     public boolean equals(@Nullable Object other) {
-      return other instanceof Revolute joint
-          && label.equals(joint.label)
-          && parent.equals(joint.parent)
-          && origin.equals(joint.origin)
-          && axis.equals(joint.axis)
-          && range.isPresent() == joint.range.isPresent()
-          && link.equals(joint.link)
-          && names(positions, List.of()).equals(names(joint.positions, List.of()))
-          && names(List.of(), outputs).equals(names(List.of(), joint.outputs));
+      return sameJoint(this, other);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(
-          label,
-          parent,
-          origin,
-          axis,
-          range.isPresent(),
-          link,
-          names(positions, List.of()),
-          names(List.of(), outputs));
-    }
-
-    /**
-     * Its hard stops: {@code .range(Range.degrees(0, 135))}. On a finished joint, its stops
-     * elsewhere, where it rests kept: a practice robot's, {@code TURRET.range(Range.degrees(-355,
-     * 5))}. Every check of the robot runs on them, as it's built: where it rests, its positions,
-     * its soft limits, its interlocks' edges and regions inside them. So its places re-placed
-     * ({@code replaced}) may come before or after.
-     */
-    public Revolute range(Range range) {
-      return with().range(range).build();
-    }
-
-    /**
-     * Where it rests as the robot starts, stowed: {@code .rest(Degrees.of(-30))}. Without one, it
-     * rests at its zero, which must then be inside its stops. On a finished joint, it rests
-     * elsewhere, its stops kept: a practice robot's arm, stowed lower. It must be inside its stops,
-     * and every check of the robot runs on it as it's built: the interlocks as the robot starts.
-     */
-    public Revolute rest(Angle rest) {
-      return with().rest(rest.in(Radians)).build();
-    }
-
-    /**
-     * Where it rests as the robot starts, at one of its positions: {@code .rest(ARM_STOWED)}, its
-     * own of that name, where this joint puts it, so after {@code replaced(ARM_STOWED, ...)}, at
-     * the practice robot's. In its block before its positions are named, where the position is.
-     *
-     * @throws IllegalArgumentException if the position isn't its own, or isn't an angle
-     */
-    public Revolute rest(Position rest) {
-      return with().rest(restAt(this, rest)).build();
-    }
-
-    /**
-     * It at an angle or beyond it: what an interlock's edge usually is, a clearance rather than a
-     * place it goes, and the same wherever it rests: {@code PIVOT.atLeast(Degrees.of(110))}.
-     *
-     * @throws IllegalArgumentException if it's outside its range, or its lower end
-     */
-    public Condition.AtLeast atLeast(Angle position) {
-      return ConditionAtLeastBuilder.builder().joint(this).position(position.in(Radians)).build();
-    }
-
-    /**
-     * It at an angle or short of it, as {@link #atLeast(Angle)} the other way: {@code
-     * ARM.atMost(Degrees.of(-40))}.
-     *
-     * @throws IllegalArgumentException if it's outside its range, or its upper end
-     */
-    public Condition.AtMost atMost(Angle position) {
-      return ConditionAtMostBuilder.builder().joint(this).position(position.in(Radians)).build();
-    }
-
-    /**
-     * It between two angles, both included, whichever way round they're given.
-     *
-     * @throws IllegalArgumentException if either is outside its range, or they're one
-     */
-    public Condition.Between between(Angle from, Angle to) {
-      return ConditionBetweenBuilder.builder()
-          .joint(this)
-          .from(from.in(Radians))
-          .to(to.in(Radians))
-          .build();
-    }
-
-    /**
-     * It running at least a speed, forward: {@code SHOOTER.upToSpeed(RPM.of(3000))}.
-     *
-     * @throws IllegalArgumentException for a speed that isn't forward
-     */
-    public Condition.UpToSpeed upToSpeed(AngularVelocity speed) {
-      return ConditionUpToSpeedBuilder.builder()
-          .joint(this)
-          .speed(speed.in(RadiansPerSecond))
-          .build();
-    }
-
-    /** What it moves. */
-    public Revolute carries(Link link) {
-      onceLink(this);
-      return with().link(link).build();
-    }
-
-    /** Its places by name: {@code .positions(ARM_STOWED, ARM_SCORING)}. */
-    public Revolute positions(Position... positions) {
-      oncePositions(this);
-      return with().positions(List.of(positions)).build();
-    }
-
-    /** What it runs at, by name: {@code .outputs(INTAKING, OUTTAKING)}. */
-    public Revolute outputs(Output... outputs) {
-      onceOutputs(this);
-      return with().outputs(List.of(outputs)).build();
-    }
-
-    /**
-     * The same joint, one of its named positions at another angle, its name kept: a practice
-     * robot's, {@code PIVOT.replaced(PIVOT_OUT, Degrees.of(128))}. Code naming it, {@code
-     * pivot.goTo(PIVOT_OUT)}, a configuration or an interlock, finds it there on the robot that has
-     * this joint, so the same code drives each robot to its own. It must be inside the joint's
-     * stops, as the robot that has it checks.
-     *
-     * @throws IllegalArgumentException if it has no position of the name, or the one named isn't
-     *     its own: another joint's of the name, elsewhere
-     */
-    public Revolute replaced(Position position, Angle at) {
-      return placed(position, Position.of(position.name(), at));
-    }
-
-    /**
-     * The same joint, one of its named outputs at another speed, its name kept: {@code
-     * FEEDER.replaced(FEEDER_FEEDING, RPM.of(1200))}. Code running it, {@code
-     * feeder.run(FEEDER_FEEDING)} or a configuration, runs it there on the robot that has this
-     * joint.
-     *
-     * @throws IllegalArgumentException if it has no output of the name
-     */
-    public Revolute replaced(Output output, AngularVelocity speed) {
-      return valued(output, Output.of(output.name(), speed));
-    }
-
-    /**
-     * The same joint, one of its named outputs at another voltage, its name kept: a practice
-     * robot's, {@code ROLLER.replaced(OUTTAKING, Volts.of(-3))}.
-     *
-     * @throws IllegalArgumentException if it has no output of the name
-     */
-    public Revolute replaced(Output output, Voltage voltage) {
-      return valued(output, Output.of(output.name(), voltage));
-    }
-
-    /**
-     * The same joint, one of its named outputs at another share of the battery, its name kept:
-     * {@code ROLLER.replaced(OUTTAKING, Percent.of(-30))}.
-     *
-     * @throws IllegalArgumentException if it has no output of the name
-     */
-    public Revolute replaced(Output output, Dimensionless share) {
-      return valued(output, Output.dutyCycle(output.name(), share.in(Value)));
-    }
-
-    /**
-     * The same joint, its own position of a name elsewhere, where it was among its former ones. The
-     * position named is its own ({@link #own(Position)}), as anywhere a place is named.
-     */
-    private Revolute placed(Position position, Position replacing) {
-      return with()
-          .positions(replacedPosition(this, replacing))
-          .formerPositions(former(formerPositions, own(position), replacing))
-          .build();
-    }
-
-    /** The same joint, its own output of a name otherwise, what it was among its former ones. */
-    private Revolute valued(Output output, Output replacing) {
-      return with()
-          .outputs(replacedOutput(this, replacing))
-          .formerOutputs(former(formerOutputs, own(output), replacing))
-          .build();
+      return identityHash(this);
     }
 
     /** A motor turning it through a gearing, in the simulator alone until it's wired. */
@@ -942,7 +1175,7 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
     public Revolute motors(Motor motor, Gearing gearing, int count) {
       onceMotors(this);
       return driven(
-          drivenWith().motors(turning(motor, count, gearing, Optional.empty(), List.of())));
+          drivenWith().motors(turning(motor, count, gearing, Optional.empty(), List.of())).build());
     }
 
     /** Motors turning it together through a gearing, each on its controller, the leader first. */
@@ -951,228 +1184,39 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
       return driven(
           drivenWith()
               .motors(
-                  Optional.of(
-                      turning(
-                          motor,
-                          controllers.length,
-                          gearing,
-                          Optional.empty(),
-                          List.of(controllers)))));
-    }
-
-    @Override
-    public Revolute motorsOn(MechanismWiring.Device... controllers) {
-      return driven(drivenWith().motors(rewired(this, controllers)));
-    }
-
-    /**
-     * The same joint, its motors through another gearing, their controllers as they are: a second
-     * robot of the design, geared otherwise.
-     *
-     * @throws IllegalArgumentException if no motors turn it
-     */
-    public Revolute gearing(Gearing gearing) {
-      return driven(drivenWith().motors(regeared(this, gearing)));
-    }
-
-    /**
-     * A servo pushing between its parent and its link, under its own label.
-     *
-     * @param onParent where its body is fixed, from the joint's axle, in the parent's frame
-     * @param onLink where its rod meets the link, in the joint's frame
-     */
-    public Revolute servo(
-        String label, Actuator.Servo servo, Translation3d onParent, Translation3d onLink) {
-      List<Driven.Servo> servos = new ArrayList<>(driven.servos());
-      servos.add(
-          DrivenServoBuilder.builder()
-              .label(label)
-              .servo(servo)
-              .onParent(onParent)
-              .onLink(onLink)
+                  turning(
+                      motor, controllers.length, gearing, Optional.empty(), List.of(controllers)))
               .build());
-      return driven(drivenWith().servos(servos));
-    }
-
-    /** An absolute encoder on its axle, in the simulator alone until it's wired. */
-    public Revolute absoluteEncoder() {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of());
-    }
-
-    /** An absolute encoder on its axle, read by a CANcoder through its TalonFX. */
-    public Revolute absoluteEncoder(MechanismWiring.Cancoder cancoder) {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(cancoder));
-    }
-
-    /**
-     * An absolute encoder on its axle, on its SPARK's data port: with {@code closesLoop()} on it,
-     * the SPARK's loop closing on it.
-     */
-    public Revolute absoluteEncoder(MechanismWiring.DataPortEncoder dataPort) {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(dataPort));
-    }
-
-    /**
-     * An absolute encoder on its axle, on one of Systemcore's ports, read by the robot: {@code
-     * .absoluteEncoder(PortEncoder.dutyCycle(1).offset(Rotations.of(0.82)))}, and with {@code
-     * .closesLoop()} after it, the joint's loop closing on it.
-     */
-    public Revolute absoluteEncoder(MechanismWiring.PortEncoder port) {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(port));
-    }
-
-    /**
-     * An absolute encoder as written in full, geared or not: {@code
-     * .absoluteEncoder(AbsoluteEncoder.of().ratio(0.536).on(cancoder))}. A joint has one: a second
-     * is refused, a decoded pair not being supported yet.
-     */
-    public Revolute absoluteEncoder(Driven.AbsoluteEncoder encoder) {
-      onceEncoder(this);
-      return driven(drivenWith().absoluteEncoder(encoder));
-    }
-
-    /**
-     * The same joint, its absolute encoder read by another CANcoder, its ratio kept, and how its
-     * loop reads it, fused, remote or synced, unless the CANcoder says its own: a practice robot's,
-     * {@code TURRET.encoderOn(CANCODER.can(35).offset(Rotations.of(0.11)))}.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder
-     */
-    public Revolute encoderOn(MechanismWiring.Cancoder cancoder) {
-      return encoderRewired(encoder(this).on(loopKept(this, cancoder)));
-    }
-
-    /**
-     * The same joint, its absolute encoder on its SPARK's data port, its ratio kept, and its loop
-     * closed on it if it was closed on the data port before.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder
-     */
-    public Revolute encoderOn(MechanismWiring.DataPortEncoder dataPort) {
-      return encoderRewired(encoder(this).on(loopKept(this, dataPort)));
-    }
-
-    /**
-     * The same joint, its absolute encoder on one of Systemcore's ports, its ratio kept, and its
-     * loop closed on it if it was closed on a port before.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder
-     */
-    public Revolute encoderOn(MechanismWiring.PortEncoder port) {
-      return encoderRewired(encoder(this).on(loopKept(this, port)));
-    }
-
-    /**
-     * The same joint, its absolute encoder offset otherwise, the rest of it and its wiring kept: a
-     * practice robot's magnet, {@code ARM.encoderOffset(Rotations.of(0.47))}, on the CANcoder, data
-     * port or Systemcore port the robot's own block reads it on, so a CANcoder moved to another ID
-     * there reaches it.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder, or one that isn't wired
-     */
-    public Revolute encoderOffset(Angle offset) {
-      return encoderRewired(offset(this, offset));
-    }
-
-    private Revolute encoderRewired(Driven.AbsoluteEncoder encoder) {
-      return driven(drivenWith().absoluteEncoder(encoder));
-    }
-
-    /** A limit switch at an end, tripping at an angle, in the simulator alone until it's wired. */
-    public Revolute limitSwitch(Sensor.Switch.Limit.End end, Angle at) {
-      return limit(end, Optional.of(at.in(Radians)), Optional.empty());
-    }
-
-    /**
-     * A limit switch at an end whose position isn't known: it stops the joint, but can't home it.
-     * In the simulator alone until it's wired.
-     */
-    public Revolute limitSwitch(Sensor.Switch.Limit.End end) {
-      return limit(end, Optional.empty(), Optional.empty());
-    }
-
-    /**
-     * A limit switch at an end whose position isn't known, on an input: {@code
-     * .limitSwitch(End.UPPER, CANDI.can(30).s2().normallyClosed())}.
-     */
-    public Revolute limitSwitch(Sensor.Switch.Limit.End end, SensorWiring.Connection connection) {
-      return limit(end, Optional.empty(), Optional.of(connection));
-    }
-
-    /**
-     * A limit switch at an end whose position isn't known, on its own motor controller's limit pin:
-     * the controller stops the motor itself. {@code .limitSwitch(End.UPPER,
-     * Direction.FORWARD.normallyClosed())}.
-     */
-    public Revolute limitSwitch(Sensor.Switch.Limit.End end, SensorWiring.Pin pin) {
-      return limitSwitch(end, pin.of(this));
-    }
-
-    /**
-     * A limit switch at an end, tripping at an angle, on an input, a Systemcore port or a CANdi's:
-     * {@code .limitSwitch(End.LOWER, Degrees.of(0), SensorWiring.port(1).normallyClosed())}.
-     */
-    public Revolute limitSwitch(
-        Sensor.Switch.Limit.End end, Angle at, SensorWiring.Connection connection) {
-      return limit(end, Optional.of(at.in(Radians)), Optional.of(connection));
-    }
-
-    /**
-     * A limit switch at an end, tripping at an angle, on its own motor controller's limit pin: the
-     * controller stops the motor itself. {@code .limitSwitch(End.LOWER, Degrees.of(0),
-     * Direction.REVERSE.normallyClosed())}.
-     */
-    public Revolute limitSwitch(Sensor.Switch.Limit.End end, Angle at, SensorWiring.Pin pin) {
-      return limitSwitch(end, at, pin.of(this));
     }
 
     @Override
-    public Revolute limitSwitchOn(Sensor.Switch.Limit.End end, SensorWiring.Connection connection) {
-      return driven(drivenWith().limitSwitches(switchRewired(this, end, connection)));
+    public Revolute range(Range range) {
+      return with().range(range).build();
     }
 
     @Override
-    public Revolute limitSwitchOn(Sensor.Switch.Limit.End end, SensorWiring.Pin pin) {
-      return limitSwitchOn(end, pin.of(this));
-    }
-
-    /**
-     * It kept out of a stretch of its travel while a condition holds, enforced beneath every
-     * command: {@code .keepsOut(Range.degrees(-180, -101)).when(ELEVATOR.atMost(Inches.of(32)))}.
-     * Its target is held at the stretch's edge, on the side it's on, until the condition clears.
-     */
-    public KeepingOut<Revolute> keepsOut(Range region) {
-      return new KeepingOut<>(this, region, this::interlocked);
-    }
-
-    /**
-     * It moving only while a condition holds, enforced beneath every command: {@code
-     * .runsOnlyWhen(PIVOT.atLeast(Degrees.of(110)))}. Meanwhile it holds where it is, or stops.
-     */
-    public Revolute runsOnlyWhen(Condition condition) {
-      return interlocked(Interlock.that(this).runsOnlyWhen(condition));
-    }
-
-    private Revolute interlocked(Interlock interlock) {
-      List<Interlock> interlocks = new ArrayList<>(driven.interlocks());
-      interlocks.add(interlock);
-      return driven(drivenWith().interlocks(interlocks));
-    }
-
-    @Override
-    public Revolute control(MechanismControl control) {
-      onceControl(this);
-      return driven(drivenWith().control(control));
-    }
-
-    @Override
-    public Revolute retuned(UnaryOperator<MechanismControl> change) {
-      return driven(drivenWith().control(change.apply(controlOf(this))));
-    }
-
-    /** The same joint, driven otherwise. */
     public Revolute driven(Driven driven) {
       return with().driven(driven).build();
+    }
+
+    @Override
+    public Revolute withRest(double rest) {
+      return with().rest(rest).build();
+    }
+
+    @Override
+    public Revolute withLink(Link link) {
+      return with().link(link).build();
+    }
+
+    @Override
+    public Revolute withPositions(List<Position> positions, List<Position> former) {
+      return with().positions(positions).formerPositions(former).build();
+    }
+
+    @Override
+    public Revolute withOutputs(List<Output> outputs, List<Output> former) {
+      return with().outputs(outputs).formerOutputs(former).build();
     }
 
     private JointRevoluteBuilder with() {
@@ -1181,17 +1225,6 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
 
     private DrivenBuilder drivenWith() {
       return DrivenBuilder.builder(driven);
-    }
-
-    private Revolute limit(
-        Sensor.Switch.Limit.End end,
-        Optional<Double> at,
-        Optional<SensorWiring.Connection> wiring) {
-      return driven(drivenWith().limitSwitches(switchAdded(this, end, at, wiring)));
-    }
-
-    private Revolute driven(DrivenBuilder driven) {
-      return driven(driven.build());
     }
   }
 
@@ -1231,7 +1264,7 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
       @RecordBuilder.Initializer(value = "of", source = List.class) List<Position> formerPositions,
       @RecordBuilder.Initializer(value = "of", source = List.class) List<Output> formerOutputs,
       @RecordBuilder.Initializer(value = "NONE", source = Driven.class) Driven driven)
-      implements Joint {
+      implements Block<Prismatic, Distance, LinearVelocity> {
     public Prismatic {
       positions = List.copyOf(positions);
       outputs = List.copyOf(outputs);
@@ -1272,201 +1305,13 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
     }
 
     @Override
-    public List<Drive> ownDrives() {
-      return drives(
-          this,
-          motors ->
-              Transmission.Drum.builder()
-                  .joint(this)
-                  .gearing(motors.gearing())
-                  .pitchRadius(motors.pitchRadius().orElseThrow())
-                  .build());
-    }
-
-    /**
-     * Equal to another joint the same in everything but how it's driven ({@link #driven}), where
-     * its hard stops are, where it rests, and where its named places are: its positions and outputs
-     * are the same names, their values each robot's own ({@code replaced}), and it has stops or
-     * none, and rests, each robot's own ({@code range(range)}, {@code rest(...)}).
-     */
-    @Override
     public boolean equals(@Nullable Object other) {
-      return other instanceof Prismatic joint
-          && label.equals(joint.label)
-          && parent.equals(joint.parent)
-          && origin.equals(joint.origin)
-          && axis.equals(joint.axis)
-          && range.isPresent() == joint.range.isPresent()
-          && link.equals(joint.link)
-          && names(positions, List.of()).equals(names(joint.positions, List.of()))
-          && names(List.of(), outputs).equals(names(List.of(), joint.outputs));
+      return sameJoint(this, other);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(
-          label,
-          parent,
-          origin,
-          axis,
-          range.isPresent(),
-          link,
-          names(positions, List.of()),
-          names(List.of(), outputs));
-    }
-
-    /**
-     * Its hard stops: {@code .range(Range.meters(0, 1.2))}. On a finished joint, its stops
-     * elsewhere, where it rests kept: a practice robot's, {@code ELEVATOR.range(Range.meters(0,
-     * 1.1))}. Every check of the robot runs on them, as it's built: where it rests, its positions,
-     * its soft limits, its interlocks' edges and regions inside them. So its places re-placed
-     * ({@code replaced}) may come before or after.
-     */
-    public Prismatic range(Range range) {
-      return with().range(range).build();
-    }
-
-    /**
-     * Where it rests as the robot starts: {@code .rest(Inches.of(1))}. Without one, it rests at its
-     * zero, which must then be inside its stops. On a finished joint, it rests elsewhere, its stops
-     * kept: a practice robot's elevator, resting on a spacer. It must be inside its stops, and
-     * every check of the robot runs on it as it's built.
-     */
-    public Prismatic rest(Distance rest) {
-      return with().rest(rest.in(Meters)).build();
-    }
-
-    /**
-     * Where it rests as the robot starts, at one of its positions, as a revolute joint's ({@code
-     * Revolute.rest(Position)}).
-     *
-     * @throws IllegalArgumentException if the position isn't its own, or isn't a length
-     */
-    public Prismatic rest(Position rest) {
-      return with().rest(restAt(this, rest)).build();
-    }
-
-    /**
-     * It at a distance or beyond it: what an interlock's edge usually is, a clearance rather than a
-     * place it goes, and the same wherever it rests: {@code ELEVATOR.atLeast(Inches.of(32))}.
-     *
-     * @throws IllegalArgumentException if it's outside its range, or its lower end
-     */
-    public Condition.AtLeast atLeast(Distance position) {
-      return ConditionAtLeastBuilder.builder().joint(this).position(position.in(Meters)).build();
-    }
-
-    /**
-     * It at a distance or short of it, as {@link #atLeast(Distance)} the other way: {@code
-     * ELEVATOR.atMost(Inches.of(32))}.
-     *
-     * @throws IllegalArgumentException if it's outside its range, or its upper end
-     */
-    public Condition.AtMost atMost(Distance position) {
-      return ConditionAtMostBuilder.builder().joint(this).position(position.in(Meters)).build();
-    }
-
-    /**
-     * It between two distances, both included, whichever way round they're given.
-     *
-     * @throws IllegalArgumentException if either is outside its range, or they're one
-     */
-    public Condition.Between between(Distance from, Distance to) {
-      return ConditionBetweenBuilder.builder()
-          .joint(this)
-          .from(from.in(Meters))
-          .to(to.in(Meters))
-          .build();
-    }
-
-    /**
-     * It running at least a speed, forward: {@code LIFT.upToSpeed(MetersPerSecond.of(0.5))}.
-     *
-     * @throws IllegalArgumentException for a speed that isn't forward
-     */
-    public Condition.UpToSpeed upToSpeed(LinearVelocity speed) {
-      return ConditionUpToSpeedBuilder.builder()
-          .joint(this)
-          .speed(speed.in(MetersPerSecond))
-          .build();
-    }
-
-    /** What it moves. */
-    public Prismatic carries(Link link) {
-      onceLink(this);
-      return with().link(link).build();
-    }
-
-    /** Its places by name: {@code .positions(ELEVATOR_DOWN, ELEVATOR_CLEAR)}. */
-    public Prismatic positions(Position... positions) {
-      oncePositions(this);
-      return with().positions(List.of(positions)).build();
-    }
-
-    /** What it runs at, by name. */
-    public Prismatic outputs(Output... outputs) {
-      onceOutputs(this);
-      return with().outputs(List.of(outputs)).build();
-    }
-
-    /**
-     * The same joint, one of its named positions at another distance, its name kept: a practice
-     * robot's, {@code ELEVATOR.replaced(L1, Meters.of(0.5))}. Code naming it, {@code
-     * elevator.goTo(L1)}, a configuration or an interlock, finds it there on the robot that has
-     * this joint, so the same code drives each robot to its own. It must be inside the joint's
-     * stops, as the robot that has it checks.
-     *
-     * @throws IllegalArgumentException if it has no position of the name, or the one named isn't
-     *     its own: another joint's of the name, elsewhere
-     */
-    public Prismatic replaced(Position position, Distance at) {
-      return placed(position, Position.of(position.name(), at));
-    }
-
-    /**
-     * The same joint, one of its named outputs at another speed, its name kept.
-     *
-     * @throws IllegalArgumentException if it has no output of the name
-     */
-    public Prismatic replaced(Output output, LinearVelocity speed) {
-      return valued(output, Output.of(output.name(), speed));
-    }
-
-    /**
-     * The same joint, one of its named outputs at another voltage, its name kept.
-     *
-     * @throws IllegalArgumentException if it has no output of the name
-     */
-    public Prismatic replaced(Output output, Voltage voltage) {
-      return valued(output, Output.of(output.name(), voltage));
-    }
-
-    /**
-     * The same joint, one of its named outputs at another share of the battery, its name kept.
-     *
-     * @throws IllegalArgumentException if it has no output of the name
-     */
-    public Prismatic replaced(Output output, Dimensionless share) {
-      return valued(output, Output.dutyCycle(output.name(), share.in(Value)));
-    }
-
-    /**
-     * The same joint, its own position of a name elsewhere, where it was among its former ones. The
-     * position named is its own ({@link #own(Position)}), as anywhere a place is named.
-     */
-    private Prismatic placed(Position position, Position replacing) {
-      return with()
-          .positions(replacedPosition(this, replacing))
-          .formerPositions(former(formerPositions, own(position), replacing))
-          .build();
-    }
-
-    /** The same joint, its own output of a name otherwise, what it was among its former ones. */
-    private Prismatic valued(Output output, Output replacing) {
-      return with()
-          .outputs(replacedOutput(this, replacing))
-          .formerOutputs(former(formerOutputs, own(output), replacing))
-          .build();
+      return identityHash(this);
     }
 
     /**
@@ -1489,8 +1334,7 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
       onceMotors(this);
       return driven(
           drivenWith()
-              .motors(
-                  Optional.of(turning(motor, count, gearing, Optional.of(pitchRadius), List.of())))
+              .motors(turning(motor, count, gearing, Optional.of(pitchRadius), List.of()))
               .build());
     }
 
@@ -1501,228 +1345,43 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
       return driven(
           drivenWith()
               .motors(
-                  Optional.of(
-                      turning(
-                          motor,
-                          controllers.length,
-                          gearing,
-                          Optional.of(pitchRadius),
-                          List.of(controllers))))
+                  turning(
+                      motor,
+                      controllers.length,
+                      gearing,
+                      Optional.of(pitchRadius),
+                      List.of(controllers)))
               .build());
     }
 
     @Override
-    public Prismatic motorsOn(MechanismWiring.Device... controllers) {
-      return driven(drivenWith().motors(rewired(this, controllers)).build());
-    }
-
-    /**
-     * The same joint, its motors through another gearing onto the same drum, their controllers as
-     * they are.
-     *
-     * @throws IllegalArgumentException if no motors drive it
-     */
-    public Prismatic gearing(Gearing gearing) {
-      return driven(drivenWith().motors(regeared(this, gearing)).build());
-    }
-
-    /**
-     * A servo pushing between its parent and its link, under its own label.
-     *
-     * @param onParent where its body is fixed, from the slide's start, in the parent's frame
-     * @param onLink where its rod meets the link, in the joint's frame
-     */
-    public Prismatic servo(
-        String label, Actuator.Servo servo, Translation3d onParent, Translation3d onLink) {
-      List<Driven.Servo> servos = new ArrayList<>(driven.servos());
-      servos.add(
-          DrivenServoBuilder.builder()
-              .label(label)
-              .servo(servo)
-              .onParent(onParent)
-              .onLink(onLink)
-              .build());
-      return driven(drivenWith().servos(servos).build());
-    }
-
-    /** An absolute encoder on its drum's shaft, in the simulator alone until it's wired. */
-    public Prismatic absoluteEncoder() {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of());
-    }
-
-    /**
-     * An absolute encoder on its drum's shaft, read by a CANcoder through its TalonFX. One turn of
-     * it must cover the joint's travel, which a drum's seldom does: one geared down from the drum
-     * is written in full ({@link #absoluteEncoder(Driven.AbsoluteEncoder)}).
-     */
-    public Prismatic absoluteEncoder(MechanismWiring.Cancoder cancoder) {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(cancoder));
-    }
-
-    /**
-     * An absolute encoder on its drum's shaft, on its SPARK's data port: with {@code closesLoop()}
-     * on it, the SPARK's loop closing on it.
-     */
-    public Prismatic absoluteEncoder(MechanismWiring.DataPortEncoder dataPort) {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(dataPort));
-    }
-
-    /**
-     * An absolute encoder on its drum's shaft, on one of Systemcore's ports, read by the robot: a
-     * ten-turn potentiometer, {@code .absoluteEncoder(PortEncoder.analog(2, 10))}, and with {@code
-     * .closesLoop()} after it, the joint's loop closing on it.
-     */
-    public Prismatic absoluteEncoder(MechanismWiring.PortEncoder port) {
-      return absoluteEncoder(Driven.AbsoluteEncoder.of().on(port));
-    }
-
-    /**
-     * An absolute encoder as written in full, geared to its drum: {@code
-     * .absoluteEncoder(AbsoluteEncoder.of().ratio(1.0 / 12).on(cancoder))}, turning once for twelve
-     * turns of the drum. Its ratio is its turns for each of the drum's, the one its motors' pitch
-     * radius names, so one of its turns covers the joint's whole travel, which the robot's
-     * definition checks. A joint has one: a second is refused.
-     */
-    public Prismatic absoluteEncoder(Driven.AbsoluteEncoder encoder) {
-      onceEncoder(this);
-      return driven(drivenWith().absoluteEncoder(encoder).build());
-    }
-
-    /**
-     * The same joint, its absolute encoder read by another CANcoder, its ratio kept, and how its
-     * loop reads it, fused, remote or synced, unless the CANcoder says its own: a practice robot's,
-     * {@code ELEVATOR.encoderOn(CANCODER.can(25).offset(Rotations.of(0.11)))}.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder
-     */
-    public Prismatic encoderOn(MechanismWiring.Cancoder cancoder) {
-      return encoderRewired(encoder(this).on(loopKept(this, cancoder)));
-    }
-
-    /**
-     * The same joint, its absolute encoder on its SPARK's data port, its ratio kept, and its loop
-     * closed on it if it was closed on the data port before.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder
-     */
-    public Prismatic encoderOn(MechanismWiring.DataPortEncoder dataPort) {
-      return encoderRewired(encoder(this).on(loopKept(this, dataPort)));
-    }
-
-    /**
-     * The same joint, its absolute encoder on one of Systemcore's ports, its ratio kept, and its
-     * loop closed on it if it was closed on a port before.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder
-     */
-    public Prismatic encoderOn(MechanismWiring.PortEncoder port) {
-      return encoderRewired(encoder(this).on(loopKept(this, port)));
-    }
-
-    /**
-     * The same joint, its absolute encoder offset otherwise, the rest of it and its wiring kept: a
-     * practice robot's, {@code ELEVATOR.encoderOffset(Rotations.of(0.47))}, on the CANcoder, data
-     * port or Systemcore port the robot's own block reads it on.
-     *
-     * @throws IllegalArgumentException if it has no absolute encoder, or one that isn't wired
-     */
-    public Prismatic encoderOffset(Angle offset) {
-      return encoderRewired(offset(this, offset));
-    }
-
-    private Prismatic encoderRewired(Driven.AbsoluteEncoder encoder) {
-      return driven(drivenWith().absoluteEncoder(encoder).build());
-    }
-
-    /**
-     * A limit switch at an end, tripping at a distance, in the simulator alone until it's wired.
-     */
-    public Prismatic limitSwitch(Sensor.Switch.Limit.End end, Distance at) {
-      return limit(end, Optional.of(at.in(Meters)), Optional.empty());
-    }
-
-    /**
-     * A limit switch at an end whose position isn't known: it stops the joint, but can't home it.
-     * In the simulator alone until it's wired.
-     */
-    public Prismatic limitSwitch(Sensor.Switch.Limit.End end) {
-      return limit(end, Optional.empty(), Optional.empty());
-    }
-
-    /** A limit switch at an end whose position isn't known, on an input. */
-    public Prismatic limitSwitch(Sensor.Switch.Limit.End end, SensorWiring.Connection connection) {
-      return limit(end, Optional.empty(), Optional.of(connection));
-    }
-
-    /**
-     * A limit switch at an end whose position isn't known, on its own motor controller's limit pin.
-     */
-    public Prismatic limitSwitch(Sensor.Switch.Limit.End end, SensorWiring.Pin pin) {
-      return limitSwitch(end, pin.of(this));
-    }
-
-    /**
-     * A limit switch at an end, tripping at a distance, on an input: {@code .limitSwitch(End.LOWER,
-     * Inches.of(0), CANDI.can(30).s1().normallyClosed())}.
-     */
-    public Prismatic limitSwitch(
-        Sensor.Switch.Limit.End end, Distance at, SensorWiring.Connection connection) {
-      return limit(end, Optional.of(at.in(Meters)), Optional.of(connection));
-    }
-
-    /** A limit switch at an end, tripping at a distance, on its own motor controller's pin. */
-    public Prismatic limitSwitch(Sensor.Switch.Limit.End end, Distance at, SensorWiring.Pin pin) {
-      return limitSwitch(end, at, pin.of(this));
+    public Prismatic range(Range range) {
+      return with().range(range).build();
     }
 
     @Override
-    public Prismatic limitSwitchOn(
-        Sensor.Switch.Limit.End end, SensorWiring.Connection connection) {
-      return driven(drivenWith().limitSwitches(switchRewired(this, end, connection)).build());
-    }
-
-    @Override
-    public Prismatic limitSwitchOn(Sensor.Switch.Limit.End end, SensorWiring.Pin pin) {
-      return limitSwitchOn(end, pin.of(this));
-    }
-
-    /**
-     * It kept out of a stretch of its travel while a condition holds, enforced beneath every
-     * command: {@code .keepsOut(Range.meters(0, 0.25)).when(INTAKE.atMost(Degrees.of(30)))}. Its
-     * target is held at the stretch's edge, on the side it's on, until the condition clears.
-     */
-    public KeepingOut<Prismatic> keepsOut(Range region) {
-      return new KeepingOut<>(this, region, this::interlocked);
-    }
-
-    /**
-     * It moving only while a condition holds, enforced beneath every command: {@code
-     * .runsOnlyWhen(CLIMBER.atMost(Degrees.of(-75)))}. Meanwhile it holds where it is, or stops.
-     */
-    public Prismatic runsOnlyWhen(Condition condition) {
-      return interlocked(Interlock.that(this).runsOnlyWhen(condition));
-    }
-
-    private Prismatic interlocked(Interlock interlock) {
-      List<Interlock> interlocks = new ArrayList<>(driven.interlocks());
-      interlocks.add(interlock);
-      return driven(drivenWith().interlocks(interlocks).build());
-    }
-
-    @Override
-    public Prismatic control(MechanismControl control) {
-      onceControl(this);
-      return driven(drivenWith().control(control).build());
-    }
-
-    @Override
-    public Prismatic retuned(UnaryOperator<MechanismControl> change) {
-      return driven(drivenWith().control(change.apply(controlOf(this))).build());
-    }
-
-    /** The same joint, driven otherwise. */
     public Prismatic driven(Driven driven) {
       return with().driven(driven).build();
+    }
+
+    @Override
+    public Prismatic withRest(double rest) {
+      return with().rest(rest).build();
+    }
+
+    @Override
+    public Prismatic withLink(Link link) {
+      return with().link(link).build();
+    }
+
+    @Override
+    public Prismatic withPositions(List<Position> positions, List<Position> former) {
+      return with().positions(positions).formerPositions(former).build();
+    }
+
+    @Override
+    public Prismatic withOutputs(List<Output> outputs, List<Output> former) {
+      return with().outputs(outputs).formerOutputs(former).build();
     }
 
     private JointPrismaticBuilder with() {
@@ -1732,13 +1391,52 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
     private DrivenBuilder drivenWith() {
       return DrivenBuilder.builder(driven);
     }
+  }
 
-    private Prismatic limit(
-        Sensor.Switch.Limit.End end,
-        Optional<Double> at,
-        Optional<SensorWiring.Connection> wiring) {
-      return driven(drivenWith().limitSwitches(switchAdded(this, end, at, wiring)).build());
-    }
+  /**
+   * Whether a joint and another object are the same joint. Two joints are the same when they are of
+   * one kind and agree on everything but how they are driven, where their stops are, where they
+   * rest, and where their named places are. A practice robot's joint is therefore equal to the
+   * competition robot's, and stands in its place.
+   */
+  private static boolean sameJoint(Joint joint, @Nullable Object other) {
+    return other instanceof Joint that
+        && joint.getClass() == that.getClass()
+        && joint.label().equals(that.label())
+        && joint.parent().equals(that.parent())
+        && joint.origin().equals(that.origin())
+        && joint.axis().equals(that.axis())
+        && joint.range().isPresent() == that.range().isPresent()
+        && joint.link().equals(that.link())
+        && names(joint.positions(), List.of()).equals(names(that.positions(), List.of()))
+        && names(List.of(), joint.outputs()).equals(names(List.of(), that.outputs()));
+  }
+
+  /** A hash of what makes two joints the same ({@link #sameJoint}). */
+  private static int identityHash(Joint joint) {
+    return Objects.hash(
+        joint.label(),
+        joint.parent(),
+        joint.origin(),
+        joint.axis(),
+        joint.range().isPresent(),
+        joint.link(),
+        names(joint.positions(), List.of()),
+        names(List.of(), joint.outputs()));
+  }
+
+  /**
+   * A measure of a joint's position or speed as the model keeps it: radians, meters, radians per
+   * second or meters per second. A block's type parameters let nothing else reach this.
+   */
+  private static double inJointUnits(Measure<?> measure) {
+    return switch (measure) {
+      case Angle angle -> angle.in(Radians);
+      case Distance distance -> distance.in(Meters);
+      case AngularVelocity turning -> turning.in(RadiansPerSecond);
+      case LinearVelocity sliding -> sliding.in(MetersPerSecond);
+      default -> throw new IllegalArgumentException(measure + " is not a position or a speed");
+    };
   }
 
   /**
@@ -2102,49 +1800,6 @@ public sealed interface Joint extends Part permits Joint.Revolute, Joint.Prismat
         .controllers(controllers)
         .pitchRadius(pitchRadius)
         .build();
-  }
-
-  /**
-   * A joint's own drives: its motors, under its label, through the transmission its kind gives
-   * them; and each servo, between its parent and its link, under its own label.
-   */
-  private static List<Drive> drives(
-      Joint joint, java.util.function.Function<Driven.Motors, Transmission> through) {
-    List<Drive> drives = new ArrayList<>();
-    joint
-        .driven()
-        .motors()
-        .ifPresent(
-            motors ->
-                drives.add(
-                    Drive.builder()
-                        .label(joint.label())
-                        .actuator(
-                            Actuator.Motors.builder()
-                                .motor(motors.motor())
-                                .count(motors.count())
-                                .build())
-                        .transmission(through.apply(motors))
-                        .build()));
-    Transform3d origin = joint.origin();
-    for (Driven.Servo servo : joint.driven().servos()) {
-      drives.add(
-          Drive.builder()
-              .label(servo.label())
-              .actuator(servo.servo())
-              .transmission(
-                  Transmission.Between.builder()
-                      .a(joint.parent())
-                      .onA(
-                          origin
-                              .getTranslation()
-                              .plus(servo.onParent().rotateBy(origin.getRotation())))
-                      .b(joint)
-                      .onB(servo.onLink())
-                      .build())
-              .build());
-    }
-    return drives;
   }
 
   /**
