@@ -8,6 +8,10 @@ updates:
       interval: weekly
     ignore:
       - dependency-name: "org.wpilib*"
+      # What WPILib's libraries are built on, kept at the versions WPILib's release uses.
+      - dependency-name: "io.avaje:avaje-jsonb"
+      - dependency-name: "org.ejml:ejml-simple"
+      - dependency-name: "us.hebi.quickbuf:quickbuf-runtime"
       - dependency-name: "gradle-wrapper"
   - package-ecosystem: github-actions
     directory: /
