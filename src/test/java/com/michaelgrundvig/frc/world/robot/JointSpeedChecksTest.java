@@ -9,7 +9,6 @@ import static org.wpilib.units.Units.RadiansPerSecond;
 import com.michaelgrundvig.frc.world.config.Finding;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -35,27 +34,27 @@ class JointSpeedChecksTest {
   /** The standard robot's pivot and a roller with one output, on the roller's usual motor. */
   private static RobotMath rollerWith(Output output) {
     Joint.Revolute roller = named(ROLLER, List.of(), List.of(output));
-    return Objects.requireNonNull(
-        RobotMath.whole(
+    return RobotMath.whole(
             ConfigFixtures.body(),
             List.of(PIVOT, roller),
             List.of(),
             List.of(
                 DRIVES.get(0),
                 MechanismFixtures.motors(roller, Motor.KRAKEN_X60, 1, gearing(3, 1))),
-            List.of()));
+            List.of())
+        .orElseThrow();
   }
 
   /** The same roller with nothing to turn it. */
   private static RobotMath rollerWithNoMotor(Output output) {
     Joint.Revolute roller = named(ROLLER, List.of(), List.of(output));
-    return Objects.requireNonNull(
-        RobotMath.whole(
+    return RobotMath.whole(
             ConfigFixtures.body(),
             List.of(PIVOT, roller),
             List.of(),
             List.of(DRIVES.get(0)),
-            List.of()));
+            List.of())
+        .orElseThrow();
   }
 
   private static Output speed(double radiansPerSecond) {

@@ -109,7 +109,7 @@ public record RobotDefinition(
     List<Sensor> everySensor = everySensor(joints, sensors);
     List<Interlock> everyInterlock = everyInterlock(joints, interlocks);
     List<CanDevice> everyDevice = everyDevice(pdh, joints, drivetrain, everySensor);
-    RobotMath whole = RobotMath.whole(body, joints, couplings, everyDrive, everySensor);
+    Optional<RobotMath> whole = RobotMath.whole(body, joints, couplings, everyDrive, everySensor);
     Checks.on(RobotDefinition.class, name)
         .field("name", name, notBlank())
         .field("cameras", cameras, RobotDefinition::sharedNames)
@@ -125,18 +125,21 @@ public record RobotDefinition(
             () ->
                 RobotMath.problems(
                     name, body, allJoints, allCouplings, everyDrive, everySensor, allCameras))
-        .findings("joints", () -> whole == null ? List.of() : Blocks.problems(whole))
+        .findings("joints", () -> whole.map(Blocks::problems).orElse(List.of()))
         .findings("sensors", () -> Inputs.problems(allJoints, everySensor))
         .findings(
             "configurations",
             () ->
-                whole == null
-                    ? List.of()
-                    : ConfigurationChecks.problems(whole, allConfigurations, everyInterlock))
+                whole
+                    .map(
+                        math ->
+                            ConfigurationChecks.problems(math, allConfigurations, everyInterlock))
+                    .orElse(List.of()))
         .findings("interlocks", () -> twice(everyInterlock))
         .findings(
             "interlocks",
-            () -> whole == null ? List.of() : InterlockChecks.problems(whole, everyInterlock))
+            () ->
+                whole.map(math -> InterlockChecks.problems(math, everyInterlock)).orElse(List.of()))
         .findings("devices", () -> CanDevice.sharedIds(everyDevice))
         .findings("pdh", () -> Pdh.problems(pdh, everyDevice))
         .orThrow();

@@ -1,45 +1,42 @@
 package com.michaelgrundvig.frc.world.robot;
 
-import static com.michaelgrundvig.frc.world.config.Rules.possessive;
-import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Kilograms;
 import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.config.Finding;
-import com.michaelgrundvig.frc.world.config.Rules;
 import com.michaelgrundvig.frc.world.physical.MassProperties;
 import com.michaelgrundvig.frc.world.physical.Shape;
 import com.michaelgrundvig.frc.world.physical.Vector3;
-import java.math.BigDecimal;
-import java.math.MathContext;
-import java.math.RoundingMode;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
-import org.wpilib.math.system.DCMotor;
 
 /**
- * What a robot's mechanisms derive from their definition: the numbers robot code needs to drive
- * them (Phoenix's ratios, an absolute encoder's discontinuity, the ideal gains that seed tuning)
- * and the geometry it checks against (where each link is, how far the robot reaches, what gravity
- * does at each joint). Each is a pure function of the definition and the joints' positions, as
- * {@code DrivetrainGeometry.Modules.idealDriveKv()} is for the drive.
+ * What can be worked out about a robot's mechanisms from their definition. There are two kinds of
+ * answer. One is the numbers that robot code needs to drive a joint: Phoenix's ratios, where an
+ * absolute encoder's reading should wrap, and the ideal gains that seed tuning. The other is the
+ * geometry that the definition is checked against: where each link is, how far the robot reaches,
+ * and what gravity does at each joint. Every answer is a function of the definition and of the
+ * joints' positions alone.
  *
- * <p>Positions are by joint, in its own units, radians or meters; a joint not given sits where it
- * rests, and a coupled joint follows its leader whatever it's given. Gravity is along the robot's
- * -z: the robot level.
+ * <p>Positions are given by joint, in the joint's own units, radians or meters. A joint that is not
+ * given is where it rests. A joint that follows another through a coupling is wherever its leader
+ * puts it, so a position cannot be given for it. Gravity pulls along the robot's -z: the robot is
+ * taken to be level.
  *
- * <p>The ideal gains are never the gains: they seed a mechanism's feedforward and Phoenix's slots
- * until SysId measures the real ones, and they're what SysId's results are compared with.
+ * <p>The ideal gains are never the gains. They seed a mechanism's feedforward and Phoenix's slots
+ * until SysId measures the real ones, and they are what SysId's results are compared with.
+ *
+ * <p>This type is the way in, and says what each answer means. The working is in the types it hands
+ * to: {@link JointTree} for where the joints are and how they move together, {@link JointLoads} for
+ * gravity, inertia and the gains, and {@link AbsoluteEncoders} for what absolute encoders tell
+ * apart. The definition's checks of the parts together are in {@link AssemblyChecks}.
  */
 public final class RobotMath {
   /** Standard gravity, in m/s². */
@@ -60,6 +57,12 @@ public final class RobotMath {
    * included ({@link #wrapMargin}).
    */
   public static final double WRAP_MARGIN = 1.0 / 40;
+
+  /**
+   * How near vertical, or how near level, a joint's axis must be to count as vertical or level:
+   * within this of 1 or of 0, as the share of the axis that points up.
+   */
+  private static final double AXIS_TOLERANCE = 1e-9;
 
   /**
    * A joint's ideal feedforward gains: what its motors would need with nothing lost but what the
@@ -95,18 +98,11 @@ public final class RobotMath {
    */
   public record GravityFit(double offset, double peak, double misfit, double worstAt) {}
 
-  /** How many steps across a joint's range the cosine is checked at. */
-  private static final int FIT_STEPS = 360;
-
   private final Body body;
-  private final List<Joint> joints;
-  private final List<Coupling> couplings;
   private final List<Drive> drives;
   private final List<Sensor> sensors;
-  private final Map<Joint, Integer> index = new HashMap<>();
-  private final int[] parent;
-  private final int[] leader;
-  private final @Nullable Coupling[] coupling;
+  private final JointTree tree;
+  private final JointLoads loads;
 
   private RobotMath(
       Body body,
@@ -115,26 +111,10 @@ public final class RobotMath {
       List<Drive> drives,
       List<Sensor> sensors) {
     this.body = body;
-    this.joints = List.copyOf(joints);
-    this.couplings = List.copyOf(couplings);
     this.drives = List.copyOf(drives);
     this.sensors = List.copyOf(sensors);
-    for (int i = 0; i < this.joints.size(); i++) {
-      index.put(this.joints.get(i), i);
-    }
-    int n = this.joints.size();
-    parent = new int[n];
-    leader = new int[n];
-    coupling = new Coupling[n];
-    for (int i = 0; i < n; i++) {
-      parent[i] = this.joints.get(i).parent() instanceof Joint up ? indexOf(up) : -1;
-      leader[i] = -1;
-    }
-    for (Coupling each : this.couplings) {
-      int follower = indexOf(each.follower());
-      leader[follower] = indexOf(each.leader());
-      coupling[follower] = each;
-    }
+    tree = new JointTree(joints, couplings);
+    loads = new JointLoads(tree, drives);
   }
 
   /**
@@ -150,7 +130,7 @@ public final class RobotMath {
       List<Coupling> couplings,
       List<Drive> drives,
       List<Sensor> sensors) {
-    List<String> problems = structure(joints, couplings, drives, sensors, List.of());
+    List<String> problems = StructureChecks.problems(joints, couplings, drives, sensors, List.of());
     if (!problems.isEmpty()) {
       throw new IllegalArgumentException(String.join("; ", problems));
     }
@@ -158,28 +138,45 @@ public final class RobotMath {
   }
 
   /**
-   * A robot's mechanisms, or null when its parts don't make them: what the definition's checks
-   * across its named places read, once its parts' own checks have said what's wrong.
+   * A robot's mechanisms, if its parts make them. The definition's checks across its named places
+   * read this once the parts' own checks have said what is wrong with them, and skip those checks
+   * when the parts do not make mechanisms at all.
    */
-  static @Nullable RobotMath whole(
+  static Optional<RobotMath> whole(
       Body body,
       List<Joint> joints,
       List<Coupling> couplings,
       List<Drive> drives,
       List<Sensor> sensors) {
-    return structure(joints, couplings, drives, sensors, List.of()).isEmpty()
-        ? new RobotMath(body, joints, couplings, drives, sensors)
-        : null;
+    boolean sound =
+        StructureChecks.problems(joints, couplings, drives, sensors, List.of()).isEmpty();
+    if (!sound) {
+      return Optional.empty();
+    }
+    return Optional.of(new RobotMath(body, joints, couplings, drives, sensors));
+  }
+
+  /**
+   * A robot's mechanisms, from parts that {@link StructureChecks} has already found sound, so that
+   * they are not checked a second time.
+   */
+  static RobotMath ofSoundParts(
+      Body body,
+      List<Joint> joints,
+      List<Coupling> couplings,
+      List<Drive> drives,
+      List<Sensor> sensors) {
+    return new RobotMath(body, joints, couplings, drives, sensors);
   }
 
   /** The joints, in the order the definition lists them. */
   public List<Joint> joints() {
-    return joints;
+    return tree.joints();
   }
 
   /** Whether a joint is one of the robot's. */
   boolean has(Joint joint) {
-    return index.containsKey(joint);
+    return tree.has(joint);
   }
 
   /**
@@ -188,14 +185,13 @@ public final class RobotMath {
    * @throws IllegalArgumentException for a joint that isn't the robot's
    */
   public @Nullable Joint leaderOf(Joint joint) {
-    int i = indexOf(joint);
-    return leader[i] < 0 ? null : joints.get(leader[i]);
+    return tree.leaderOf(joint).orElse(null);
   }
 
   /**
-   * Whether a joint is turned by motors alone: one drive of motors, turning a shaft, and no other,
-   * and it follows no joint. What its homing, a loop on its encoder, and the program's mechanism
-   * for it are worked out for.
+   * Whether a joint is turned by motors alone: it follows no other joint, and exactly one drive of
+   * motors turns it. Its homing, a control loop that runs on its encoder, and the program's
+   * mechanism for it are all worked out for a joint like this.
    *
    * @throws IllegalArgumentException for a joint that isn't the robot's
    */
@@ -203,10 +199,9 @@ public final class RobotMath {
     if (leaderOf(joint) != null) {
       return false;
     }
-    List<Drive> drives = drivesOf(joint);
-    return drives.size() == 1
-        && drives.get(0).actuator() instanceof Actuator.Motors
-        && !(drives.get(0).transmission() instanceof Transmission.Between);
+    // The drives that move a joint are only ever motors turning a shaft ({@link #drivesOf}), so
+    // counting them is the whole question.
+    return drivesOf(joint).size() == 1;
   }
 
   /** The drives. */
@@ -220,23 +215,22 @@ public final class RobotMath {
   }
 
   /**
-   * The absolute encoder on a joint alone, its block's or one of the robot's, or null when it has
-   * none: what tells the joint where it is at power on.
+   * The absolute encoder that reads a joint and nothing else, or null when the joint has none. It
+   * may be written in the joint's block or listed among the robot's sensors. It is what tells the
+   * joint where it is at power on. When there are several, this is the first listed.
    */
   public Sensor.@Nullable Encoder absoluteEncoder(Joint joint) {
-    for (Sensor sensor : sensors) {
-      if (sensor instanceof Sensor.Encoder encoder
-          && encoder.absolute()
-          && encoder.joints().equals(List.of(joint))) {
-        return encoder;
-      }
+    List<Sensor.Encoder> found = AbsoluteEncoders.readingOnly(joint, sensors);
+    if (found.isEmpty()) {
+      return null;
     }
-    return null;
+    return found.get(0);
   }
 
   /**
-   * A joint's limit switch at one end, its block's or one of the robot's, or null when it has none
-   * there: what homing to a switch drives the joint onto.
+   * A joint's limit switch at one end of its travel, or null when it has none there. It may be
+   * written in the joint's block or listed among the robot's sensors. It is the switch that homing
+   * to a switch drives the joint onto.
    */
   public Sensor.@Nullable Switch limitSwitch(Joint joint, Sensor.Switch.Limit.End end) {
     for (Sensor sensor : sensors) {
@@ -251,16 +245,17 @@ public final class RobotMath {
   }
 
   /**
-   * Every joint that moves on its own where it rests: stowed, as the robot is weighed. The joints
-   * that follow others aren't in it, since their positions are their leaders' to give, so every
-   * method that takes positions takes it as it is; {@link #positions} with nothing given has them
-   * all, followers too.
+   * Every joint that moves on its own, where it rests: the robot stowed, as it is weighed. The
+   * joints that follow others are left out, because their positions are their leaders' to give.
+   * That makes this map something every method that takes positions accepts as it is. {@link
+   * #positions} with nothing given has every joint, followers included.
    */
   public Map<Joint, Double> rests() {
     Map<Joint, Double> rests = new LinkedHashMap<>();
-    for (int i = 0; i < joints.size(); i++) {
-      if (leader[i] < 0) {
-        rests.put(joints.get(i), joints.get(i).restPosition());
+    List<Joint> joints = tree.joints();
+    for (int number = 0; number < joints.size(); number++) {
+      if (!tree.follows(number)) {
+        rests.put(joints.get(number), joints.get(number).restPosition());
       }
     }
     return rests;
@@ -274,23 +269,26 @@ public final class RobotMath {
    *     another, whose position is its leader's to give
    */
   public Map<Joint, Double> positions(Map<Joint, Double> given) {
-    double[] q = resolve(given);
+    double[] byNumber = tree.positions(given);
     Map<Joint, Double> positions = new LinkedHashMap<>();
-    for (int i = 0; i < joints.size(); i++) {
-      positions.put(joints.get(i), q[i]);
+    List<Joint> joints = tree.joints();
+    for (int number = 0; number < joints.size(); number++) {
+      positions.put(joints.get(number), byNumber[number]);
     }
     return positions;
   }
 
   /**
-   * Where a part's frame is, in the robot's frame: the chassis's is the robot's own; a joint's is
-   * its parent's, moved by its origin and then by its position.
+   * Where a part's frame is, in the robot's frame. The chassis's frame is the robot's own. A
+   * joint's frame is its parent's, moved to where the joint is mounted and then by the joint's
+   * position.
    */
   public Pose3d pose(Part part, Map<Joint, Double> positions) {
     if (!(part instanceof Joint joint)) {
       return Pose3d.ZERO;
     }
-    return frames(resolve(positions))[indexOf(joint)];
+    Pose3d[] frames = tree.frames(tree.positions(positions));
+    return frames[tree.numberOf(joint)];
   }
 
   /**
@@ -298,20 +296,22 @@ public final class RobotMath {
    * where the joint's position puts it, or on the chassis.
    */
   public Pose3d cameraPose(CameraConfig camera, Map<Joint, Double> positions) {
-    Pose3d on = camera.joint().map(joint -> pose(joint, positions)).orElse(Pose3d.ZERO);
-    return on.transformBy(camera.robotToCamera());
+    Pose3d mountedOn = camera.joint().map(joint -> pose(joint, positions)).orElse(Pose3d.ZERO);
+    return mountedOn.transformBy(camera.robotToCamera());
   }
 
   /**
-   * Where a switch or a rangefinder is, in the robot's frame: on its part where its joint's
-   * position puts it, at its pose there, or the part's origin when that isn't known.
+   * Where a switch or a rangefinder is, in the robot's frame: at its pose on its part, with the
+   * part where its joint's position puts it. A sensor whose pose is not known is at its part's
+   * origin.
    */
   public Pose3d sensorPose(Sensor.Placed sensor, Map<Joint, Double> positions) {
-    Pose3d on = pose(sensor.part(), positions);
-    return sensor
-        .pose()
-        .map(where -> on.transformBy(new Transform3d(where.getTranslation(), where.getRotation())))
-        .orElse(on);
+    Pose3d mountedOn = pose(sensor.part(), positions);
+    if (sensor.pose().isEmpty()) {
+      return mountedOn;
+    }
+    Pose3d onPart = sensor.pose().get();
+    return mountedOn.transformBy(new Transform3d(onPart.getTranslation(), onPart.getRotation()));
   }
 
   /**
@@ -323,25 +323,24 @@ public final class RobotMath {
    */
   public MassProperties chassis() {
     MassProperties chassis = body.massProperties();
-    Pose3d[] frames = frames(resolve(Map.of()));
-    for (int i = 0; i < joints.size(); i++) {
-      chassis = chassis.minus(placed(i, frames));
+    Pose3d[] frames = tree.frames(tree.positions(Map.of()));
+    for (int number = 0; number < tree.size(); number++) {
+      chassis = chassis.minus(tree.linkInRobotFrame(number, frames));
     }
     return chassis;
   }
 
   /**
    * The torque (or force) a joint must make to hold still against gravity, at a set of positions:
-   * everything it carries, through the tree and every joint coupled to it. Positive pushes the
-   * joint forward. A nested joint's feedforward, which Phoenix's onboard gravity term can't give: a
-   * wrist's, as the arm under it turns.
+   * the weight of everything it carries, through the tree and through every joint coupled to it.
+   * Positive pushes the joint forward. This is the feedforward for a nested joint, such as a wrist
+   * whose arm turns under it, which Phoenix's onboard gravity term cannot give.
    *
    * @return newton meters for a revolute joint, newtons for a prismatic one
    */
   public double gravityTorque(Joint joint, Map<Joint, Double> positions) {
-    int j = independent(joint);
-    double[] q = resolve(positions);
-    return gravity(j, q, new Translation3d(0, 0, 1));
+    int number = tree.numberOfIndependent(joint);
+    return loads.gravity(number, tree.positions(positions));
   }
 
   /**
@@ -355,17 +354,21 @@ public final class RobotMath {
    * @throws IllegalArgumentException for a prismatic joint, which doesn't turn against gravity
    */
   public double gravityOffset(Joint joint) {
-    int j = independent(joint);
+    return loads.gravityOffset(numberOfJointThatTurns(joint));
+  }
+
+  /**
+   * The number of a joint that gravity can be a cosine for: one that moves on its own, and turns.
+   *
+   * @throws IllegalArgumentException for a joint that follows another, or one that slides
+   */
+  private int numberOfJointThatTurns(Joint joint) {
+    int number = tree.numberOfIndependent(joint);
     if (!(joint instanceof Joint.Revolute)) {
       throw new IllegalArgumentException(
           joint.label() + " slides: only a revolute joint turns against gravity");
     }
-    double atZero = levelGravity(j, 0);
-    double atQuarter = levelGravity(j, Math.PI / 2);
-    if (Math.hypot(atZero, atQuarter) < 1e-12) {
-      return 0;
-    }
-    return -Math.atan2(atQuarter, atZero);
+    return number;
   }
 
   /**
@@ -376,39 +379,30 @@ public final class RobotMath {
    * @throws IllegalArgumentException for a prismatic joint, or one that follows another
    */
   public GravityFit gravityFit(Joint joint) {
-    double offset = gravityOffset(joint);
-    int j = independent(joint);
-    double peak = Math.hypot(levelGravity(j, 0), levelGravity(j, Math.PI / 2));
+    int number = numberOfJointThatTurns(joint);
     double from = joint.range().map(Range::lower).orElse(joint.restPosition() - Math.PI);
     double to = joint.range().map(Range::upper).orElse(joint.restPosition() + Math.PI);
-    double widest = 0;
-    double worstAt = from;
-    for (int i = 0; i <= FIT_STEPS; i++) {
-      double angle = from + (to - from) * i / FIT_STEPS;
-      double gap = Math.abs(peak * Math.cos(angle + offset) - levelGravity(j, angle));
-      if (gap > widest) {
-        widest = gap;
-        worstAt = angle;
-      }
-    }
-    double misfit = widest == 0 ? 0 : peak > 0 ? widest / peak : Double.POSITIVE_INFINITY;
-    return new GravityFit(offset, peak, misfit, worstAt);
+    return loads.cosineFit(number, from, to);
   }
 
   /**
-   * Whether gravity can move a joint, whatever it carries: a revolute joint about an axis that
-   * isn't vertical, or a prismatic one along an axis that isn't level, with the joints where they
-   * rest. Not a turret or a spindexer, which turn about the vertical, nor a slide that runs level.
-   * It needs no mass: it's what a tuned kG may hold against.
+   * Whether gravity can move a joint, whatever it carries, with the joints where they rest. It can
+   * turn a revolute joint whose axis is not vertical, and slide a prismatic one whose axis is not
+   * level. It cannot move a turret or a spindexer, which turn about the vertical, or a slide that
+   * runs level. This needs no mass: it says what a tuned kG may hold against.
    */
   public boolean gravityActsOn(Joint joint) {
     Vector3 axis = joint.axis().unit();
-    double up =
-        Math.abs(
-            new Translation3d(axis.x(), axis.y(), axis.z())
-                .rotateBy(pose(joint, Map.of()).getRotation())
-                .getZ());
-    return joint instanceof Joint.Revolute ? up < 1 - 1e-9 : up > 1e-9;
+    Translation3d axisInRobotFrame =
+        new Translation3d(axis.x(), axis.y(), axis.z())
+            .rotateBy(pose(joint, Map.of()).getRotation());
+    double verticalShareOfAxis = Math.abs(axisInRobotFrame.getZ());
+    if (joint instanceof Joint.Revolute) {
+      boolean axisIsOffVertical = verticalShareOfAxis < 1 - AXIS_TOLERANCE;
+      return axisIsOffVertical;
+    }
+    boolean axisIsOffLevel = verticalShareOfAxis > AXIS_TOLERANCE;
+    return axisIsOffLevel;
   }
 
   /**
@@ -423,7 +417,9 @@ public final class RobotMath {
    * @throws IllegalArgumentException if it follows another joint
    */
   public List<Drive> drivesOf(Joint joint) {
-    return movers(sensitivity(independent(joint), resolve(Map.of())));
+    int number = tree.numberOfIndependent(joint);
+    double[] atRest = tree.positions(Map.of());
+    return loads.motorsThatMove(tree.rates(number, atRest));
   }
 
   /**
@@ -434,26 +430,7 @@ public final class RobotMath {
    * @throws IllegalArgumentException if no motors move it, or it follows another joint
    */
   public Gains idealGains(Joint joint) {
-    int j = independent(joint);
-    double[] q = resolve(Map.of());
-    double[] moved = sensitivity(j, q);
-    double pushing = 0;
-    double backEmf = 0;
-    for (Drive drive : movers(moved)) {
-      DCMotor model = ((Actuator.Motors) drive.actuator()).model();
-      double g = shaftRate(drive, moved);
-      double perVolt = model.stallTorque / model.nominalVoltage;
-      double efficiency = drive.transmission().efficiency();
-      // Volts per radian per second of the shaft, from the datasheet's free speed, as
-      // idealDriveKv takes it: a motor's free current, its own friction, is in it.
-      double voltsPerSpeed = model.nominalVoltage / model.freeSpeed;
-      pushing += Math.abs(g) * efficiency * perVolt;
-      backEmf += g * g * efficiency * perVolt * voltsPerSpeed;
-    }
-    if (pushing == 0) {
-      throw new IllegalArgumentException("no motors move " + joint.label());
-    }
-    return new Gains(backEmf / pushing, inertia(j, q) / pushing, gravityHeld(joint) / pushing);
+    return loads.idealGains(joint, tree.numberOfIndependent(joint));
   }
 
   /**
@@ -465,10 +442,7 @@ public final class RobotMath {
    * @throws IllegalArgumentException if it follows another joint
    */
   double gravityHeld(Joint joint) {
-    int j = independent(joint);
-    return joint instanceof Joint.Revolute
-        ? Math.hypot(levelGravity(j, 0), levelGravity(j, Math.PI / 2))
-        : levelGravity(j, joint.restPosition());
+    return loads.gravityHeld(joint, tree.numberOfIndependent(joint));
   }
 
   /**
@@ -479,11 +453,13 @@ public final class RobotMath {
    * @throws IllegalArgumentException if no motors move it, or it follows another joint
    */
   public double freeSpeed(Joint joint) {
-    double nominal = Double.POSITIVE_INFINITY;
+    double lowestNominalVolts = Double.POSITIVE_INFINITY;
     for (Drive drive : drivesOf(joint)) {
-      nominal = Math.min(nominal, ((Actuator.Motors) drive.actuator()).model().nominalVoltage);
+      double nominalVolts = ((Actuator.Motors) drive.actuator()).model().nominalVoltage;
+      lowestNominalVolts = Math.min(lowestNominalVolts, nominalVolts);
     }
-    return nominal / idealGains(joint).kV();
+    // kV is volts for each unit a second, so the volts there are, over kV, is the speed they hold.
+    return lowestNominalVolts / idealGains(joint).kV();
   }
 
   /**
@@ -493,44 +469,50 @@ public final class RobotMath {
    * @return kg·m² for a revolute joint, kg for a prismatic one
    */
   public double inertia(Joint joint, Map<Joint, Double> positions) {
-    return inertia(independent(joint), resolve(positions));
+    return loads.inertia(tree.numberOfIndependent(joint), tree.positions(positions));
   }
 
   /**
-   * A drive's coordinate at a set of positions: the length between a line's two ends, in meters, or
-   * its shaft's angle, in radians, the sum over the joints it turns.
+   * A drive's coordinate at a set of positions: for a drive that pushes along a line between two
+   * parts, the length of that line, in meters; for any other, its shaft's angle, in radians, which
+   * is the sum over the joints it turns.
    */
   public double coordinate(Drive drive, Map<Joint, Double> positions) {
-    double[] q = resolve(positions);
+    double[] byNumber = tree.positions(positions);
     if (drive.transmission() instanceof Transmission.Between line) {
-      Pose3d[] frames = frames(q);
-      return point(line.b(), line.onB(), frames).getDistance(point(line.a(), line.onA(), frames));
+      Pose3d[] frames = tree.frames(byNumber);
+      Translation3d endOnA = tree.pointOn(line.a(), line.onA(), frames);
+      Translation3d endOnB = tree.pointOn(line.b(), line.onB(), frames);
+      return endOnB.getDistance(endOnA);
     }
-    double angle = 0;
+    double shaftAngle = 0;
     for (Joint each : drive.transmission().joints()) {
-      angle += drive.transmission().shaftRadiansPer(each) * q[indexOf(each)];
+      shaftAngle += drive.transmission().shaftRadiansPer(each) * byNumber[tree.numberOf(each)];
     }
-    return angle;
+    return shaftAngle;
   }
 
   /**
-   * How fast a drive's coordinate changes for a joint's speed, at a set of positions: a gearing's
-   * ratio, or a line's lever arm about the joint, which changes as the joint turns.
+   * How fast a drive's coordinate changes for a joint's speed, at a set of positions. For a gearing
+   * that is its ratio. For a drive that pushes along a line it is the line's lever arm about the
+   * joint, which changes as the joint turns.
    */
   public double leverage(Drive drive, Joint joint, Map<Joint, Double> positions) {
-    int j = independent(joint);
-    double[] q = resolve(positions);
-    double[] moved = sensitivity(j, q);
-    if (drive.transmission() instanceof Transmission.Between line) {
-      Pose3d[] frames = frames(q);
-      Translation3d a = point(line.a(), line.onA(), frames);
-      Translation3d b = point(line.b(), line.onB(), frames);
-      Translation3d along = b.minus(a).div(b.getDistance(a));
-      Translation3d apart =
-          velocity(line.b(), b, frames, moved).minus(velocity(line.a(), a, frames, moved));
-      return along.dot(apart);
+    int number = tree.numberOfIndependent(joint);
+    double[] byNumber = tree.positions(positions);
+    double[] rates = tree.rates(number, byNumber);
+    if (!(drive.transmission() instanceof Transmission.Between line)) {
+      return loads.shaftRate(drive, rates);
     }
-    return shaftRate(drive, moved);
+    // A line grows as fast as its two ends move apart, measured along the line itself.
+    Pose3d[] frames = tree.frames(byNumber);
+    Translation3d endOnA = tree.pointOn(line.a(), line.onA(), frames);
+    Translation3d endOnB = tree.pointOn(line.b(), line.onB(), frames);
+    Translation3d alongTheLine = endOnB.minus(endOnA).div(endOnB.getDistance(endOnA));
+    Translation3d velocityOfB = tree.velocityOf(line.b(), endOnB, frames, rates);
+    Translation3d velocityOfA = tree.velocityOf(line.a(), endOnA, frames, rates);
+    Translation3d movingApart = velocityOfB.minus(velocityOfA);
+    return alongTheLine.dot(movingApart);
   }
 
   /**
@@ -540,8 +522,8 @@ public final class RobotMath {
    * @param command what the drive's told ({@link Actuator#forceOrTorque})
    */
   public double torque(Drive drive, Joint joint, Map<Joint, Double> positions, double command) {
-    double force = drive.actuator().forceOrTorque(command, coordinate(drive, positions), 0);
-    return force * leverage(drive, joint, positions) * drive.transmission().efficiency();
+    double atTheDrive = drive.actuator().forceOrTorque(command, coordinate(drive, positions), 0);
+    return atTheDrive * leverage(drive, joint, positions) * drive.transmission().efficiency();
   }
 
   /**
@@ -581,8 +563,8 @@ public final class RobotMath {
       throw new IllegalArgumentException(drive.label() + " has no rotor: it isn't motors");
     }
     Joint joint = encoder.joint();
-    double radians = drive.transmission().shaftRadiansPer(joint);
-    if (radians == 0) {
+    double rotorRadiansPerJointUnit = drive.transmission().shaftRadiansPer(joint);
+    if (rotorRadiansPerJointUnit == 0) {
       throw new IllegalArgumentException(
           drive.label()
               + " doesn't turn "
@@ -591,8 +573,14 @@ public final class RobotMath {
               + encoder.label()
               + " reads");
     }
-    double turns = joint instanceof Joint.Revolute ? radians : radians / (2 * Math.PI);
-    return turns / encoder.ratio(joint);
+    // The encoder's ratio is its turns for each turn of a joint that turns, or for each meter of
+    // one that slides, so the rotor's is put in the same terms before the two are divided. Radians
+    // of rotor for each radian of the joint are already turns for each turn.
+    double rotorTurnsPerJointTurn = rotorRadiansPerJointUnit;
+    if (!(joint instanceof Joint.Revolute)) {
+      rotorTurnsPerJointTurn = rotorRadiansPerJointUnit / (2 * Math.PI);
+    }
+    return rotorTurnsPerJointTurn / encoder.ratio(joint);
   }
 
   /**
@@ -605,33 +593,7 @@ public final class RobotMath {
    *     than one turn can hold
    */
   public double discontinuityPoint(Sensor.Encoder encoder) {
-    if (!encoder.absolute()) {
-      throw new IllegalArgumentException(encoder.label() + " isn't absolute: it doesn't wrap");
-    }
-    Joint joint = encoder.joint();
-    double low;
-    double high;
-    if (joint.range().isPresent()) {
-      double a = encoderTurns(encoder, joint.range().get().lower());
-      double b = encoderTurns(encoder, joint.range().get().upper());
-      low = Math.min(a, b);
-      high = Math.max(a, b);
-    } else {
-      low = encoderTurns(encoder, joint.restPosition());
-      high = low;
-    }
-    double point = wrapAt(low, high);
-    if (low < point - 1 || high >= point) {
-      throw new IllegalArgumentException(
-          String.format(
-              Locale.ROOT,
-              "%s reads %.3f to %.3f turns over %s's range, which no one turn from -1 to 1 holds",
-              encoder.label(),
-              low,
-              high,
-              joint.label()));
-    }
-    return point;
+    return AbsoluteEncoders.discontinuityPoint(encoder);
   }
 
   /**
@@ -644,13 +606,7 @@ public final class RobotMath {
    * @throws IllegalStateException if it reads several joints
    */
   public static double wrapMargin(Sensor.Encoder encoder, double discontinuityPoint) {
-    Joint joint = encoder.joint();
-    if (joint.range().isEmpty()) {
-      return Double.POSITIVE_INFINITY;
-    }
-    double a = encoderTurns(encoder, joint.range().get().lower());
-    double b = encoderTurns(encoder, joint.range().get().upper());
-    return Math.min(Math.min(a, b) - (discontinuityPoint - 1), discontinuityPoint - Math.max(a, b));
+    return AbsoluteEncoders.wrapMargin(encoder, discontinuityPoint);
   }
 
   /**
@@ -678,7 +634,7 @@ public final class RobotMath {
    *     or a pair geared nearly alike doesn't give each one's counts per turn
    */
   public double absoluteSpan(List<Sensor.Encoder> encoders) {
-    return decoding(encoders).span();
+    return AbsoluteEncoders.decoding(encoders).span();
   }
 
   /**
@@ -691,13 +647,7 @@ public final class RobotMath {
    * @throws IllegalArgumentException as {@link #absoluteWindow} does
    */
   public double fromAbsolute(Sensor.Encoder encoder, double turns) {
-    Range window = absoluteWindow(List.of(encoder));
-    Joint joint = encoder.joint();
-    double perTurn = joint instanceof Joint.Revolute ? 2 * Math.PI : 1;
-    double position = turns / Math.abs(encoder.ratio(joint)) * perTurn;
-    double span = window.upper() - window.lower();
-    double into = (position - window.lower()) % span;
-    return window.lower() + (into < 0 ? into + span : into);
+    return AbsoluteEncoders.positionFor(encoder, turns);
   }
 
   /**
@@ -712,112 +662,7 @@ public final class RobotMath {
    * @throws IllegalArgumentException as {@link #absoluteSpan} does
    */
   public Range absoluteWindow(List<Sensor.Encoder> encoders) {
-    Decoding decoding = decoding(encoders);
-    Joint joint = encoders.get(0).joint();
-    double perTurn = joint instanceof Joint.Revolute ? 2 * Math.PI : 1;
-    Sensor.Encoder encoder = decoding.single();
-    if (encoder != null) {
-      double low;
-      double high;
-      if (joint.range().isPresent()) {
-        double a = encoderTurns(encoder, joint.range().get().lower());
-        double b = encoderTurns(encoder, joint.range().get().upper());
-        low = Math.min(a, b);
-        high = Math.max(a, b);
-      } else {
-        low = encoderTurns(encoder, joint.restPosition());
-        high = low;
-      }
-      double point = wrapAt(low, high);
-      double ratio = encoder.ratio(joint);
-      double from = (point - 1) / ratio * perTurn;
-      double to = point / ratio * perTurn;
-      return Range.in(joint, Math.min(from, to), Math.max(from, to));
-    }
-    double middle =
-        joint
-            .range()
-            .map(range -> (range.lower() + range.upper()) / 2)
-            .orElse(joint.restPosition());
-    double span = decoding.span();
-    return Range.in(joint, middle - span / 2, middle + span / 2);
-  }
-
-  /**
-   * How a decoder reads absolute encoders: the span it tells apart, in the joint's units, and the
-   * one encoder that tells it, or null for a pair.
-   */
-  private record Decoding(double span, Sensor.@Nullable Encoder single) {}
-
-  private static Decoding decoding(List<Sensor.Encoder> encoders) {
-    if (encoders.isEmpty()) {
-      throw new IllegalArgumentException("no encoders tell anything apart");
-    }
-    Joint joint = encoders.get(0).joint();
-    for (Sensor.Encoder encoder : encoders) {
-      if (!encoder.absolute() || !encoder.joints().equals(List.of(joint))) {
-        throw new IllegalArgumentException(
-            encoder.label() + ": a span is of absolute encoders on one joint");
-      }
-    }
-    // In the joint's turns (or meters): each encoder's readings repeat every 1 / |ratio|.
-    double best = 0;
-    Sensor.Encoder single = null;
-    for (Sensor.Encoder encoder : encoders) {
-      double own = 1 / Math.abs(encoder.ratio(joint));
-      if (own > best) {
-        best = own;
-        single = encoder;
-      }
-    }
-    for (int i = 0; i < encoders.size(); i++) {
-      for (int j = i + 1; j < encoders.size(); j++) {
-        double beat = vernier(encoders.get(i), encoders.get(j), joint);
-        if (beat > best) {
-          best = beat;
-          single = null;
-        }
-      }
-    }
-    double perTurn = joint instanceof Joint.Revolute ? 2 * Math.PI : 1;
-    return new Decoding(best * perTurn, single);
-  }
-
-  /**
-   * What a pair tells apart decoded by their difference, in the joint's turns: the turn of their
-   * difference, if it's longer than either's own and a count off on each still picks the right turn
-   * of the slower one; 0 otherwise, for a pair a decoder reads coarse then fine.
-   *
-   * @throws IllegalArgumentException for a pair geared nearly alike without each one's counts per
-   *     turn, which is all that says whether their difference picks the right turn
-   */
-  private static double vernier(Sensor.Encoder a, Sensor.Encoder b, Joint joint) {
-    double ra = Math.abs(a.ratio(joint));
-    double rb = Math.abs(b.ratio(joint));
-    double apart = Math.abs(ra - rb);
-    if (!(apart < Math.min(ra, rb))) {
-      return 0;
-    }
-    if (a.countsPerTurn().isEmpty() || b.countsPerTurn().isEmpty()) {
-      throw new IllegalArgumentException(
-          "decoding "
-              + a.label()
-              + " and "
-              + b.label()
-              + " by their difference needs each encoder's counts per turn: give them");
-    }
-    // The difference is off by up to a count of each, in their turns; through the beat, that's
-    // off by this much of the joint's turn, which must be under half the slower one's turn.
-    double counts = 1.0 / a.countsPerTurn().get() + 1.0 / b.countsPerTurn().get();
-    return 2 * Math.min(ra, rb) * counts < apart ? 1 / apart : 0;
-  }
-
-  /**
-   * Where an encoder's reading wraps, in its turns, as far as can be from readings low to high: the
-   * middle of the turn on the middle of them, held to Phoenix's 0 to 1.
-   */
-  private static double wrapAt(double low, double high) {
-    return Math.max(0, Math.min(1, (low + high) / 2 + 0.5));
+    return AbsoluteEncoders.window(encoders);
   }
 
   /**
@@ -828,10 +673,10 @@ public final class RobotMath {
     double halfLength = body.frameLength().in(Meters) / 2;
     double halfWidth = body.frameWidth().in(Meters) / 2;
     double farthest = 0;
-    for (Translation3d point : points(positions)) {
-      double x = Math.max(0, Math.abs(point.getX()) - halfLength);
-      double y = Math.max(0, Math.abs(point.getY()) - halfWidth);
-      farthest = Math.max(farthest, Math.hypot(x, y));
+    for (Translation3d point : linkPoints(positions)) {
+      double pastTheFrontOrBack = Math.max(0, Math.abs(point.getX()) - halfLength);
+      double pastASide = Math.max(0, Math.abs(point.getY()) - halfWidth);
+      farthest = Math.max(farthest, Math.hypot(pastTheFrontOrBack, pastASide));
     }
     return farthest;
   }
@@ -843,19 +688,20 @@ public final class RobotMath {
    */
   public double top(Map<Joint, Double> positions) {
     double top = 0;
-    for (Translation3d point : points(positions)) {
+    for (Translation3d point : linkPoints(positions)) {
       top = Math.max(top, point.getZ());
     }
     return top;
   }
 
   /** Every point of every link's shapes, in the robot's frame. */
-  private List<Translation3d> points(Map<Joint, Double> positions) {
-    Pose3d[] frames = frames(resolve(positions));
+  private List<Translation3d> linkPoints(Map<Joint, Double> positions) {
+    Pose3d[] frames = tree.frames(tree.positions(positions));
     List<Translation3d> points = new ArrayList<>();
-    for (int i = 0; i < joints.size(); i++) {
-      Pose3d frame = frames[i];
-      for (Shape shape : joints.get(i).link().shapes()) {
+    List<Joint> joints = tree.joints();
+    for (int number = 0; number < joints.size(); number++) {
+      Pose3d frame = frames[number];
+      for (Shape shape : joints.get(number).link().shapes()) {
         for (Translation3d point : shape.points()) {
           points.add(frame.getTranslation().plus(point.rotateBy(frame.getRotation())));
         }
@@ -865,10 +711,10 @@ public final class RobotMath {
   }
 
   /**
-   * What the definition's parts make together, checked: nothing when they're one robot. What's
-   * about a joint or a camera is about it; the rest, the robot's.
+   * What is wrong with what the definition's parts make together. The list is empty when they make
+   * one robot ({@link AssemblyChecks}).
    *
-   * @param robot the robot's name: what's about the whole of it is about this
+   * @param robot the robot's name, which a problem about the whole of it is reported against
    */
   static List<Finding> problems(
       String robot,
@@ -878,628 +724,15 @@ public final class RobotMath {
       List<Drive> drives,
       List<Sensor> sensors,
       List<CameraConfig> cameras) {
-    List<String> structure = structure(joints, couplings, drives, sensors, cameras);
-    if (!structure.isEmpty()) {
-      return structure.stream().map(problem -> Finding.refused(robot, problem)).toList();
-    }
-    RobotMath math = new RobotMath(body, joints, couplings, drives, sensors);
-    List<Finding> problems = new ArrayList<>();
-    String budget = math.overBudget();
-    if (budget != null) {
-      problems.add(Finding.refused(robot, budget));
-    } else if (!joints.isEmpty()) {
-      String chassis;
-      try {
-        chassis = math.chassis().inertia().whyNotSolid();
-      } catch (IllegalArgumentException e) {
-        chassis = String.valueOf(e.getMessage()).replace('\n', ' ');
-      }
-      if (chassis != null) {
-        problems.add(
-            Finding.refused(
-                robot, "the chassis, the body less its links at rest, isn't a body: " + chassis));
-      }
-    }
-    for (Joint joint : joints) {
-      List<String> encoders = new ArrayList<>();
-      math.encoderProblems(joint, encoders);
-      encoders.forEach(problem -> problems.add(Finding.refused(joint.label(), problem)));
-    }
-    JointSpeedChecks.problems(math, problems);
-    for (CameraConfig camera : cameras) {
-      List<String> mounted = new ArrayList<>();
-      camera.joint().ifPresent(joint -> math.cameraProblems(camera, joint, mounted));
-      mounted.forEach(problem -> problems.add(Finding.refused(camera.name(), problem)));
-    }
-    return problems;
+    return AssemblyChecks.problems(robot, body, joints, couplings, drives, sensors, cameras);
   }
 
-  /**
-   * Why the links weigh too much for the robot they're on, or null when they don't: their masses
-   * together, all a part of what the robot weighs, must leave some for the chassis, which carries
-   * the drivetrain, the electronics, the bumpers and the battery.
-   */
-  private @Nullable String overBudget() {
-    double links = linksKilograms();
-    double robot = body.mass().in(Kilograms);
-    return links < robot
-        ? null
-        : String.format(
-            Locale.ROOT,
-            "its links weigh %.2f kg together, %s the robot's %.2f kg%s: nothing is left for the"
-                + " chassis",
-            links,
-            links > robot ? "more than" : "as much as",
-            robot,
-            body.weight().weighed() ? " as weighed" : ", the season's most");
-  }
-
-  /** What the links weigh together, in kilograms: the ones given; none given weigh nothing. */
+  /** What the links weigh together, in kilograms. A link whose mass is not given weighs nothing. */
   double linksKilograms() {
     double total = 0;
-    for (Joint joint : joints) {
+    for (Joint joint : tree.joints()) {
       total += joint.link().mass().mass().in(Kilograms);
     }
     return total;
-  }
-
-  /**
-   * A joint's absolute encoders must tell its whole range apart, and wrap outside it by at least
-   * {@link #WRAP_MARGIN} of the turn that wraps: one encoder's own, or a pair's difference's.
-   */
-  private void encoderProblems(Joint joint, List<String> problems) {
-    List<Sensor.Encoder> absolute = new ArrayList<>();
-    for (Sensor sensor : sensors) {
-      if (sensor instanceof Sensor.Encoder encoder
-          && encoder.absolute()
-          && encoder.joints().equals(List.of(joint))) {
-        absolute.add(encoder);
-      }
-    }
-    if (absolute.isEmpty() || joint.range().isEmpty()) {
-      return;
-    }
-    Range range = joint.range().get();
-    double span;
-    try {
-      span = absoluteSpan(absolute);
-    } catch (IllegalArgumentException e) {
-      problems.add(String.valueOf(e.getMessage()));
-      return;
-    }
-    if (absolute.size() == 1 && joint.ownSensors().contains(absolute.get(0))) {
-      String own = ownEncoderProblem(joint, absolute.get(0));
-      if (own != null) {
-        problems.add(own);
-      }
-      return;
-    }
-    if (!(span > range.width())) {
-      problems.add(
-          String.format(
-              Locale.ROOT,
-              "%s's absolute encoders tell %s of its %s apart: gear one differently, or add one",
-              joint.label(),
-              joint.shown(span),
-              joint.shown(range.width())));
-      return;
-    }
-    Range window = absoluteWindow(absolute);
-    double margin = WRAP_MARGIN * span;
-    if (range.lower() < window.lower() || range.upper() >= window.upper()) {
-      problems.add(
-          String.format(
-              Locale.ROOT,
-              "%s's absolute encoders read it from %s to %s, and its range, %s to %s, crosses where"
-                  + " they wrap",
-              joint.label(),
-              joint.shown(window.lower()),
-              joint.shown(window.upper()),
-              joint.shown(range.lower()),
-              joint.shown(range.upper())));
-    } else if (range.lower() < window.lower() + margin || range.upper() > window.upper() - margin) {
-      problems.add(
-          String.format(
-              Locale.ROOT,
-              "%s's absolute encoders read it from %s to %s, and its range, %s to %s, comes within"
-                  + " %s of where they wrap, a fortieth of their turn: a reading a hair past the"
-                  + " wrap reads a turn away",
-              joint.label(),
-              joint.shown(window.lower()),
-              joint.shown(window.upper()),
-              joint.shown(range.lower()),
-              joint.shown(range.upper()),
-              joint.shown(
-                  Math.min(range.lower() - window.lower(), window.upper() - range.upper()))));
-    }
-  }
-
-  /**
-   * What's wrong with the absolute encoder in a joint's block, the joint's only one, as {@link
-   * #encoderProblems} judges any, said in its block's terms with what to do, or null when nothing
-   * is: its travel must be inside one of its turns, a fortieth of a turn clear of its wrap at each
-   * end, and within a turn of where it reads 0, the joint's zero, where Phoenix can put its wrap.
-   * The ratio that fits is its block's ratio, scaled until it does: its turns for each of the
-   * joint's, or of a sliding joint's drum.
-   */
-  private static @Nullable String ownEncoderProblem(Joint joint, Sensor.Encoder encoder) {
-    Range range = joint.range().orElseThrow();
-    // In turns of its signal, which is the encoder's own turn but for a potentiometer's range.
-    double a = encoderTurns(encoder, range.lower());
-    double b = encoderTurns(encoder, range.upper());
-    double low = Math.min(a, b);
-    double high = Math.max(a, b);
-    double turns = high - low;
-    double point = wrapAt(low, high);
-    if (low >= point - 1 + WRAP_MARGIN && high <= point - WRAP_MARGIN) {
-      return null;
-    }
-    Driven.AbsoluteEncoder block = joint.driven().absoluteEncoder().orElseThrow();
-    double perSignal = block.turnsPerSignal();
-    double farthest = Math.max(Math.abs(low), Math.abs(high));
-    // Geared slower, its readings shrink toward 0 by as much: by this, its turn holds the travel
-    // with the margin at each end, and it reads within a turn of 0, less the margin, all along it.
-    double scale = Math.min((1 - 2 * WRAP_MARGIN) / turns, (1 - WRAP_MARGIN) / farthest);
-    String travel =
-        String.format(
-            Locale.ROOT,
-            "its travel, %s to %s",
-            joint.shown(range.lower()),
-            joint.shown(range.upper()));
-    String why;
-    String or;
-    if (turns >= 1 - 2 * WRAP_MARGIN) {
-      // Where the joint's zero is far from its travel, reading within a turn of 0 from it bounds
-      // the gearing more than the travel does: said, or the bound can't be worked out from this.
-      boolean zeroBounds = (1 - WRAP_MARGIN) / farthest < (1 - 2 * WRAP_MARGIN) / turns;
-      why =
-          String.format(
-              Locale.ROOT,
-              "%s's absolute encoder turns %s times over %s: %s must cover the travel, with a"
-                  + " fortieth of it to spare at each end,%s to tell where %s is",
-              joint.label(),
-              Rules.shown(turns * perSignal),
-              travel,
-              perSignal == 1
-                  ? "one of its turns"
-                  : "its signal's range, " + Rules.shown(perSignal) + " of its turns,",
-              zeroBounds
-                  ? String.format(
-                      Locale.ROOT,
-                      " and it must read within %s turns of 0 all along it, counting from 0 at %s's"
-                          + " zero,",
-                      Rules.shown((1 - WRAP_MARGIN) * perSignal),
-                      joint.label())
-                  : "",
-              joint.label());
-      or =
-          (zeroBounds
-                  ? "move " + possessive(joint.label()) + " zero, its origin, to a hard stop, or "
-                  : "")
-              + "leave it out and give "
-              + possessive(joint.label())
-              + " control a homing recipe";
-    } else {
-      why =
-          String.format(
-              Locale.ROOT,
-              "%s's absolute encoder reads %s to %s turns over %s, counting from 0 at %s's zero,"
-                  + " and must read within %s turns of 0 all along it, where its wrap can be put",
-              joint.label(),
-              Rules.shown(low * perSignal),
-              Rules.shown(high * perSignal),
-              travel,
-              joint.label(),
-              Rules.shown((1 - WRAP_MARGIN) * perSignal));
-      or = "move " + possessive(joint.label()) + " zero, its origin, to a hard stop";
-    }
-    return String.format(
-        Locale.ROOT,
-        "%s. Gear it to at most %s of its turns for each %s, or %s",
-        why,
-        floored(block.ratio() * scale),
-        joint instanceof Joint.Revolute
-            ? "of " + possessive(joint.label()) + " turns"
-            : "turn of " + possessive(joint.label()) + " drum",
-        or);
-  }
-
-  /** A positive number rounded down to three significant figures: a bound it's safe to meet. */
-  private static String floored(double value) {
-    return new BigDecimal(value)
-        .round(new MathContext(3, RoundingMode.FLOOR))
-        .stripTrailingZeros()
-        .toPlainString();
-  }
-
-  /** A camera on a joint sits on its link, and inside the robot when stowed. */
-  private void cameraProblems(CameraConfig camera, Joint joint, List<String> problems) {
-    List<Shape> shapes = joint.link().shapes();
-    Translation3d mount = camera.position();
-    if (!shapes.isEmpty()) {
-      double off = Double.POSITIVE_INFINITY;
-      for (Shape shape : shapes) {
-        off = Math.min(off, shape.distance(mount));
-      }
-      if (off > CAMERA_ON_LINK_METERS) {
-        problems.add(
-            String.format(
-                Locale.ROOT,
-                "camera %s is %.2f m off %s, the link it rides on",
-                camera.name(),
-                off,
-                joint.link().label()));
-      }
-    }
-    Translation3d stowed = cameraPose(camera, Map.of()).getTranslation();
-    if (!body.contains(stowed)) {
-      problems.add(
-          "camera " + camera.name() + " is outside the robot with its joint stowed, at " + stowed);
-    }
-  }
-
-  /** What's wrong with how the parts refer to each other: nothing when nothing is. */
-  private static List<String> structure(
-      List<Joint> joints,
-      List<Coupling> couplings,
-      List<Drive> drives,
-      List<Sensor> sensors,
-      List<CameraConfig> cameras) {
-    List<String> problems = new ArrayList<>();
-    unique("joints", joints.stream().map(Joint::label).toList(), problems);
-    unique("links", joints.stream().map(joint -> joint.link().label()).toList(), problems);
-    unique("drives", drives.stream().map(Drive::label).toList(), problems);
-    unique("sensors", sensors.stream().map(Sensor::label).toList(), problems);
-    Set<Joint> known = new HashSet<>(joints);
-    for (Joint joint : joints) {
-      known(joint.parent(), "joint " + possessive(joint.label()) + " parent", known, problems);
-    }
-    for (Coupling each : couplings) {
-      known(each.leader(), "a coupling's leader", known, problems);
-      known(each.follower(), "a coupling's follower", known, problems);
-    }
-    for (Drive drive : drives) {
-      for (Joint joint : drive.transmission().joints()) {
-        known(joint, "drive " + possessive(drive.label()) + " joint", known, problems);
-      }
-    }
-    for (Sensor sensor : sensors) {
-      List<? extends Part> parts =
-          switch (sensor) {
-            case Sensor.Encoder encoder -> encoder.joints();
-            case Sensor.Switch onSwitch ->
-                onSwitch.kind() instanceof Sensor.Switch.Limit limit
-                    ? List.of(onSwitch.part(), limit.joint())
-                    : List.of(onSwitch.part());
-            case Sensor.Rangefinder rangefinder -> List.of(rangefinder.part());
-          };
-      for (Part part : parts) {
-        known(part, "sensor " + possessive(sensor.label()) + " joint", known, problems);
-      }
-    }
-    for (CameraConfig camera : cameras) {
-      camera
-          .joint()
-          .ifPresent(
-              joint ->
-                  known(joint, "camera " + possessive(camera.name()) + " joint", known, problems));
-    }
-    if (!problems.isEmpty()) {
-      return problems;
-    }
-    Map<Joint, Coupling> leading = new HashMap<>();
-    for (Coupling each : couplings) {
-      Coupling before = leading.put(each.follower(), each);
-      if (before != null) {
-        problems.add(each.follower().label() + " follows two joints: it may follow one");
-      }
-    }
-    for (Coupling each : couplings) {
-      Joint up = each.leader();
-      for (int steps = 0; steps <= couplings.size(); steps++) {
-        if (up.equals(each.follower())) {
-          problems.add(each.follower().label() + " follows itself, through its couplings");
-          break;
-        }
-        Coupling next = leading.get(up);
-        if (next == null) {
-          break;
-        }
-        up = next.leader();
-      }
-    }
-    for (Coupling each : couplings) {
-      double expected = each.followerAt(each.leader().restPosition());
-      if (Math.abs(expected - each.follower().restPosition()) > 1e-6) {
-        problems.add(
-            String.format(
-                Locale.ROOT,
-                "%s's rest (%.4g) isn't where its coupling puts it with %s at its own (%.4g)",
-                each.follower().label(),
-                each.follower().restPosition(),
-                each.leader().label(),
-                expected));
-      }
-    }
-    return problems;
-  }
-
-  private static void unique(String what, List<String> labels, List<String> problems) {
-    Set<String> seen = new HashSet<>();
-    for (String label : labels) {
-      if (!seen.add(label)) {
-        problems.add("two " + what + " are labeled " + label);
-      }
-    }
-  }
-
-  private static void known(Part part, String what, Set<Joint> known, List<String> problems) {
-    if (part instanceof Joint joint && !known.contains(joint)) {
-      problems.add(what + ", " + joint.label() + ", isn't one of the robot's joints: list it");
-    }
-  }
-
-  // The machinery: joints by index, positions as an array in that order.
-
-  private int indexOf(Joint joint) {
-    Integer i = index.get(joint);
-    if (i == null) {
-      throw new IllegalArgumentException(joint.label() + " isn't one of the robot's joints");
-    }
-    return i;
-  }
-
-  /** A joint's index, for one that moves on its own rather than following another. */
-  private int independent(Joint joint) {
-    int j = indexOf(joint);
-    if (leader[j] >= 0) {
-      throw new IllegalArgumentException(
-          joint.label()
-              + " follows "
-              + joints.get(leader[j]).label()
-              + ": ask about "
-              + joints.get(leader[j]).label());
-    }
-    return j;
-  }
-
-  /** Every joint's position, by index: given, where it rests, or following its leader. */
-  private double[] resolve(Map<Joint, Double> given) {
-    int n = joints.size();
-    double[] q = new double[n];
-    for (int i = 0; i < n; i++) {
-      q[i] = joints.get(i).restPosition();
-    }
-    for (Map.Entry<Joint, Double> entry : given.entrySet()) {
-      int i = independent(entry.getKey());
-      if (!Double.isFinite(entry.getValue())) {
-        throw new IllegalArgumentException(
-            possessive(entry.getKey().label()) + " position must be a number: " + entry.getValue());
-      }
-      q[i] = entry.getValue();
-    }
-    boolean[] done = new boolean[n];
-    for (int i = 0; i < n; i++) {
-      follow(i, q, done);
-    }
-    return q;
-  }
-
-  private double follow(int i, double[] q, boolean[] done) {
-    Coupling each = coupling[i];
-    if (each == null || done[i]) {
-      return q[i];
-    }
-    q[i] = each.followerAt(follow(leader[i], q, done));
-    done[i] = true;
-    return q[i];
-  }
-
-  /** Each joint's frame in the robot's, at positions by index. */
-  private Pose3d[] frames(double[] q) {
-    Pose3d[] frames = new Pose3d[joints.size()];
-    for (int i = 0; i < frames.length; i++) {
-      frame(i, q, frames);
-    }
-    return frames;
-  }
-
-  private Pose3d frame(int i, double[] q, @Nullable Pose3d[] frames) {
-    Pose3d known = frames[i];
-    if (known != null) {
-      return known;
-    }
-    Joint joint = joints.get(i);
-    Pose3d base = parent[i] < 0 ? Pose3d.ZERO : frame(parent[i], q, frames);
-    Pose3d frame = base.transformBy(joint.origin()).transformBy(joint.motion(q[i]));
-    frames[i] = frame;
-    return frame;
-  }
-
-  /** A point on a part, in the robot's frame. */
-  private Translation3d point(Part part, Translation3d on, Pose3d[] frames) {
-    if (!(part instanceof Joint joint)) {
-      return on;
-    }
-    Pose3d frame = frames[indexOf(joint)];
-    return frame.getTranslation().plus(on.rotateBy(frame.getRotation()));
-  }
-
-  /** A joint's axis, a unit vector in the robot's frame. */
-  private Translation3d axis(int i, Pose3d[] frames) {
-    Vector3 axis = joints.get(i).axis().unit();
-    return new Translation3d(axis.x(), axis.y(), axis.z()).rotateBy(frames[i].getRotation());
-  }
-
-  /**
-   * How fast each joint moves for one joint's speed, by index: 1 for itself, its couplings' slopes
-   * for the joints that follow it, 0 for the rest.
-   */
-  private double[] sensitivity(int j, double[] q) {
-    double[] moved = new double[joints.size()];
-    boolean[] done = new boolean[moved.length];
-    for (int i = 0; i < moved.length; i++) {
-      rate(i, j, q, moved, done);
-    }
-    return moved;
-  }
-
-  private double rate(int i, int j, double[] q, double[] moved, boolean[] done) {
-    if (!done[i]) {
-      Coupling each = coupling[i];
-      moved[i] =
-          i == j
-              ? 1
-              : each == null ? 0 : each.slopeAt(q[leader[i]]) * rate(leader[i], j, q, moved, done);
-      done[i] = true;
-    }
-    return moved[i];
-  }
-
-  /** How fast a point on a part moves, in the robot's frame, for the joints' rates. */
-  private Translation3d velocity(Part part, Translation3d at, Pose3d[] frames, double[] moved) {
-    Translation3d velocity = Translation3d.ZERO;
-    int i = part instanceof Joint joint ? indexOf(joint) : -1;
-    for (; i >= 0; i = parent[i]) {
-      if (moved[i] == 0) {
-        continue;
-      }
-      Translation3d axis = axis(i, frames);
-      Translation3d swing =
-          joints.get(i) instanceof Joint.Revolute
-              ? cross(axis, at.minus(frames[i].getTranslation()))
-              : axis;
-      velocity = velocity.plus(swing.times(moved[i]));
-    }
-    return velocity;
-  }
-
-  /** How fast a joint's link turns, in the robot's frame, for the joints' rates. */
-  private Translation3d spin(int link, Pose3d[] frames, double[] moved) {
-    Translation3d spin = Translation3d.ZERO;
-    for (int i = link; i >= 0; i = parent[i]) {
-      if (moved[i] != 0 && joints.get(i) instanceof Joint.Revolute) {
-        spin = spin.plus(axis(i, frames).times(moved[i]));
-      }
-    }
-    return spin;
-  }
-
-  /** A link's mass properties, in the robot's frame, at its joint's frame. */
-  private MassProperties placed(int i, Pose3d[] frames) {
-    Pose3d frame = frames[i];
-    return joints
-        .get(i)
-        .link()
-        .mass()
-        .transformedBy(new Transform3d(frame.getTranslation(), frame.getRotation()));
-  }
-
-  /**
-   * Gravity's generalized force at a joint: every link's weight times how fast its center rises for
-   * the joint's speed, with "up" the direction given.
-   */
-  private double gravity(int j, double[] q, Translation3d up) {
-    Pose3d[] frames = frames(q);
-    double[] moved = sensitivity(j, q);
-    double torque = 0;
-    for (int i = 0; i < joints.size(); i++) {
-      MassProperties link = placed(i, frames);
-      Translation3d rise = velocity(joints.get(i), link.cg(), frames, moved);
-      torque += link.mass().in(Kilograms) * GRAVITY * rise.dot(up);
-    }
-    return torque;
-  }
-
-  /**
-   * Gravity's at a joint with its parent level: the other joints where they rest, up along its
-   * parent's z.
-   */
-  private double levelGravity(int j, double position) {
-    double[] q = resolve(Map.of());
-    q[j] = position;
-    boolean[] done = new boolean[q.length];
-    for (int i = 0; i < q.length; i++) {
-      follow(i, q, done);
-    }
-    Pose3d[] frames = frames(q);
-    Translation3d up = new Translation3d(0, 0, 1);
-    if (parent[j] >= 0) {
-      up = up.rotateBy(frames[parent[j]].getRotation());
-    }
-    return gravity(j, q, up);
-  }
-
-  /** The generalized inertia at a joint, rotors included, by index. */
-  private double inertia(int j, double[] q) {
-    Pose3d[] frames = frames(q);
-    double[] moved = sensitivity(j, q);
-    double inertia = 0;
-    for (int i = 0; i < joints.size(); i++) {
-      MassProperties link = placed(i, frames);
-      Translation3d velocity = velocity(joints.get(i), link.cg(), frames, moved);
-      Translation3d spin = spin(i, frames, moved);
-      inertia += link.mass().in(Kilograms) * velocity.getSquaredNorm();
-      double rate = spin.getNorm();
-      if (rate > 0) {
-        inertia +=
-            rate * rate * link.inertia().about(new Vector3(spin.getX(), spin.getY(), spin.getZ()));
-      }
-    }
-    for (Drive drive : drives) {
-      if (drive.actuator() instanceof Actuator.Motors motors) {
-        double g = shaftRate(drive, moved);
-        inertia += motors.count() * motors.motor().rotorInertia().in(KilogramSquareMeters) * g * g;
-      }
-    }
-    return inertia;
-  }
-
-  /** The drives of motors meant to move a joint, for its moves' rates: {@link #drivesOf}. */
-  private List<Drive> movers(double[] moved) {
-    List<Drive> turning = new ArrayList<>();
-    List<Drive> own = new ArrayList<>();
-    for (Drive drive : drives) {
-      if (drive.actuator() instanceof Actuator.Motors && shaftRate(drive, moved) != 0) {
-        turning.add(drive);
-        boolean allMove = true;
-        for (Joint each : drive.transmission().joints()) {
-          allMove &= moved[indexOf(each)] != 0;
-        }
-        if (allMove) {
-          own.add(drive);
-        }
-      }
-    }
-    return own.isEmpty() ? turning : own;
-  }
-
-  /** How fast a rotary drive's shaft turns, in radians, for the joints' rates; 0 for a line. */
-  private double shaftRate(Drive drive, double[] moved) {
-    if (drive.transmission() instanceof Transmission.Between) {
-      return 0;
-    }
-    double rate = 0;
-    for (Joint each : drive.transmission().joints()) {
-      rate += drive.transmission().shaftRadiansPer(each) * moved[indexOf(each)];
-    }
-    return rate;
-  }
-
-  /**
-   * A one-joint encoder's reading, in its turns, at its joint's position, with its offset reading 0
-   * at 0.
-   */
-  private static double encoderTurns(Sensor.Encoder encoder, double position) {
-    Joint joint = encoder.joint();
-    double turns = joint instanceof Joint.Revolute ? position / (2 * Math.PI) : position;
-    return encoder.ratio(joint) * turns;
-  }
-
-  private static Translation3d cross(Translation3d a, Translation3d b) {
-    return new Translation3d(
-        a.getY() * b.getZ() - a.getZ() * b.getY(),
-        a.getZ() * b.getX() - a.getX() * b.getZ(),
-        a.getX() * b.getY() - a.getY() * b.getX());
   }
 }
