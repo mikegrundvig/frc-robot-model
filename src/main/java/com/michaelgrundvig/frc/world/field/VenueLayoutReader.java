@@ -161,20 +161,27 @@ final class VenueLayoutReader {
     return Optional.of(tags);
   }
 
-  /** One tag: its ID, and its pose as a position and a quaternion. */
+  /**
+   * One tag: its ID, and its pose as a position and a quaternion. The ID is judged before anything
+   * else of the tag's is read, so that every problem after it names the tag by an ID that has been
+   * checked, or by the ID as the file writes it.
+   */
   private Optional<FieldTag> tag(@Nullable Object item) {
     Optional<Map<?, ?>> tag = reading.object(item, "a tag in the layout");
     if (tag.isEmpty()) {
       return Optional.empty();
     }
-    OptionalDouble id = reading.number(tag.get(), "ID", "a tag's ID");
-    Optional<Map<?, ?>> pose =
-        reading.object(tag.get().get("pose"), "tag " + shown(id) + "'s pose");
+    OptionalDouble written = reading.number(tag.get(), "ID", "a tag's ID");
+    OptionalInt id = OptionalInt.empty();
+    if (written.isPresent()) {
+      id = wholeId(written.getAsDouble());
+    }
+    // From here on the tag is named by its ID in every problem: "tag 4's translation".
+    String owner = possessive("tag " + shown(written, id));
+    Optional<Map<?, ?>> pose = reading.object(tag.get().get("pose"), owner + " pose");
     if (id.isEmpty() || pose.isEmpty()) {
       return Optional.empty();
     }
-    // From here on the tag is named by its ID in every problem: "tag 4's translation".
-    String owner = possessive("tag " + shown(id));
     Optional<Map<?, ?>> translation =
         reading.object(pose.get().get("translation"), owner + " translation");
     Optional<Map<?, ?>> quaternion = quaternionObject(pose.get(), owner);
@@ -186,23 +193,28 @@ final class VenueLayoutReader {
     if (position.isEmpty() || turn.isEmpty()) {
       return Optional.empty();
     }
-    OptionalInt wholeId = wholeId(id.getAsDouble());
-    if (wholeId.isEmpty() || !isARotation(turn.get(), owner)) {
+    if (!isARotation(turn.get(), owner)) {
       return Optional.empty();
     }
     Pose3d where = new Pose3d(position.get(), new Rotation3d(turn.get()));
-    return Optional.of(new FieldTag(wholeId.getAsInt(), where));
+    return Optional.of(new FieldTag(id.getAsInt(), where));
   }
 
   /**
-   * A tag's ID as a problem about the tag shows it: cut down to a whole number, or "?" if the tag
-   * has none.
+   * A tag's ID as a problem about the tag shows it: the whole number it is, or else the number as
+   * the file has it ("3.5"), or "?" if the tag has none.
+   *
+   * @param written the ID the file has, if it has one
+   * @param id the same as a whole number, if it is one
    */
-  private static String shown(OptionalDouble id) {
-    if (id.isEmpty()) {
-      return "?";
+  private static String shown(OptionalDouble written, OptionalInt id) {
+    if (id.isPresent()) {
+      return String.valueOf(id.getAsInt());
     }
-    return String.valueOf((int) id.getAsDouble());
+    if (written.isPresent()) {
+      return String.valueOf(written.getAsDouble());
+    }
+    return "?";
   }
 
   /**
@@ -245,14 +257,25 @@ final class VenueLayoutReader {
         new Quaternion(w.getAsDouble(), x.getAsDouble(), y.getAsDouble(), z.getAsDouble()));
   }
 
-  /** A tag's ID as the whole number it has to be: 3, never 3.5 or -1. */
+  /**
+   * A tag's ID as the whole number it has to be: 3, never 3.5 or -1, and never a number too large
+   * to be kept as a whole number, which would otherwise be read as the largest that can be.
+   */
   private OptionalInt wholeId(double id) {
     boolean whole = id == Math.rint(id);
-    if (whole && id >= 0) {
-      return OptionalInt.of((int) id);
+    if (!whole || id < 0) {
+      reading.problem("a tag's ID " + id + " isn't a whole number");
+      return OptionalInt.empty();
     }
-    reading.problem("a tag's ID " + id + " isn't a whole number");
-    return OptionalInt.empty();
+    if (id > Integer.MAX_VALUE) {
+      reading.problem(
+          "a tag's ID "
+              + id
+              + " is too large: a tag's ID is a whole number, at most "
+              + Integer.MAX_VALUE);
+      return OptionalInt.empty();
+    }
+    return OptionalInt.of((int) id);
   }
 
   /** Whether a quaternion is a rotation: whether its length is 1, near enough. */

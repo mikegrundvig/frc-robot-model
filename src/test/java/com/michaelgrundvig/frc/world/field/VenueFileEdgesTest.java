@@ -170,6 +170,16 @@ class VenueFileEdgesTest {
     return file("\"name\": \"Pit\", ", layout(tags), "");
   }
 
+  /** A parsed layout with one upright tag, its ID whatever number a parser might give. */
+  private static Map<String, Object> layoutWithTagNumbered(Number id) {
+    Map<String, Object> pose =
+        Map.of(
+            "translation", Map.of("x", 1, "y", 2, "z", 0.5),
+            "rotation", Map.of("quaternion", Map.of("W", 1, "X", 0, "Y", 0, "Z", 0)));
+    return Map.of(
+        "tags", List.of(Map.of("ID", id, "pose", pose)), "field", Map.of("length", 16, "width", 8));
+  }
+
   /** Which files are bare layouts, to be wrapped before they are read. */
   static Stream<Arguments> bareLayouts() {
     return Stream.of(
@@ -204,6 +214,8 @@ class VenueFileEdgesTest {
     return Stream.of(
         answers("a tag numbered zero",
             () -> VenueFile.read(file(tag("0", UPRIGHT))).layout().getTags().get(0).getID(), 0),
+        answers("a tag numbered as high as a whole number goes",
+            () -> VenueFile.read(file(tag("2147483647", UPRIGHT))).layout().getTags().get(0).getID(), 2147483647),
         answers("a reason for tag zero",
             () -> VenueFile.read(file("\"name\": \"Pit\", ", layout(tag("0", UPRIGHT)), ", \"moved\": {\"0\": \"why\"}")).moved(),
             Map.of(0, "why")),
@@ -238,6 +250,18 @@ class VenueFileEdgesTest {
             () -> refusal(file(tag("-1", UPRIGHT))), "venue file: a tag's ID -1.0 isn't a whole number"),
         answers("a tag with no number and no pose",
             () -> refusal(file("{}")), "venue file: a tag's ID's ID is missing; tag ?'s pose is missing"),
+        answers("a tag numbered 3.5 is not called tag 3 in what else is wrong with it",
+            () -> refusal(file("{\"ID\": 3.5}")),
+            "venue file: a tag's ID 3.5 isn't a whole number; tag 3.5's pose is missing"),
+        answers("a tag numbered one past the highest whole number is not read as the highest",
+            () -> refusal(file(tag("2147483648", UPRIGHT))),
+            "venue file: a tag's ID 2.147483648E9 is too large: a tag's ID is a whole number, at most 2147483647"),
+        answers("a tag numbered 1e20, which the JSON library hands over as the largest whole number it keeps",
+            () -> refusal(file(tag("1e20", UPRIGHT))),
+            "venue file: a tag's ID 9.223372036854776E18 is too large: a tag's ID is a whole number, at most 2147483647"),
+        answers("a tag numbered 1e20 as a parser that keeps it would hand it over",
+            () -> reading(r -> VenueLayoutReader.read(layoutWithTagNumbered(1e20), "Pit", r).orElseThrow().getTags()),
+            new Read(List.of(), "a tag's ID 1.0E20 is too large: a tag's ID is a whole number, at most 2147483647")),
         answers("a quaternion of four ones is twice too long",
             () -> refusal(file(tag("4", "{\"W\": 1, \"X\": 1, \"Y\": 1, \"Z\": 1}"))),
             "venue file: tag 4's quaternion isn't a rotation (length 2.0)"),
