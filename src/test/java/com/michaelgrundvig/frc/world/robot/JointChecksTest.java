@@ -12,6 +12,7 @@ import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.wpilib.math.geometry.Quaternion;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
@@ -28,6 +29,20 @@ class JointChecksTest {
   private static final Transform3d HERE = new Transform3d(Translation3d.ZERO, Rotation3d.ZERO);
   private static final Vector3 NO_WAY = new Vector3(0, 0, 0);
   private static final Vector3 NOT_A_WAY = new Vector3(Double.NaN, 0, 1);
+
+  private static final double NONE = Double.POSITIVE_INFINITY;
+
+  private static Transform3d at(double x, double y, double z) {
+    return new Transform3d(new Translation3d(x, y, z), Rotation3d.ZERO);
+  }
+
+  /**
+   * A transform turned by a quaternion with one part infinite: WPILib scales it to length 1, which
+   * leaves that one part not a number and the others zero.
+   */
+  private static Transform3d turned(double w, double x, double y, double z) {
+    return new Transform3d(Translation3d.ZERO, new Rotation3d(new Quaternion(w, x, y, z)));
+  }
 
   private static Joint.Revolute pivotAt(Transform3d origin, Vector3 axis) {
     return Joint.Revolute.builder()
@@ -67,6 +82,24 @@ class JointChecksTest {
         refuses("an origin that is not a number",
             () -> pivotAt(NOWHERE, Joint.PITCH_UP),
             "Revolute[pivot].origin: " + NOWHERE + " must be a transform, numbers all"),
+        refuses("an origin nowhere along y",
+            () -> pivotAt(at(0, Double.NaN, 0), Joint.PITCH_UP),
+            "Revolute[pivot].origin: " + at(0, Double.NaN, 0) + " must be a transform, numbers all"),
+        refuses("an origin nowhere along z",
+            () -> pivotAt(at(0, 0, Double.NEGATIVE_INFINITY), Joint.PITCH_UP),
+            "Revolute[pivot].origin: " + at(0, 0, Double.NEGATIVE_INFINITY) + " must be a transform, numbers all"),
+        refuses("an origin turned no way by its quaternion's W",
+            () -> pivotAt(turned(NONE, 0, 0, 0), Joint.PITCH_UP),
+            "Revolute[pivot].origin: " + turned(NONE, 0, 0, 0) + " must be a transform, numbers all"),
+        refuses("...by its X",
+            () -> pivotAt(turned(0, NONE, 0, 0), Joint.PITCH_UP),
+            "Revolute[pivot].origin: " + turned(0, NONE, 0, 0) + " must be a transform, numbers all"),
+        refuses("...by its Y",
+            () -> pivotAt(turned(0, 0, NONE, 0), Joint.PITCH_UP),
+            "Revolute[pivot].origin: " + turned(0, 0, NONE, 0) + " must be a transform, numbers all"),
+        refuses("...by its Z",
+            () -> pivotAt(turned(0, 0, 0, NONE), Joint.PITCH_UP),
+            "Revolute[pivot].origin: " + turned(0, 0, 0, NONE) + " must be a transform, numbers all"),
         refuses("an axis of no length",
             () -> pivotAt(HERE, NO_WAY),
             "Revolute[pivot].axis: " + NO_WAY + " must point some way: an axis can't be zero"),
@@ -95,6 +128,8 @@ class JointChecksTest {
 
   static Stream<Arguments> taken() {
     return Stream.of(
+        argumentSet("an origin as far away as numbers go, whose numbers add up to more than a number holds",
+            (ThrowingCallable) () -> pivotAt(at(Double.MAX_VALUE, Double.MAX_VALUE, Double.MAX_VALUE), Joint.PITCH_UP)),
         argumentSet("an axis of any length but zero",
             (ThrowingCallable) () -> pivotAt(HERE, new Vector3(0, 0, 1e-9))),
         argumentSet("a slide with a drum",

@@ -55,8 +55,11 @@ public record TriangleMesh(List<Vector3> corners, List<Triangle> triangles) {
     triangles = List.copyOf(triangles);
     for (int index = 0; index < corners.size(); index++) {
       Vector3 corner = corners.get(index);
-      // A sum with anything that is not a number, or is infinite, is not finite either.
-      if (!Double.isFinite(corner.x() + corner.y() + corner.z())) {
+      // Each number is asked by itself: three that are each finite can add up to more than a
+      // number holds.
+      boolean numbersAll =
+          Double.isFinite(corner.x()) && Double.isFinite(corner.y()) && Double.isFinite(corner.z());
+      if (!numbersAll) {
         throw new IllegalArgumentException("corner " + index + " isn't a point: " + corner);
       }
     }

@@ -109,16 +109,18 @@ final class JointChecks {
   private static Rule<Transform3d> numbersAll() {
     return transform -> {
       Quaternion turn = transform.getRotation().getQuaternion();
-      // A sum is finite only if every part of it is.
-      double sum =
-          transform.getX()
-              + transform.getY()
-              + transform.getZ()
-              + turn.getW()
-              + turn.getX()
-              + turn.getY()
-              + turn.getZ();
-      if (Double.isFinite(sum)) {
+      // Each number is asked by itself: numbers that are each finite can add up to more than a
+      // number holds.
+      boolean placeIsMadeOfNumbers =
+          Double.isFinite(transform.getX())
+              && Double.isFinite(transform.getY())
+              && Double.isFinite(transform.getZ());
+      boolean turnIsMadeOfNumbers =
+          Double.isFinite(turn.getW())
+              && Double.isFinite(turn.getX())
+              && Double.isFinite(turn.getY())
+              && Double.isFinite(turn.getZ());
+      if (placeIsMadeOfNumbers && turnIsMadeOfNumbers) {
         return null;
       }
       return transform + " must be a transform, numbers all";

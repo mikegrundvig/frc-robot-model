@@ -49,8 +49,13 @@ public record MassProperties(Mass mass, Translation3d cg, Inertia inertia) {
 
   /** Why a center of mass is no point, if it is not: one of its numbers is missing or infinite. */
   private static Optional<String> whyNotAPoint(Translation3d point) {
-    // A sum with anything that is not a number, or is infinite, is not finite either.
-    if (Double.isFinite(point.getX() + point.getY() + point.getZ())) {
+    // Each number is asked by itself: three that are each finite can add up to more than a number
+    // holds.
+    boolean numbersAll =
+        Double.isFinite(point.getX())
+            && Double.isFinite(point.getY())
+            && Double.isFinite(point.getZ());
+    if (numbersAll) {
       return Optional.empty();
     }
     return Optional.of(point + " must be a point, numbers all");

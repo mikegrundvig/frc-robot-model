@@ -17,6 +17,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Pose3d;
+import org.wpilib.math.geometry.Quaternion;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Translation2d;
@@ -38,7 +39,8 @@ class PhysicalEdgesTest {
     "castsDown",
     "tensors",
     "masses",
-    "boxes"
+    "boxes",
+    "numbersEachAskedAlone"
   })
   void itAnswers(Supplier<?> question, Object answer) {
     assertThat(question.get()).isEqualTo(answer);
@@ -347,6 +349,71 @@ class PhysicalEdgesTest {
         answers("a part taken from itself leaves nothing",
             () -> refusal(() -> pointMass(2, 1, 2, 3).minus(pointMass(2, 1, 2, 3))),
             "nothing is left: 2 Kg taken from 2 Kg"));
+  }
+
+  /** The largest number there is: finite, and any two of them add up to more than a number holds. */
+  private static final double HUGE = Double.MAX_VALUE;
+
+  private static final double NONE = Double.POSITIVE_INFINITY;
+
+  /** A box of some size at a pose, or what it is refused for, down to which value. */
+  private static String boxRefusal(Pose3d pose, Translation3d size) {
+    return refusal(() -> Shape.Box.builder().pose(pose).size(size).material(Material.ALUMINUM).build());
+  }
+
+  private static String boxAt(double x, double y, double z) {
+    return boxRefusal(new Pose3d(x, y, z, Rotation3d.ZERO), new Translation3d(1, 1, 1));
+  }
+
+  /**
+   * A box turned by a quaternion with one part infinite: WPILib scales it to length 1, which leaves
+   * that one part not a number and the others zero.
+   */
+  private static boolean boxTurnedIsRefused(double w, double x, double y, double z) {
+    Pose3d pose = new Pose3d(Translation3d.ZERO, new Rotation3d(new Quaternion(w, x, y, z)));
+    return boxRefusal(pose, new Translation3d(1, 1, 1)).contains("must be a pose, numbers all");
+  }
+
+  private static boolean boxSizedIsRefused(double length, double width, double height) {
+    return boxRefusal(Pose3d.ZERO, new Translation3d(length, width, height)).contains("must be positive along each axis");
+  }
+
+  private static boolean centeredAtIsRefused(double x, double y, double z) {
+    return refusal(() -> pointMass(1, x, y, z)).contains("must be a point, numbers all");
+  }
+
+  private static String meshWithCorner(double x, double y, double z) {
+    return refusal(() -> new TriangleMesh(List.of(Vector3.ZERO, new Vector3(x, y, z)), List.of()));
+  }
+
+  /**
+   * Whether a thing is made of numbers is asked of each number by itself. Numbers that are each
+   * finite are taken though their sum is more than a number holds, and one that is missing or
+   * infinite is refused whichever it is.
+   */
+  static Stream<Arguments> numbersEachAskedAlone() {
+    return Stream.of(
+        answers("a box as large as numbers go is a box", () -> boxSizedIsRefused(HUGE, HUGE, HUGE), false),
+        answers("a box with no end to its length is not", () -> boxSizedIsRefused(NONE, 1, 1), true),
+        answers("...nor to its width", () -> boxSizedIsRefused(1, NONE, 1), true),
+        answers("...nor to its height", () -> boxSizedIsRefused(1, 1, NONE), true),
+        answers("a box as far away as numbers go is somewhere", () -> boxAt(HUGE, HUGE, HUGE), "accepted"),
+        answers("a box nowhere along x is not", () -> boxAt(NONE, 0, 0).contains("must be a pose, numbers all"), true),
+        answers("...nor along y", () -> boxAt(0, NONE, 0).contains("must be a pose, numbers all"), true),
+        answers("...nor along z", () -> boxAt(0, 0, NONE).contains("must be a pose, numbers all"), true),
+        answers("a box turned no way by its quaternion's W is refused", () -> boxTurnedIsRefused(NONE, 0, 0, 0), true),
+        answers("...by its X", () -> boxTurnedIsRefused(0, NONE, 0, 0), true),
+        answers("...by its Y", () -> boxTurnedIsRefused(0, 0, NONE, 0), true),
+        answers("...by its Z", () -> boxTurnedIsRefused(0, 0, 0, NONE), true),
+        answers("a center of mass as far away as numbers go is a point", () -> centeredAtIsRefused(HUGE, HUGE, HUGE), false),
+        answers("a center of mass nowhere along x is not", () -> centeredAtIsRefused(NONE, 0, 0), true),
+        answers("...nor along y", () -> centeredAtIsRefused(0, NONE, 0), true),
+        answers("...nor along z", () -> centeredAtIsRefused(0, 0, NONE), true),
+        answers("a mesh's corner as far away as numbers go is a point", () -> meshWithCorner(HUGE, HUGE, HUGE), "accepted"),
+        answers("a corner nowhere along x is not, and is named by its place in the list",
+            () -> meshWithCorner(NONE, 0, 0), "corner 1 isn't a point: Vector3[x=Infinity, y=0.0, z=0.0]"),
+        answers("...nor along y", () -> meshWithCorner(0, NONE, 0), "corner 1 isn't a point: Vector3[x=0.0, y=Infinity, z=0.0]"),
+        answers("...nor along z", () -> meshWithCorner(0, 0, NONE), "corner 1 isn't a point: Vector3[x=0.0, y=0.0, z=Infinity]"));
   }
 
   private static Shape.Box box(double length, double width, double height) {

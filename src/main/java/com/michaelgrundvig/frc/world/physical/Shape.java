@@ -59,8 +59,7 @@ public sealed interface Shape {
     /** Why a box cannot be a size, if it cannot: it needs some length along each axis. */
     private static Optional<String> whyNotASize(Translation3d size) {
       boolean positiveAlongEachAxis = size.getX() > 0 && size.getY() > 0 && size.getZ() > 0;
-      boolean finite = Double.isFinite(size.getX() + size.getY() + size.getZ());
-      if (positiveAlongEachAxis && finite) {
+      if (positiveAlongEachAxis && isMadeOfNumbers(size)) {
         return Optional.empty();
       }
       return Optional.of(size + " must be positive along each axis");
@@ -130,18 +129,24 @@ public sealed interface Shape {
   /** Why a pose is no pose, if it is not: one of its numbers is missing or infinite. */
   private static Optional<String> whyNotAPose(Pose3d pose) {
     Quaternion turn = pose.getRotation().getQuaternion();
-    // A sum with anything that is not a number, or is infinite, is not finite either.
-    double sumOfItsNumbers =
-        pose.getX()
-            + pose.getY()
-            + pose.getZ()
-            + turn.getW()
-            + turn.getX()
-            + turn.getY()
-            + turn.getZ();
-    if (Double.isFinite(sumOfItsNumbers)) {
+    boolean turnIsMadeOfNumbers =
+        Double.isFinite(turn.getW())
+            && Double.isFinite(turn.getX())
+            && Double.isFinite(turn.getY())
+            && Double.isFinite(turn.getZ());
+    if (isMadeOfNumbers(pose.getTranslation()) && turnIsMadeOfNumbers) {
       return Optional.empty();
     }
     return Optional.of(pose + " must be a pose, numbers all");
+  }
+
+  /**
+   * Whether each of a point's three numbers is one: none missing, none infinite. Each is asked by
+   * itself, because numbers that are each finite can still add up to more than a number holds.
+   */
+  private static boolean isMadeOfNumbers(Translation3d point) {
+    return Double.isFinite(point.getX())
+        && Double.isFinite(point.getY())
+        && Double.isFinite(point.getZ());
   }
 }
