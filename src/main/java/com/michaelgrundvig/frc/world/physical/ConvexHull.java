@@ -21,6 +21,8 @@ final class ConvexHull {
    * The hull's corners, counterclockwise, starting from the leftmost point (the lowest of them, if
    * several are as far left). Points along one of the hull's edges are left out. Points that are
    * all on one line give fewer than three corners, which is no outline.
+   *
+   * @param points at least one point
    */
   static List<Translation2d> around(Collection<Translation2d> points) {
     List<Translation2d> leftToRight = new ArrayList<>(points);

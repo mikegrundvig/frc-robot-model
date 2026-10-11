@@ -87,9 +87,14 @@ public record Polygon2d(List<Translation2d> corners) {
    * The smallest convex polygon around some points: what a shape covers, seen from above. Corners
    * in a line along its edge are left out.
    *
-   * @throws IllegalArgumentException if the points are all on one line, which encloses nothing
+   * @throws IllegalArgumentException if there are no points, or they are all on one line, which
+   *     encloses nothing
    */
   public static Polygon2d hull(Collection<Translation2d> points) {
+    if (points.isEmpty()) {
+      throw new IllegalArgumentException(
+          "no points enclose nothing: a hull needs three that are not on one line");
+    }
     List<Translation2d> hull = ConvexHull.around(points);
     if (hull.size() < 3) {
       throw new IllegalArgumentException("points all on one line enclose nothing");
