@@ -11,16 +11,24 @@ import org.jspecify.annotations.Nullable;
 public final class SwitchDoubt {
   private SwitchDoubt() {}
 
+  /** The margin for a joint that turns freely, which has no range to take a tenth of: 15°. */
+  private static final double MARGIN_TURNING_FREELY = Math.toRadians(15);
+
+  /** The share of a joint's range that is its margin: a tenth. */
+  private static final double MARGIN_SHARE_OF_RANGE = 0.1;
+
   /**
    * How far from where a limit switch trips its joint must be, past it or short of it, before the
    * switch's reading is doubted: a tenth of the joint's range, or 15° for one that turns freely. A
    * guess at what a switch bent a little, or flex in the mechanism, never reaches.
+   *
+   * <p>The robot asks this every loop for every joint with a limit switch, so it makes no objects.
    */
   static double margin(Joint joint) {
-    return joint
-        .range()
-        .map(range -> 0.1 * (range.upper() - range.lower()))
-        .orElse(Math.toRadians(15));
+    if (joint.range().isEmpty()) {
+      return MARGIN_TURNING_FREELY;
+    }
+    return MARGIN_SHARE_OF_RANGE * joint.range().get().width();
   }
 
   /**
