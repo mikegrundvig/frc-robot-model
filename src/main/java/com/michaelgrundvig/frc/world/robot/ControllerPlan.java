@@ -48,9 +48,6 @@ public final class ControllerPlan {
   /** How close a tuned gain's ratio to the ideal must come to a frame's to be named as one. */
   static final double FRAME_TOLERANCE = 0.1;
 
-  /** Meters in an inch, for naming a gain worked out per inch. */
-  private static final double INCH = 0.0254;
-
   /**
    * Gravity's share of the feedforward: none for a joint gravity can't move (a turret, a slide that
    * runs level), kG steady all along a slide, kG along one cosine for an arm, as Phoenix's {@code
@@ -107,7 +104,9 @@ public final class ControllerPlan {
       throw new IllegalArgumentException(
           drive.label() + " isn't motors: a motor controller drives motors");
     }
-    if (!controllers.isEmpty() && controllers.size() != driving.count()) {
+    boolean aControllerForEachMotor =
+        controllers.isEmpty() || controllers.size() == driving.count();
+    if (!aControllerForEachMotor) {
       throw new IllegalArgumentException(
           String.format(
               Locale.ROOT,
@@ -121,38 +120,57 @@ public final class ControllerPlan {
     if (rotorRatio == 0) {
       throw new IllegalArgumentException(drive.label() + " doesn't move " + joint.label());
     }
-    for (Transmission.Term term : rotor.terms()) {
-      if (!term.joint().equals(joint)) {
-        noted.add(
-            String.format(
-                Locale.ROOT,
-                "%s's rotor turns %s times for each %s of %s too, which the controller reads as %s"
-                    + " moving: take it out in code, as a swerve module's coupling is",
-                drive.label(),
-                shown(Math.abs(rotor.ratio(term.joint()))),
-                term.joint() instanceof Joint.Revolute ? "turn" : "meter",
-                term.joint().label(),
-                joint.label()));
-      }
-    }
+    noteOtherJointsTheRotorTurnsWith(joint, drive, rotor, noted);
     this.joint = joint;
     this.drive = drive;
     this.control = control;
-    this.controllers = controllers.isEmpty() ? standIns(driving) : List.copyOf(controllers);
+    if (controllers.isEmpty()) {
+      this.controllers = standIns(driving);
+    } else {
+      this.controllers = List.copyOf(controllers);
+    }
     motors = driving.count();
     rotations = MechanismRotations.of(joint, drive);
     RobotMath.Gains seed = math.idealGains(joint);
     MechanismControl.Gains gains = control.gains();
     kV = gains.kV().orElse(seed.kV());
     if (gains.kV().isPresent()) {
-      String far = farFromIdeal("kV", kV, seed.kV(), rotorRatio);
-      if (far != null) {
-        noted.add(far);
-      }
+      TunedGainDoubt.ofKv(joint, kV, seed.kV(), rotations, rotorRatio).ifPresent(noted::add);
     }
     kA = gains.kA().orElse(seed.kA());
     gravity = gravity(math, gains, seed.kG(), noted);
     notes = List.copyOf(noted);
+  }
+
+  /**
+   * Notes each other joint that a drive's rotor turns with. A motor controller counts its rotor's
+   * turns and cannot tell which joint they came from, so when another joint moves it reads this
+   * joint as moving. A swerve module's drive motor is the usual case: it turns as the module
+   * steers.
+   */
+  private static void noteOtherJointsTheRotorTurnsWith(
+      Joint joint, Drive drive, Sensor.Encoder rotor, List<String> noted) {
+    for (Transmission.Term term : rotor.terms()) {
+      Joint other = term.joint();
+      if (other.equals(joint)) {
+        continue;
+      }
+      String perWhat =
+          switch (Position.Kind.of(other)) {
+            case ANGLE -> "turn";
+            case LENGTH -> "meter";
+          };
+      noted.add(
+          String.format(
+              Locale.ROOT,
+              "%s's rotor turns %s times for each %s of %s too, which the controller reads as %s"
+                  + " moving: take it out in code, as a swerve module's coupling is",
+              drive.label(),
+              shown(Math.abs(rotor.ratio(other))),
+              perWhat,
+              other.label(),
+              joint.label()));
+    }
   }
 
   /**
@@ -352,8 +370,22 @@ public final class ControllerPlan {
    * @throws IllegalArgumentException as the definition's does
    */
   public static double wrapPoint(RobotMath math, Sensor.Encoder encoder) {
-    double point = math.discontinuityPoint(encoder);
-    return encoder.ratio(encoder.joint()) < 0 ? 1 - point : point;
+    return turnedRoundIfGearedBack(encoder, math.discontinuityPoint(encoder));
+  }
+
+  /**
+   * A point in an encoder's turn, changed between the two ways of reading the encoder. The
+   * definition reads an encoder as the sign of its ratio says. A motor controller reads it as its
+   * wiring sets it, so that it grows as the joint moves forward. For an encoder geared to turn
+   * backward the two run opposite ways, and a point at one end of the turn for one is at the other
+   * end for the other. The same change turns it back.
+   */
+  private static double turnedRoundIfGearedBack(Sensor.Encoder encoder, double point) {
+    boolean gearedBack = encoder.ratio(encoder.joint()) < 0;
+    if (gearedBack) {
+      return 1 - point;
+    }
+    return point;
   }
 
   /**
@@ -363,11 +395,7 @@ public final class ControllerPlan {
    * Infinite for a joint that turns freely, which has no range to keep clear.
    */
   public static double wrapMargin(Sensor.Encoder encoder, double wrapPoint) {
-    // The definition reads the encoder as its ratio's sign says; a motor controller, as its wiring
-    // sets it, growing with the joint: an encoder geared to turn back wraps at the other end of its
-    // turn.
-    return RobotMath.wrapMargin(
-        encoder, encoder.ratio(encoder.joint()) < 0 ? 1 - wrapPoint : wrapPoint);
+    return RobotMath.wrapMargin(encoder, turnedRoundIfGearedBack(encoder, wrapPoint));
   }
 
   /**
@@ -383,21 +411,25 @@ public final class ControllerPlan {
     }
     Joint joint = encoder.joint();
     Range range = joint.range().orElseThrow();
-    double atStow =
-        Math.min(
-            reading(encoder, joint.restPosition()) - (wrapPoint - 1),
-            wrapPoint - reading(encoder, joint.restPosition()));
+    double readingAtStow = reading(encoder, joint.restPosition());
+    double bottomOfTurn = wrapPoint - 1;
+    double stowFromWrap = Math.min(readingAtStow - bottomOfTurn, wrapPoint - readingAtStow);
+    boolean rangeCrossesTheWrap = margin < 0;
+    String whereTheWrapIs = joint.shown(alongJoint(encoder, margin)) + " from";
+    if (rangeCrossesTheWrap) {
+      whereTheWrapIs = "inside";
+    }
     return String.format(
         Locale.ROOT,
         "%s wraps at %s of its turn, %s %s's range (%s to %s), and %s from where it stows (%s): a"
             + " reading a hair past the wrap reads a turn away",
         encoder.label(),
         shown(wrapPoint),
-        margin < 0 ? "inside" : joint.shown(alongJoint(encoder, margin)) + " from",
+        whereTheWrapIs,
         joint.label(),
         joint.shown(range.lower()),
         joint.shown(range.upper()),
-        joint.shown(alongJoint(encoder, atStow)),
+        joint.shown(alongJoint(encoder, stowFromWrap)),
         joint.shown(joint.restPosition()));
   }
 
@@ -421,172 +453,134 @@ public final class ControllerPlan {
    * a revolute joint, a meter in a meter of a prismatic one.
    */
   private static double perRatioUnit(Joint joint) {
-    return joint instanceof Joint.Revolute ? 2 * Math.PI : 1;
+    if (joint instanceof Joint.Revolute) {
+      return 2 * Math.PI;
+    }
+    return 1;
   }
 
   /**
-   * Gravity's kind and kG: the tuned kG where given, else the definition's seed from its links'
-   * mass, 0 without it. An arm's weight pulls hardest where its control says ({@code
-   * gravityAngle}), else where its links' mass puts it, else at its zero.
+   * Gravity's share of the joint's feedforward, with what is doubtful about it added to the notes.
+   *
+   * <p>The kG is the tuned one where the control gives it, and otherwise the definition's seed from
+   * the links' mass, which is 0 for links with no mass. A joint that gravity cannot move has none,
+   * and a tuned kG on such a joint is refused.
+   *
+   * @param seed the definition's ideal kG
    */
   private Gravity gravity(
       RobotMath math, MechanismControl.Gains gains, double seed, List<String> noted) {
     Optional<Double> tuned = gains.kG();
     if (!math.gravityActsOn(joint)) {
-      if (tuned.isPresent() && tuned.get() != 0) {
-        throw new IllegalArgumentException(
-            String.format(
-                Locale.ROOT,
-                "%s has a tuned kG of %s V, but gravity can't move it: it %s. Leave its kG out, or"
-                    + " write 0",
-                joint.label(),
-                shown(tuned.get()),
-                joint instanceof Joint.Revolute ? "turns about the vertical" : "slides level"));
-      }
+      refuseATunedKg(tuned);
       return new Gravity(Gravity.Kind.NONE, 0, 0);
     }
     double kG = tuned.orElse(seed);
     Gravity found;
     if (joint instanceof Joint.Revolute) {
-      double offset =
-          gains.gravityAngle().isPresent()
-              ? -Math.IEEEremainder(gains.gravityAngle().get().in(Radians), 2 * Math.PI)
-              : math.gravityOffset(joint);
-      found = new Gravity(Gravity.Kind.COSINE, kG, offset);
-      RobotMath.GravityFit fit = math.gravityFit(joint);
-      if (fit.misfit() > MISFIT) {
-        noted.add(
-            String.format(
-                Locale.ROOT,
-                "one cosine misses %s's gravity by %.0f%% of its peak, at %s: a controller's arm"
-                    + " cosine can't follow it, so feed RobotMath.gravityTorque at the joint's"
-                    + " angle as the request's feedforward",
-                joint.label(),
-                fit.misfit() * 100,
-                joint.shown(fit.worstAt())));
-      }
+      found = new Gravity(Gravity.Kind.COSINE, kG, offsetOfGravitysCosine(math, gains));
+      whyOneCosineMissesGravity(math).ifPresent(noted::add);
     } else {
       found = new Gravity(Gravity.Kind.STEADY, kG, 0);
     }
     if (tuned.isPresent()) {
-      String far = farFromIdeal("kG", kG, seed, 0);
-      if (far != null) {
-        noted.add(far);
-      }
+      TunedGainDoubt.ofKg(joint, kG, seed).ifPresent(noted::add);
     }
     if (kG != 0) {
-      Joint tilting = tilting(math);
-      if (tilting != null) {
-        noted.add(
-            String.format(
-                Locale.ROOT,
-                "%s rides %s, whose turning tilts its gravity: a controller's gravity term holds it"
-                    + " only with %s at rest, so feed RobotMath.gravityTorque at the joints'"
-                    + " positions as the request's feedforward",
-                joint.label(),
-                tilting.label(),
-                tilting.label()));
-      }
+      whyAJointBelowTiltsGravity(math).ifPresent(noted::add);
     }
     return found;
   }
 
   /**
-   * The first joint above this one whose turning tilts gravity at it: a revolute joint about an
-   * axis that isn't vertical, with the joints where they rest. Null when none does.
+   * Refuses a kG that was tuned to anything but 0 for a joint gravity cannot move. Such a kG would
+   * push a turret or a level slide one way for no reason.
    */
-  private @Nullable Joint tilting(RobotMath math) {
-    Part up = joint.parent();
-    while (up instanceof Joint parent) {
-      if (parent instanceof Joint.Revolute && math.gravityActsOn(parent)) {
-        return parent;
-      }
-      up = parent.parent();
+  private void refuseATunedKg(Optional<Double> tuned) {
+    if (tuned.isEmpty() || tuned.get() == 0) {
+      return;
     }
-    return null;
-  }
-
-  /** A frame a gain may have been worked out in: how many of its units make the joint's one. */
-  private record Frame(String name, double perJointUnit) {}
-
-  /**
-   * Why a tuned gain looks wrong beside the definition's ideal, or null when it's within {@link
-   * #SANITY_LOW} to {@link #SANITY_HIGH} of it. When the two differ by about the ratio between two
-   * frames, the frames are named: a gain worked out per turn of the joint and entered per turn of
-   * its rotor is the rotor's ratio times too high.
-   *
-   * @param rotorRatio the rotor's turns for each turn (or meter) of the joint, or 0 for a gain in
-   *     volts
-   */
-  private @Nullable String farFromIdeal(
-      String gain, double tuned, double ideal, double rotorRatio) {
-    if (ideal == 0) {
-      return null;
-    }
-    double ratio = tuned / ideal;
-    if (ratio >= SANITY_LOW && ratio <= SANITY_HIGH) {
-      return null;
-    }
-    String why =
+    String whyGravityCannotMoveIt =
+        switch (Position.Kind.of(joint)) {
+          case ANGLE -> "turns about the vertical";
+          case LENGTH -> "slides level";
+        };
+    throw new IllegalArgumentException(
         String.format(
             Locale.ROOT,
-            "%s's tuned %s, %s, is %s times the ideal, %s, from its motors and what it moves",
+            "%s has a tuned kG of %s V, but gravity can't move it: it %s. Leave its kG out, or"
+                + " write 0",
             joint.label(),
-            gain,
-            shownGain(gain, tuned),
-            shown(ratio),
-            shownGain(gain, ideal));
-    if (rotorRatio == 0) {
-      return why;
+            shown(tuned.get()),
+            whyGravityCannotMoveIt));
+  }
+
+  /**
+   * What is added to an arm's position to give its angle from where its weight pulls hardest, in
+   * radians. The control may say where that is ({@code gravityAngle}), and the offset is then minus
+   * that angle, brought to within half a turn of zero. Otherwise it is where the links' mass puts
+   * it, or the joint's zero for links with no mass ({@link RobotMath#gravityOffset}).
+   */
+  private double offsetOfGravitysCosine(RobotMath math, MechanismControl.Gains gains) {
+    if (gains.gravityAngle().isPresent()) {
+      double pullsHardestAt = gains.gravityAngle().get().in(Radians);
+      return -Math.IEEEremainder(pullsHardestAt, 2 * Math.PI);
     }
-    List<Frame> frames = frames(rotorRatio);
-    double best = FRAME_TOLERANCE;
-    String named = null;
-    for (Frame meant : frames) {
-      for (Frame entered : frames) {
-        if (meant.equals(entered)) {
-          continue;
-        }
-        double off = Math.abs(ratio / (entered.perJointUnit() / meant.perJointUnit()) - 1);
-        if (off < best) {
-          best = off;
-          named =
-              String.format(
-                  Locale.ROOT,
-                  ": the ideal per %s, within %d%%, entered as if per %s, by the look of it",
-                  meant.name(),
-                  Math.max(1, (int) Math.ceil(off * 100)),
-                  entered.name());
-        }
+    return math.gravityOffset(joint);
+  }
+
+  /** The note for an arm whose gravity one cosine fits badly, if it does ({@link #MISFIT}). */
+  private Optional<String> whyOneCosineMissesGravity(RobotMath math) {
+    RobotMath.GravityFit fit = math.gravityFit(joint);
+    if (!(fit.misfit() > MISFIT)) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        String.format(
+            Locale.ROOT,
+            "one cosine misses %s's gravity by %.0f%% of its peak, at %s: a controller's arm"
+                + " cosine can't follow it, so feed RobotMath.gravityTorque at the joint's"
+                + " angle as the request's feedforward",
+            joint.label(),
+            fit.misfit() * 100,
+            joint.shown(fit.worstAt())));
+  }
+
+  /**
+   * The note for a joint that rides on one whose turning tilts it, if it rides on one. A motor
+   * controller's gravity term knows only this joint's own position, so it holds the joint only
+   * while the joint below is where it rests.
+   */
+  private Optional<String> whyAJointBelowTiltsGravity(RobotMath math) {
+    Optional<Joint> tilting = firstJointBelowThatTiltsIt(math);
+    if (tilting.isEmpty()) {
+      return Optional.empty();
+    }
+    String below = tilting.get().label();
+    return Optional.of(
+        String.format(
+            Locale.ROOT,
+            "%s rides %s, whose turning tilts its gravity: a controller's gravity term holds it"
+                + " only with %s at rest, so feed RobotMath.gravityTorque at the joints'"
+                + " positions as the request's feedforward",
+            joint.label(),
+            below,
+            below));
+  }
+
+  /**
+   * The nearest joint between this one and the chassis whose turning tilts gravity at this one, if
+   * there is one: a joint that turns about an axis that is not vertical, with the joints where they
+   * rest.
+   */
+  private Optional<Joint> firstJointBelowThatTiltsIt(RobotMath math) {
+    Part below = joint.parent();
+    while (below instanceof Joint parent) {
+      if (parent instanceof Joint.Revolute && math.gravityActsOn(parent)) {
+        return Optional.of(parent);
       }
+      below = parent.parent();
     }
-    return named == null ? why : why + named;
-  }
-
-  private List<Frame> frames(double rotorRatio) {
-    if (joint instanceof Joint.Revolute) {
-      return List.of(
-          new Frame("radian", 1),
-          new Frame("degree", 180 / Math.PI),
-          new Frame("turn of " + joint.label(), 1 / (2 * Math.PI)),
-          new Frame("turn of its rotor", rotorRatio / (2 * Math.PI)));
-    }
-    List<Frame> frames = new ArrayList<>();
-    frames.add(new Frame("meter", 1));
-    frames.add(new Frame("inch", 1 / INCH));
-    frames.add(new Frame("turn of its rotor", rotorRatio));
-    if (rotations.perRotation() != 1) {
-      frames.add(new Frame("turn of its drum", 1 / rotations.perRotation()));
-    }
-    return frames;
-  }
-
-  private String shownGain(String gain, double value) {
-    String per = joint instanceof Joint.Revolute ? "rad" : "m";
-    return switch (gain) {
-      case "kV" -> shown(value) + " V/(" + per + "/s)";
-      case "kA" -> shown(value) + " V/(" + per + "/s²)";
-      default -> shown(value) + " V";
-    };
+    return Optional.empty();
   }
 }
