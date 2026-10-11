@@ -110,6 +110,11 @@ class PhysicalEdgesTest {
     return Stream.of(
         answers("an outline that doubles back names the corner it turns at",
             () -> refusal(() -> polygon(0, 0, 2, 0, 1, 0, 1, 1)), "the polygon doubles back at corner 1"),
+        answers("an outline that doubles back at its first corner is usually refused for the edges that then overlap",
+            () -> refusal(() -> polygon(2, 0, 1, 0, 1, 1, 0, 0)), "the polygon's edges 1 and 3 cross"),
+        answers("...but where rounding hides the overlap, it is still refused, for doubling back at corner 0",
+            () -> refusal(() -> polygon(8.7, 1.6300000000000003, 7.908, 2.0260000000000002, 9.228, 4.666, 7.82, 2.0700000000000003)),
+            "the polygon doubles back at corner 0"),
         answers("two edges that cross are named",
             () -> refusal(() -> polygon(0, 0, 2, 0, 2, 2, 1, -1, 0, 2)), "the polygon's edges 0 and 2 cross"),
         answers("a corner that goes straight on is no fault", () -> polygon(0, 0, 1, 0, 2, 0, 2, 2, 0, 2).convex(), true),
