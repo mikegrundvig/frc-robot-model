@@ -243,16 +243,19 @@ final class JointSpeedChecks {
   }
 
   /**
-   * Why a named speed is doubted, if it is: it is within the joint's free speed, and above the
-   * share of it past which a velocity loop cannot hold it ({@link #NOTED_SHARE}).
+   * Why a named speed is doubted, if it is: it is within the joint's free speed ({@link #isPast}),
+   * and above the share of it past which a velocity loop cannot hold it ({@link #NOTED_SHARE}).
    */
   private static Optional<String> whySpeedIsDoubted(Joint joint, Output output, double freeSpeed) {
     if (output.kind() != Output.Kind.VELOCITY) {
       return Optional.empty();
     }
-    double share = Math.abs(output.value()) / freeSpeed;
+    double size = Math.abs(output.value());
+    double share = size / freeSpeed;
     boolean nearFreeSpeed = share > NOTED_SHARE;
-    boolean withinFreeSpeed = share <= 1 + ROUNDING;
+    // The same question the refusal asks (whySpeedIsTooFast), so a speed is never both refused
+    // and doubted, nor let past both.
+    boolean withinFreeSpeed = !isPast(freeSpeed, size);
     if (nearFreeSpeed && withinFreeSpeed) {
       return Optional.of(
           String.format(

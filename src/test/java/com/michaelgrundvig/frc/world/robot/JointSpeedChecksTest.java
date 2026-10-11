@@ -67,6 +67,26 @@ class JointSpeedChecksTest {
     return problems.size();
   }
 
+  /**
+   * How many of the speeds nearest the free speed's edge, 200 rounding steps either side of it, are
+   * not judged exactly once: refused and doubted both, or neither.
+   */
+  private static int speedsNotJudgedOnce() {
+    double speed = JUST_AT_FREE_SPEED;
+    for (int step = 0; step < 200; step++) {
+      speed = Math.nextDown(speed);
+    }
+    int notJudgedOnce = 0;
+    for (int step = 0; step < 400; step++) {
+      RobotMath math = rollerWith(speed(speed));
+      if (problems(math) + JointSpeedChecks.doubts(math).size() != 1) {
+        notJudgedOnce++;
+      }
+      speed = Math.nextUp(speed);
+    }
+    return notJudgedOnce;
+  }
+
   @ParameterizedTest
   @MethodSource({"refused", "doubted", "unchecked"})
   void itFinds(Supplier<Integer> found, int howMany) {
@@ -103,6 +123,8 @@ class JointSpeedChecksTest {
         finds("backward counts the same", () -> JointSpeedChecks.doubts(rollerWith(speed(-Math.nextUp(noted)))).size(), 1),
         finds("a speed a rounding step past the free speed is doubted", () -> JointSpeedChecks.doubts(rollerWith(speed(JUST_AT_FREE_SPEED))).size(), 1),
         finds("a speed plainly past the free speed is refused instead, and not doubted", () -> JointSpeedChecks.doubts(rollerWith(speed(FREE_SPEED * (1 + 2e-9)))).size(), 0),
+        finds("of the 400 speeds nearest that edge, none is both refused and doubted, and none is neither",
+            JointSpeedChecksTest::speedsNotJudgedOnce, 0),
         finds("a voltage is never doubted", () -> JointSpeedChecks.doubts(rollerWith(Output.volts("pushing", 11.9))).size(), 0),
         finds("a joint with no motors is not doubted", () -> JointSpeedChecks.doubts(rollerWithNoMotor(speed(0.95 * FREE_SPEED))).size(), 0));
   }
