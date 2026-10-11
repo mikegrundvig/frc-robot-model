@@ -83,9 +83,12 @@ class VenueFileEdgesTest {
         answers("a number too large for a double is no number",
             () -> reading(r -> r.number(object("x", Double.POSITIVE_INFINITY), "x", "x")),
             new Read(OptionalDouble.empty(), "x isn't a number")),
-        answers("a number named by more than its key is named with the key after it",
+        answers("a number named by more than its key is named that way, once",
             () -> reading(r -> r.number(Map.of(), "length", "the layout's length")),
-            new Read(OptionalDouble.empty(), "the layout's length's length is missing")),
+            new Read(OptionalDouble.empty(), "the layout's length is missing")),
+        answers("...and so is one that is there and is no number",
+            () -> reading(r -> r.number(object("x", "east"), "x", "tag 2's x")),
+            new Read(OptionalDouble.empty(), "tag 2's x isn't a number")),
         answers("an object",
             () -> reading(r -> r.object(Map.of("a", 1), "layout")),
             new Read(Optional.of(Map.of("a", 1)), "")),
@@ -170,6 +173,14 @@ class VenueFileEdgesTest {
     return file("\"name\": \"Pit\", ", layout(tags), "");
   }
 
+  /** A layout whose field has no length, and whose one tag has no x and no quaternion W. */
+  private static String layoutMissingNumbers() {
+    String tag =
+        "{\"ID\": 2, \"pose\": {\"translation\": {\"y\": 2, \"z\": 0.5},"
+            + " \"rotation\": {\"quaternion\": {\"X\": 0, \"Y\": 0, \"Z\": 0}}}}";
+    return "{\"tags\": [" + tag + "], \"field\": {\"width\": 8}}";
+  }
+
   /** A parsed layout with one upright tag, its ID whatever number a parser might give. */
   private static Map<String, Object> layoutWithTagNumbered(Number id) {
     Map<String, Object> pose =
@@ -249,7 +260,10 @@ class VenueFileEdgesTest {
         answers("a tag numbered below zero",
             () -> refusal(file(tag("-1", UPRIGHT))), "venue file: a tag's ID -1.0 isn't a whole number"),
         answers("a tag with no number and no pose",
-            () -> refusal(file("{}")), "venue file: a tag's ID's ID is missing; tag ?'s pose is missing"),
+            () -> refusal(file("{}")), "venue file: a tag's ID is missing; tag ?'s pose is missing"),
+        answers("a layout with no length, and a tag with no x and no quaternion W",
+            () -> refusal(file("\"name\": \"Pit\", ", layoutMissingNumbers(), "")),
+            "venue file: tag 2's x is missing; tag 2's quaternion W is missing; the layout's length is missing"),
         answers("a tag numbered 3.5 is not called tag 3 in what else is wrong with it",
             () -> refusal(file("{\"ID\": 3.5}")),
             "venue file: a tag's ID 3.5 isn't a whole number; tag 3.5's pose is missing"),

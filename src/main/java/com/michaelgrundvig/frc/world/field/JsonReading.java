@@ -1,7 +1,5 @@
 package com.michaelgrundvig.frc.world.field;
 
-import static com.michaelgrundvig.frc.world.config.Rules.possessive;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -56,23 +54,16 @@ final class JsonReading {
    * A number an object has to have under a key. JSON has no infinity and no not-a-number, but a
    * number too large for a double reads as infinite, and that is refused as not a number.
    *
-   * @param what the number as a problem names it. When it is not simply the key, the problem names
-   *     it as this followed by the key again, so a caller that passes "tag 2's x" for the key "x"
-   *     gets "tag 2's x's x is missing". The reader's messages are its contract with the tools that
-   *     show them, so the wording stays as it is until those can change with it.
+   * @param what the number as a problem names it: "format", "tag 2's x", "the layout's length"
    */
   OptionalDouble number(Map<?, ?> object, String key, String what) {
     if (object.get(key) instanceof Number number && Double.isFinite(number.doubleValue())) {
       return OptionalDouble.of(number.doubleValue());
     }
-    String named = what;
-    if (!key.equals(what)) {
-      named = possessive(what) + " " + key;
-    }
     if (object.containsKey(key)) {
-      problems.add(named + " isn't a number");
+      problems.add(what + " isn't a number");
     } else {
-      problems.add(named + " is missing");
+      problems.add(what + " is missing");
     }
     return OptionalDouble.empty();
   }
