@@ -308,8 +308,8 @@ class RobotMathTest {
   }
 
   /**
-   * A continuous elevator, as one team's: each stage still until the carriage reaches it, at 0.45 m and
-   * 0.9 m, then moving with it. The weight the carriage lifts steps at each.
+   * A continuous elevator, as one team's: each stage still until the carriage reaches it, at 0.45 m
+   * and 0.9 m, then moving with it. The weight the carriage lifts steps at each.
    */
   @Test
   void aContinuousElevatorsLoadStepsAtEachStage() {
