@@ -85,14 +85,12 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
    * Why the products of inertia are too large for the moments, if they are.
    *
    * <p>No body takes less than no effort to turn about any axis, which is to say that its tensor is
-   * positive semidefinite. That is judged here by the tensor's three second-order principal minors,
-   * one for each pair of axes: each product of inertia, squared, is at most the product of its two
-   * axes' moments. All zero passes, for a part with no inertia given, and so does a point mass,
-   * which has none about its center.
-   *
-   * <p>The full test would also ask that the tensor's determinant is not negative. That is not
-   * asked, and never has been: a tensor that passes the three minors and has a negative determinant
-   * is accepted. Asking it would refuse tensors that are accepted today.
+   * positive semidefinite. A symmetric tensor is when none of its principal minors is negative. The
+   * three of the first order are the moments, which are asked already. The three of the second
+   * order, one for each pair of axes, ask that each product of inertia, squared, is at most the
+   * product of its two axes' moments. The one of the third order is the tensor's determinant, which
+   * asks it of the three products together. All zero passes, for a part with no inertia given, and
+   * so does a point mass, which has none about its center.
    */
   private static Optional<String> whyProductsAreTooLarge(
       double ixx, double iyy, double izz, double ixy, double ixz, double iyz) {
@@ -102,11 +100,32 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
     double minorXz = ixx * izz - ixz * ixz;
     double minorYz = iyy * izz - iyz * iyz;
     boolean noMinorIsNegative = minorXy >= -slack && minorXz >= -slack && minorYz >= -slack;
-    if (noMinorIsNegative) {
+    if (!noMinorIsNegative) {
+      return Optional.of(
+          "the products of inertia are too large for the moments: no body turns that way");
+    }
+    boolean determinantIsNegative = determinant(ixx, iyy, izz, ixy, ixz, iyz) < -slack * size;
+    if (!determinantIsNegative) {
       return Optional.empty();
     }
+    // Each pair of axes passes alone, so it is the three products together that no body has. A
+    // CAD program that reports the integrals themselves gives all three with the other sign,
+    // which is the commonest way to get here.
     return Optional.of(
-        "the products of inertia are too large for the moments: no body turns that way");
+        "the products of inertia ("
+            + shown(ixy)
+            + ", "
+            + shown(ixz)
+            + ", "
+            + shown(iyz)
+            + ") are too large together for the moments ("
+            + shown(ixx)
+            + ", "
+            + shown(iyy)
+            + ", "
+            + shown(izz)
+            + "): no body turns that way. If they came from CAD, check their signs: some programs"
+            + " report all three negated");
   }
 
   /**
@@ -127,7 +146,8 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
   private Optional<String> whyItTurnsTooEasily() {
     boolean momentsArePositive = ixx > 0 && iyy > 0 && izz > 0;
     boolean minorXyIsPositive = ixx * iyy - ixy * ixy > 0;
-    if (momentsArePositive && minorXyIsPositive && determinant() > 0) {
+    boolean determinantIsPositive = determinant(ixx, iyy, izz, ixy, ixz, iyz) > 0;
+    if (momentsArePositive && minorXyIsPositive && determinantIsPositive) {
       return Optional.empty();
     }
     return Optional.of(
@@ -145,8 +165,9 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
     return ixx == 0 && iyy == 0 && izz == 0 && ixy == 0 && ixz == 0 && iyz == 0;
   }
 
-  /** The tensor's determinant, expanded along its first row. */
-  private double determinant() {
+  /** A tensor's determinant, expanded along its first row. */
+  private static double determinant(
+      double ixx, double iyy, double izz, double ixy, double ixz, double iyz) {
     return ixx * (iyy * izz - iyz * iyz)
         - ixy * (ixy * izz - iyz * ixz)
         + ixz * (ixy * iyz - iyy * ixz);

@@ -60,6 +60,7 @@ class InertiaTest {
           """
           a turned bar's own entries         | 0.04666667 | 0.04666667 | 0.08666667 | -0.04 | 0 | 0 |
           a product no body turns by         | 0.04666667 | 0.04666667 | 0.08666667 | 0.1   | 0 | 0 | no body turns that way
+          products no body has together      | 1          | 1          | 1          | -0.9  | -0.9 | -0.9 | too large together for the moments (1, 1, 1)
           a negative moment                  | -1         | 1          | 1          | 0     | 0 | 0 | Inertia.ixx: -1 must be zero or more
           a moment over the other two's sum  | 3          | 1          | 1          | 0     | 0 | 0 | each must be at most the sum of the other two
           a product that is no number        | 1          | 1          | 1          | NaN   | 0 | 0 | Inertia.ixy
