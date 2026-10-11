@@ -189,8 +189,10 @@ final class InterlockChecks {
   }
 
   /**
-   * The joints that can never run: a joint with two or more run-only-whens on the same other joint
-   * whose conditions hold together nowhere in that joint's range.
+   * The joints that can never run: a joint with run-only-whens on the same other joint whose
+   * conditions hold together nowhere in that joint's range. It takes two or more: one condition
+   * alone always holds somewhere, at its own edge, which it was refused for if that is outside the
+   * range.
    */
   private static List<Finding> jointsThatCanNeverRun(List<Interlock> onPositions) {
     Map<Joint, Map<Joint, List<Condition.OnJoint>>> needed = new LinkedHashMap<>();
@@ -208,7 +210,7 @@ final class InterlockChecks {
         (joint, neededOfEachOther) ->
             neededOfEachOther.forEach(
                 (other, conditions) -> {
-                  if (conditions.size() > 1 && !allHoldSomewhere(other, conditions)) {
+                  if (!allHoldSomewhere(other, conditions)) {
                     found.add(Places.refused(joint, neverRuns(joint, other, conditions)));
                   }
                 }));

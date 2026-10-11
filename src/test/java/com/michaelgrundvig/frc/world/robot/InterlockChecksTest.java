@@ -65,7 +65,7 @@ class InterlockChecksTest {
   }
 
   @ParameterizedTest
-  @MethodSource({"judged", "notTheRobotsOwn"})
+  @MethodSource({"judged", "notTheRobotsOwn", "oneConditionToRun"})
   void itAnswers(Supplier<?> question, Object answer) {
     assertThat(question.get()).isEqualTo(answer);
   }
@@ -109,6 +109,38 @@ class InterlockChecksTest {
             () -> InterlockChecks.startDoubts(standard(), List.of(
                 Interlock.that(ARM).keepsOut(Range.degrees(-30, 0)).when(GHOST.atMost(Degrees.of(10))))),
             List.of()));
+  }
+
+  /** What is wrong with the roller run only when the pivot is one way, and nothing else. */
+  private static List<String> rollerRunOnlyWhen(Condition pivotIs) {
+    return messages(InterlockChecks.problems(standard(), List.of(Interlock.that(ROLLER).runsOnlyWhen(pivotIs))));
+  }
+
+  /**
+   * One condition to run always holds somewhere in the other joint's range, so a joint with one is
+   * never said to be unable to run: these are the conditions nearest to holding nowhere. The pivot
+   * goes from 0° to 135°.
+   */
+  static Stream<Arguments> oneConditionToRun() {
+    double top = Math.toRadians(135);
+    return Stream.of(
+        answers("at least the highest it goes holds there",
+            () -> rollerRunOnlyWhen(PIVOT.atLeast(Degrees.of(135))), List.of()),
+        answers("at least a hair past the highest, which counts as the highest",
+            () -> rollerRunOnlyWhen(Condition.AtLeast.builder().joint(PIVOT).position(top + Range.EDGE).build()), List.of()),
+        answers("at most the lowest it goes holds there",
+            () -> rollerRunOnlyWhen(PIVOT.atMost(Degrees.of(0))), List.of()),
+        answers("at most a hair below the lowest",
+            () -> rollerRunOnlyWhen(Condition.AtMost.builder().joint(PIVOT).position(-Range.EDGE).build()), List.of()),
+        answers("between two places two hairs apart, at its top",
+            () -> rollerRunOnlyWhen(Condition.Between.builder().joint(PIVOT).from(top - 2 * Range.EDGE).to(top).build()), List.of()),
+        answers("between a hair below its top and a hair past it",
+            () -> rollerRunOnlyWhen(Condition.Between.builder().joint(PIVOT).from(top - Range.EDGE).to(top + Range.EDGE).build()), List.of()),
+        answers("...where two conditions that hold together nowhere are refused",
+            () -> messages(InterlockChecks.problems(standard(), List.of(
+                Interlock.that(ROLLER).runsOnlyWhen(PIVOT.atLeast(Degrees.of(135))),
+                Interlock.that(ROLLER).runsOnlyWhen(PIVOT.atMost(Degrees.of(0)))))),
+            List.of("roller can never run: no position of pivot has pivot at least 135° and pivot at most 0°")));
   }
 
   /** What is said of an interlock that names what is not the robot's own. */
