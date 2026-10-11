@@ -295,6 +295,48 @@ class BlocksTest {
   }
 
   /**
+   * A switch at the other end is not one to home to. Nor does a practice robot get round the check:
+   * a sound robot's joint changed to lose its switch's position, or to home to the end it has no
+   * switch at, is refused as the practice robot is built. So no robot there is has a joint that
+   * homes to a switch it lacks.
+   */
+  @Test
+  void homingToASwitchIsCheckedAtTheOtherEndAndOnAPracticeRobot() {
+    MechanismControl.Homing toLower =
+        MechanismControl.Homing.toSwitch(Sensor.Switch.Limit.End.LOWER);
+    MechanismControl.Homing toUpper =
+        MechanismControl.Homing.toSwitch(Sensor.Switch.Limit.End.UPPER);
+    Joint.Revolute homing = PIVOT.retuned(control -> control.withHoming(toLower));
+    RobotDefinition sound = robot(homing.limitSwitch(LimitSwitch.lower().at(Degrees.of(0))));
+
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> robot(homing.limitSwitch(LimitSwitch.upper().at(Degrees.of(100)))))
+        .withMessage(
+            "RobotDefinition[test].joints: pivot homes to its lower limit switch, and its block"
+                + " has none: give it one where it trips,"
+                + " .limitSwitch(LimitSwitch.lower().at(Degrees.of(...))...)");
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> sound.named("practice").with(homing.limitSwitch(LimitSwitch.lower())))
+        .withMessage(
+            "RobotDefinition[practice].joints: pivot homes to pivot lower limit, whose position"
+                + " isn't known: measure where it trips and give it,"
+                + " LimitSwitch.lower().at(Degrees.of(...)), or home another way");
+    assertThatIllegalArgumentException()
+        .isThrownBy(
+            () ->
+                sound
+                    .named("practice")
+                    .with(
+                        PIVOT
+                            .retuned(control -> control.withHoming(toUpper))
+                            .limitSwitch(LimitSwitch.lower().at(Degrees.of(0)))))
+        .withMessage(
+            "RobotDefinition[practice].joints: pivot homes to its upper limit switch, and its"
+                + " block has none: give it one where it trips,"
+                + " .limitSwitch(LimitSwitch.upper().at(Degrees.of(...))...)");
+  }
+
+  /**
    * A joint's loop closes on its absolute encoder only where the encoder tells it where it is
    * across its whole range: one held at positions, without a homing recipe, with a range, which the
    * definition checks one of the encoder's turns holds. A roller, a recipe and a joint that turns
