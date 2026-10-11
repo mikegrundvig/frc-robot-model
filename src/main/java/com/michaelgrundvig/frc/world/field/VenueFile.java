@@ -1,24 +1,15 @@
 package com.michaelgrundvig.frc.world.field;
 
-import static com.michaelgrundvig.frc.world.config.Rules.possessive;
-
-import io.avaje.json.JsonException;
 import io.avaje.jsonb.JsonType;
 import io.avaje.jsonb.Jsonb;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 import org.wpilib.fields.Field;
-import org.wpilib.fields.FieldTag;
-import org.wpilib.math.geometry.Pose3d;
-import org.wpilib.math.geometry.Quaternion;
-import org.wpilib.math.geometry.Rotation3d;
-import org.wpilib.math.geometry.Translation3d;
 
 /**
  * Reads a venue file: a small JSON document of ours that embeds WPILib's layout unchanged.
@@ -38,16 +29,17 @@ import org.wpilib.math.geometry.Translation3d;
  *
  * <p>The embedded layout is either WPILib's field format ({@code field-tags}, {@code
  * field-dimensions}) or its earlier AprilTag layout ({@code tags}, {@code field}), which WPIcal and
- * PhotonVision use. A key the format doesn't have is a problem, so a misspelling can't pass
- * silently. Every problem is reported at once. Whether it fits the game's field is {@link
- * VenueCheck}'s to say.
+ * PhotonVision use; {@link VenueLayoutReader} reads it. A key the format doesn't have is a problem,
+ * so a misspelling can't pass silently. Every problem is reported at once. Whether the venue fits
+ * the game's field is {@link VenueCheck}'s to say.
+ *
+ * <p>An instance reads one file's top-level keys, one method to a key, and exists only for the
+ * length of that reading.
  */
 public final class VenueFile {
+  /** The keys a venue file may have at its top level. */
   private static final Set<String> KEYS =
       Set.of("format", "name", "kind", "base", "layout", "moved", "method", "date");
-
-  /** Any JSON value: maps in the file's order, lists, text, numbers, true or false. */
-  private static final JsonType<Object> JSON = Jsonb.instance().type(Object.class);
 
   /**
    * Deeper nesting than this is refused before it's read: a field layout is five levels deep, and
@@ -55,12 +47,17 @@ public final class VenueFile {
    */
   static final int MAX_DEPTH = 64;
 
-  /** Text as a JSON string. */
-  private static final JsonType<String> TEXT = Jsonb.instance().type(String.class);
+  /** Text as a JSON string, with its quotes and escapes. */
+  private static final JsonType<String> JSON_TEXT = Jsonb.instance().type(String.class);
 
-  private final List<String> problems = new ArrayList<>();
+  /** The file's top-level object. */
+  private final Map<?, ?> file;
 
-  private VenueFile() {}
+  private final JsonReading reading = new JsonReading();
+
+  private VenueFile(Map<?, ?> file) {
+    this.file = file;
+  }
 
   /**
    * The venue a file describes. Whether it fits a field is {@link VenueCheck}'s to say.
@@ -68,21 +65,20 @@ public final class VenueFile {
    * @throws IllegalArgumentException listing every problem, if the file isn't a venue file
    */
   public static Venue read(String text) {
-    VenueFile reader = new VenueFile();
-    Object parsed = parse(text);
-    if (!(parsed instanceof Map<?, ?> top)) {
+    if (!(VenueJson.parse(text) instanceof Map<?, ?> file)) {
       throw new IllegalArgumentException("venue file: not a JSON object");
     }
-    if (!top.containsKey("format") && (top.containsKey("field-tags") || top.containsKey("tags"))) {
+    if (isBareLayout(file)) {
       throw new IllegalArgumentException(
           "venue file: this is a bare WPILib layout, not a venue file. Wrap it with a name, kind"
               + " and base first (Pitwall's upload does)");
     }
-    Venue venue = reader.venue(top, text);
-    if (venue == null || !reader.problems.isEmpty()) {
-      throw new IllegalArgumentException("venue file: " + String.join("; ", reader.problems));
+    VenueFile reader = new VenueFile(file);
+    Optional<Venue> venue = reader.venue(text);
+    if (venue.isEmpty() || reader.reading.foundProblems()) {
+      throw new IllegalArgumentException("venue file: " + reader.reading.problemsListed());
     }
-    return venue;
+    return venue.get();
   }
 
   /**
@@ -93,28 +89,25 @@ public final class VenueFile {
    * @throws IllegalArgumentException if it isn't a WPILib layout, or doesn't make a venue file
    */
   public static Venue wrap(String layout, String name, Venue.Kind kind, String base) {
-    Object parsed = parse(layout);
-    if (!(parsed instanceof Map<?, ?> top)
-        || !(top.containsKey("field-tags") || top.containsKey("tags"))) {
+    if (!(VenueJson.parse(layout) instanceof Map<?, ?> parsed)
+        || !VenueLayoutReader.hasTags(parsed)) {
       throw new IllegalArgumentException(
           "not a WPILib layout: it has no \"field-tags\" or \"tags\"");
-    }
-    if (name.isBlank()) {
-      name = top.get("name") instanceof String own && !own.isBlank() ? own : "Uploaded layout";
     }
     String text =
         "{\n  \"format\": "
             + Venue.FORMAT
             + ",\n  \"name\": "
-            + TEXT.toJson(name)
+            + JSON_TEXT.toJson(nameToWrapUnder(name, parsed))
             + ",\n  \"kind\": "
-            + TEXT.toJson(kind.name().toLowerCase(Locale.ROOT))
+            + JSON_TEXT.toJson(kind.name().toLowerCase(Locale.ROOT))
             + ",\n  \"base\": "
-            + TEXT.toJson(base)
+            + JSON_TEXT.toJson(base)
             + ",\n  \"method\": \"unknown\",\n  \"layout\": "
             + layout.strip()
             + "\n}\n";
     Venue venue = read(text);
+    boolean wrapped = true;
     return new Venue(
         venue.name(),
         venue.kind(),
@@ -123,8 +116,22 @@ public final class VenueFile {
         venue.moved(),
         venue.method(),
         venue.date(),
-        true,
+        wrapped,
         venue.text());
+  }
+
+  /**
+   * What a wrapped layout is called: the name given, or if that is blank the layout's own name, or
+   * if it has none "Uploaded layout".
+   */
+  private static String nameToWrapUnder(String given, Map<?, ?> layout) {
+    if (!given.isBlank()) {
+      return given;
+    }
+    if (layout.get("name") instanceof String itsOwn && !itsOwn.isBlank()) {
+      return itsOwn;
+    }
+    return "Uploaded layout";
   }
 
   /**
@@ -133,243 +140,144 @@ public final class VenueFile {
    */
   public static boolean bare(String text) {
     try {
-      return parse(text) instanceof Map<?, ?> top
-          && !top.containsKey("format")
-          && (top.containsKey("field-tags") || top.containsKey("tags"));
+      return VenueJson.parse(text) instanceof Map<?, ?> file && isBareLayout(file);
     } catch (IllegalArgumentException e) {
       return false;
     }
   }
 
   /**
-   * The value JSON text holds.
-   *
-   * @throws IllegalArgumentException if it isn't JSON, saying where, or nests deeper than {@link
-   *     #MAX_DEPTH}
+   * Whether a JSON object is a WPILib layout with nothing around it: it has a layout's tags, and
+   * not the "format" every venue file starts with.
    */
-  private static @Nullable Object parse(String text) {
-    if (depth(text) > MAX_DEPTH) {
-      throw new IllegalArgumentException(
-          "not JSON a venue file can be: nested deeper than " + MAX_DEPTH + " levels");
-    }
-    try {
-      return JSON.fromJson(text);
-    } catch (JsonException e) {
-      throw new IllegalArgumentException("not JSON: " + e.getMessage(), e);
-    }
+  private static boolean isBareLayout(Map<?, ?> object) {
+    return !object.containsKey("format") && VenueLayoutReader.hasTags(object);
   }
 
-  private @Nullable Venue venue(Map<?, ?> top, String text) {
-    for (Object key : top.keySet()) {
+  /**
+   * The venue the file describes. Every key is read, whatever was wrong with the ones before it, so
+   * that the reading ends up holding all of the file's problems.
+   *
+   * @param text the file as it was read, which the venue keeps
+   * @return empty if something the venue needs could not be read, with the reason in the reading
+   */
+  private Optional<Venue> venue(String text) {
+    noteUnknownKeys();
+    checkFormat();
+    Optional<String> name = name();
+    Optional<Venue.Kind> kind = kind();
+    Optional<String> base = reading.text(file, "base", "base");
+    Optional<Field> layout = VenueLayoutReader.read(file.get("layout"), name.orElse(""), reading);
+    Map<Integer, String> moved = moved();
+    Optional<String> method = reading.textOr(file, "method", "method", "unknown");
+    Optional<String> date = reading.textOr(file, "date", "date", "");
+
+    boolean readAllItNeeds =
+        name.isPresent()
+            && kind.isPresent()
+            && base.isPresent()
+            && layout.isPresent()
+            && method.isPresent();
+    if (!readAllItNeeds) {
+      return Optional.empty();
+    }
+    boolean wrapped = false;
+    return Optional.of(
+        new Venue(
+            name.get(),
+            kind.get(),
+            base.get(),
+            layout.get(),
+            moved,
+            method.get(),
+            date.orElse(""),
+            wrapped,
+            text));
+  }
+
+  private void noteUnknownKeys() {
+    for (Object key : file.keySet()) {
       if (!KEYS.contains(key)) {
-        problems.add("unknown key \"" + key + "\"");
+        reading.problem("unknown key \"" + key + "\"");
       }
     }
-    double format = number(top, "format", "format", Double.NaN);
-    if (!Double.isNaN(format) && format != Venue.FORMAT) {
-      problems.add("format " + format + " (this code reads format " + Venue.FORMAT + ")");
-    }
-    String name = text(top, "name", "name", null);
-    if (name != null && name.isBlank()) {
-      problems.add("name is blank");
-    }
-    Venue.Kind kind = kind(top);
-    String base = text(top, "base", "base", null);
-    Field layout = layout(top.get("layout"), name == null ? "" : name);
-    Map<Integer, String> moved = new LinkedHashMap<>();
-    for (Map.Entry<?, ?> entry : entries(top, "moved")) {
-      Integer id = tagId(entry.getKey(), "moved");
-      if (!(entry.getValue() instanceof String reason) || reason.isBlank()) {
-        problems.add("moved: tag " + entry.getKey() + " needs a reason in words");
-      } else if (id != null) {
-        moved.put(id, reason);
-      }
-    }
-    String method = text(top, "method", "method", "unknown");
-    String date = text(top, "date", "date", "");
-    if (name == null || kind == null || base == null || layout == null || method == null) {
-      return null;
-    }
-    return new Venue(
-        name, kind, base, layout, moved, method, date == null ? "" : date, false, text);
   }
 
-  private Venue.@Nullable Kind kind(Map<?, ?> top) {
-    String kind = text(top, "kind", "kind", null);
-    if (kind == null) {
-      return null;
+  /** The file has to say which format it is in, and it has to be the one this code reads. */
+  private void checkFormat() {
+    OptionalDouble format = reading.number(file, "format", "format");
+    if (format.isPresent() && format.getAsDouble() != Venue.FORMAT) {
+      reading.problem(
+          "format " + format.getAsDouble() + " (this code reads format " + Venue.FORMAT + ")");
+    }
+  }
+
+  private Optional<String> name() {
+    Optional<String> name = reading.text(file, "name", "name");
+    if (name.isPresent() && name.get().isBlank()) {
+      reading.problem("name is blank");
+    }
+    return name;
+  }
+
+  /** What kind of field the venue is, written in lower case: "practice". */
+  private Optional<Venue.Kind> kind() {
+    Optional<String> written = reading.text(file, "kind", "kind");
+    if (written.isEmpty()) {
+      return Optional.empty();
     }
     try {
-      return Venue.Kind.valueOf(kind.toUpperCase(Locale.ROOT));
+      return Optional.of(Venue.Kind.valueOf(written.get().toUpperCase(Locale.ROOT)));
     } catch (IllegalArgumentException e) {
-      problems.add("kind \"" + kind + "\" (practice, event or official)");
-      return null;
+      reading.problem("kind \"" + written.get() + "\" (practice, event or official)");
+      return Optional.empty();
     }
   }
 
-  /** The tags of either WPILib layout format, as a WPILib field named for the venue. */
-  private @Nullable Field layout(@Nullable Object value, String name) {
-    if (value == null) {
-      problems.add("no layout");
-      return null;
+  /**
+   * Why each tag that the survey found far from its official place is there, by the tag's number.
+   * The file may leave "moved" out. An entry is kept only if both its tag number and its reason
+   * could be read.
+   */
+  private Map<Integer, String> moved() {
+    Map<Integer, String> moved = new LinkedHashMap<>();
+    if (!file.containsKey("moved")) {
+      return moved;
     }
-    Map<?, ?> layout = map(value, "layout");
-    if (layout == null) {
-      return null;
+    Optional<Map<?, ?>> entries = reading.object(file.get("moved"), "moved");
+    if (entries.isEmpty()) {
+      return moved;
     }
-    boolean fieldFormat = layout.containsKey("field-tags");
-    Object tags = layout.get(fieldFormat ? "field-tags" : "tags");
-    Map<?, ?> size = map(layout.get(fieldFormat ? "field-dimensions" : "field"), "layout's size");
-    if (!(tags instanceof List<?> tagList)) {
-      problems.add("the layout has no list of tags (\"field-tags\" or \"tags\")");
-      return null;
-    }
-    List<FieldTag> fieldTags = new ArrayList<>();
-    Set<Integer> seen = new HashSet<>();
-    for (Object item : tagList) {
-      FieldTag tag = tag(item);
-      if (tag != null) {
-        if (!seen.add(tag.getID())) {
-          problems.add("the layout has tag " + tag.getID() + " twice");
-        }
-        fieldTags.add(tag);
+    for (Map.Entry<?, ?> entry : entries.get().entrySet()) {
+      OptionalInt tag = movedTagNumber(entry.getKey());
+      Optional<String> reason = movedReason(entry);
+      if (tag.isPresent() && reason.isPresent()) {
+        moved.put(tag.getAsInt(), reason.get());
       }
     }
-    if (size == null) {
-      return null;
-    }
-    double length = number(size, "length", "the layout's length", Double.NaN);
-    double width = number(size, "width", "the layout's width", Double.NaN);
-    if (Double.isNaN(length) || Double.isNaN(width)) {
-      return null;
-    }
-    String season = layout.get("season") instanceof String s ? s : "";
-    String game = layout.get("game") instanceof String g ? g : "";
-    String program = layout.get("program") instanceof String p ? p : "frc";
-    return new Field(name, season, game, null, length, width, program, fieldTags);
+    return moved;
   }
 
-  private @Nullable FieldTag tag(Object item) {
-    Map<?, ?> tag = map(item, "a tag in the layout");
-    if (tag == null) {
-      return null;
-    }
-    double id = number(tag, "ID", "a tag's ID", Double.NaN);
-    Map<?, ?> pose = map(tag.get("pose"), "tag " + (Double.isNaN(id) ? "?" : (int) id) + "'s pose");
-    if (Double.isNaN(id) || pose == null) {
-      return null;
-    }
-    String which = "tag " + (int) id;
-    Map<?, ?> translation = map(pose.get("translation"), possessive(which) + " translation");
-    Map<?, ?> rotation = map(pose.get("rotation"), possessive(which) + " rotation");
-    Map<?, ?> quaternion =
-        rotation == null
-            ? null
-            : map(rotation.get("quaternion"), possessive(which) + " quaternion");
-    if (translation == null || quaternion == null) {
-      return null;
-    }
-    double x = number(translation, "x", possessive(which) + " x", Double.NaN);
-    double y = number(translation, "y", possessive(which) + " y", Double.NaN);
-    double z = number(translation, "z", possessive(which) + " z", Double.NaN);
-    double w = number(quaternion, "W", possessive(which) + " quaternion W", Double.NaN);
-    double qx = number(quaternion, "X", possessive(which) + " quaternion X", Double.NaN);
-    double qy = number(quaternion, "Y", possessive(which) + " quaternion Y", Double.NaN);
-    double qz = number(quaternion, "Z", possessive(which) + " quaternion Z", Double.NaN);
-    if (Double.isNaN(x + y + z + w + qx + qy + qz)) {
-      return null;
-    }
-    if (id != Math.rint(id) || id < 0) {
-      problems.add("a tag's ID " + id + " isn't a whole number");
-      return null;
-    }
-    double norm = Math.sqrt(w * w + qx * qx + qy * qy + qz * qz);
-    if (Math.abs(norm - 1) > 1e-3) {
-      problems.add(possessive(which) + " quaternion isn't a rotation (length " + norm + ")");
-      return null;
-    }
-    return new FieldTag(
-        (int) id,
-        new Pose3d(new Translation3d(x, y, z), new Rotation3d(new Quaternion(w, qx, qy, qz))));
-  }
-
-  private Iterable<? extends Map.Entry<?, ?>> entries(Map<?, ?> top, String key) {
-    if (!top.containsKey(key)) {
-      return List.of();
-    }
-    Map<?, ?> map = map(top.get(key), key);
-    return map == null ? List.of() : map.entrySet();
-  }
-
-  private @Nullable Integer tagId(Object key, String where) {
+  /** The tag a "moved" entry is about. JSON keys are text, so the number is written as "14". */
+  private OptionalInt movedTagNumber(Object key) {
     try {
-      int id = Integer.parseInt(String.valueOf(key));
-      if (id >= 0) {
-        return id;
+      int tag = Integer.parseInt(String.valueOf(key));
+      if (tag >= 0) {
+        return OptionalInt.of(tag);
       }
     } catch (NumberFormatException e) {
-      // reported below
+      // Not a number at all, which is reported the same way as a negative one.
     }
-    problems.add(where + ": \"" + key + "\" isn't a tag number");
-    return null;
+    reading.problem("moved: \"" + key + "\" isn't a tag number");
+    return OptionalInt.empty();
   }
 
-  private @Nullable Map<?, ?> map(@Nullable Object value, String what) {
-    if (value instanceof Map<?, ?> map) {
-      return map;
+  /** Why a "moved" entry's tag is where it is: some words, not left blank. */
+  private Optional<String> movedReason(Map.Entry<?, ?> entry) {
+    if (entry.getValue() instanceof String reason && !reason.isBlank()) {
+      return Optional.of(reason);
     }
-    problems.add(what + (value == null ? " is missing" : " isn't an object"));
-    return null;
-  }
-
-  private double number(Map<?, ?> map, String key, String what, double ifMissing) {
-    Object value = map.get(key);
-    if (!map.containsKey(key) && !Double.isNaN(ifMissing)) {
-      return ifMissing;
-    }
-    if (value instanceof Number number && Double.isFinite(number.doubleValue())) {
-      return number.doubleValue();
-    }
-    problems.add(
-        (key.equals(what) ? key : possessive(what) + " " + key)
-            + (map.containsKey(key) ? " isn't a number" : " is missing"));
-    return Double.NaN;
-  }
-
-  private @Nullable String text(
-      Map<?, ?> map, String key, String what, @Nullable String ifMissing) {
-    Object value = map.get(key);
-    if (!map.containsKey(key) && ifMissing != null) {
-      return ifMissing;
-    }
-    if (value instanceof String text) {
-      return text;
-    }
-    problems.add(what + (map.containsKey(key) ? " isn't text" : " is missing"));
-    return null;
-  }
-
-  /** How deep the text's lists and objects nest, outside its strings. */
-  private static int depth(String text) {
-    int depth = 0;
-    int deepest = 0;
-    boolean inString = false;
-    for (int i = 0; i < text.length(); i++) {
-      char c = text.charAt(i);
-      if (inString) {
-        if (c == '\\') {
-          i++;
-        } else if (c == '"') {
-          inString = false;
-        }
-      } else if (c == '"') {
-        inString = true;
-      } else if (c == '[' || c == '{') {
-        deepest = Math.max(deepest, ++depth);
-      } else if (c == ']' || c == '}') {
-        depth--;
-      }
-    }
-    return deepest;
+    reading.problem("moved: tag " + entry.getKey() + " needs a reason in words");
+    return Optional.empty();
   }
 }

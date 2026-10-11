@@ -74,7 +74,11 @@ public sealed interface Place {
 
     @Override
     public Pose2d on(FieldModel field, Alliance alliance) {
-      return alliance == Alliance.RED && red != null ? red : field.forAlliance(alliance, blue);
+      // Red's own pose is used if it was given; otherwise red's is the image of blue's.
+      if (alliance == Alliance.RED && red != null) {
+        return red;
+      }
+      return field.forAlliance(alliance, blue);
     }
 
     @Override

@@ -53,7 +53,7 @@ public record Bump(
     this(name, crestStart, crestEnd, heightMeters, depthMeters, Material.CARPET);
   }
 
-  /** Its crest, the bump's one crossing, named as the bump is. */
+  /** The crest line. It is the bump's one crossing, and has the bump's name. */
   public Crossing crest() {
     return new Crossing(name, crestStart, crestEnd, Crossing.Kind.CREST);
   }
@@ -89,8 +89,9 @@ public record Bump(
   }
 
   /**
-   * Whether a point is on the bump, or within a margin of its footprint: of its sides, and of its
-   * ends, so the margin squares the footprint's corners off rather than rounding them.
+   * Whether a point is on the bump, or within a margin of its footprint. The margin is added to the
+   * footprint's sides and to its ends separately, so the area that counts is a larger rectangle
+   * with square corners, not one with rounded corners.
    */
   @Override
   public boolean covers(Translation2d point, double marginMeters) {
@@ -114,20 +115,33 @@ public record Bump(
     if (!spans(point, 0)) {
       return 0;
     }
-    return heightMeters * Math.max(0, 1 - Math.abs(acrossOffset(point)) / (depthMeters / 2));
+    // The share of a ramp's run left between the point and the ramp's foot: 1 on the crest, 0 at
+    // the foot, and held at 0 past it.
+    double halfDepth = depthMeters / 2;
+    double shareOfRampLeft = Math.max(0, 1 - Math.abs(acrossOffset(point)) / halfDepth);
+    return heightMeters * shareOfRampLeft;
   }
 
-  /** Up the ramp a point is on, leaning away from the crest; straight up on the crest itself. */
+  /**
+   * On either ramp the ground faces up and away from the crest. On the crest itself, and off the
+   * bump, it is taken to face straight up.
+   */
   @Override
   public Vector3 normalAt(Translation2d point) {
     double offset = acrossOffset(point);
-    if (!spans(point, 0) || offset == 0 || Math.abs(offset) > depthMeters / 2) {
+    boolean onTheCrest = offset == 0;
+    boolean pastARampsFoot = Math.abs(offset) > depthMeters / 2;
+    if (!spans(point, 0) || onTheCrest || pastARampsFoot) {
       return Vector3.UP;
     }
-    // The ground falls away from the crest at the ramps' slope, so it faces away from the crest.
-    double lean = Math.signum(offset) * heightMeters / (depthMeters / 2);
+    // The ground falls away from the crest at the ramps' slope, so it faces up and away from
+    // the crest: toward the across side where the offset is positive, and the other way where
+    // it is negative. The normal of a plane that falls at a slope s in a direction is (s in
+    // that direction, 1 up), made a unit vector.
+    double slope = heightMeters / (depthMeters / 2);
+    double slopeAcross = Math.signum(offset) * slope;
     Rotation2d across = across();
-    return new Vector3(lean * across.getCos(), lean * across.getSin(), 1).unit();
+    return new Vector3(slopeAcross * across.getCos(), slopeAcross * across.getSin(), 1).unit();
   }
 
   /** The rectangle from one ramp's foot to the other's, between the crest's ends. */
@@ -142,7 +156,11 @@ public record Bump(
             crestStart.plus(side)));
   }
 
-  /** Its two ramps, and a triangle at each end of the crest. */
+  /**
+   * The bump as four faces: its two ramps, each a rectangle from its foot up to the crest, and a
+   * triangle closing each end. "Back" is the side of the crest opposite {@link #across}, and
+   * "front" the side it points to.
+   */
   @Override
   public TriangleMesh mesh() {
     Translation2d side = new Translation2d(depthMeters / 2, across());
@@ -165,6 +183,7 @@ public record Bump(
     return List.of(crest());
   }
 
+  /** Adds a corner on the floor to a mesh, and gives its number in the mesh. */
   private static int floor(TriangleMesh.Builder mesh, Translation2d point) {
     return mesh.corner(point.getX(), point.getY(), 0);
   }

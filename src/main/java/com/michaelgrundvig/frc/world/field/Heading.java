@@ -5,7 +5,6 @@ import static org.wpilib.units.Units.Radians;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Translation2d;
@@ -24,30 +23,41 @@ public final class Heading {
   /** Closer than this to a place, the robot has no bearing on it: it's on top of it. */
   public static final double ON_THE_PLACE_METERS = 0.05;
 
-  private enum Kind {
-    FIELD,
-    DOWNFIELD,
-    TOWARD
+  /**
+   * An angle from the drivers' forward within this of zero, or of half a turn, is named for what it
+   * is ("downfield") rather than by its degrees.
+   */
+  private static final double NAMED_WITHIN_DEGREES = 0.05;
+
+  /** What the robot is to face. */
+  private sealed interface Aim {
+    /** A heading on the field, counterclockwise from +x, whatever the alliance. */
+    record OnField(Rotation2d heading) implements Aim {}
+
+    /** An angle counterclockwise from the way the alliance's drivers look down the field. */
+    record FromDownfield(Rotation2d offset) implements Aim {}
+
+    /** A place, as it is for the robot's alliance, from wherever the robot is. */
+    record AtPlace(Place place) implements Aim {}
   }
 
-  private final Kind kind;
+  /** Which end of the robot faces what it is aimed at. */
+  private enum End {
+    FRONT,
+    BACK
+  }
 
-  /** The field heading for {@link Kind#FIELD}, or the angle from the drivers' forward. */
-  private final Rotation2d angle;
+  private final Aim aim;
+  private final End end;
 
-  private final @Nullable Place place;
-  private final boolean back;
-
-  private Heading(Kind kind, Rotation2d angle, @Nullable Place place, boolean back) {
-    this.kind = kind;
-    this.angle = angle;
-    this.place = place;
-    this.back = back;
+  private Heading(Aim aim, End end) {
+    this.aim = aim;
+    this.end = end;
   }
 
   /** A fixed heading on the field, whatever the alliance: counterclockwise from +x. */
   public static Heading field(Rotation2d heading) {
-    return new Heading(Kind.FIELD, heading, null, false);
+    return new Heading(new Aim.OnField(heading), End.FRONT);
   }
 
   /**
@@ -55,7 +65,8 @@ public final class Heading {
    * faces away from the drivers, whichever alliance they're on.
    */
   public static Heading downfield(Angle offset) {
-    return new Heading(Kind.DOWNFIELD, new Rotation2d(offset.in(Radians)), null, false);
+    Rotation2d fromDownfield = new Rotation2d(offset.in(Radians));
+    return new Heading(new Aim.FromDownfield(fromDownfield), End.FRONT);
   }
 
   /**
@@ -63,16 +74,12 @@ public final class Heading {
    * is. On top of it, there is no bearing.
    */
   public static Heading toward(Place place) {
-    return new Heading(Kind.TOWARD, Rotation2d.ZERO, place, false);
+    return new Heading(new Aim.AtPlace(place), End.FRONT);
   }
 
   /** The same, the robot's back facing it instead of its front. */
   public Heading withBack() {
-    return new Heading(kind, angle, place, true);
-  }
-
-  private Translation2d target(FieldModel field, Alliance alliance) {
-    return Objects.requireNonNull(place).on(field, alliance).getTranslation();
+    return new Heading(aim, End.BACK);
   }
 
   /**
@@ -81,24 +88,36 @@ public final class Heading {
    * @return empty if it needs the alliance and it isn't known, or the robot is on the place
    */
   public Optional<Rotation2d> resolve(Pose2d robot, FieldModel field, Optional<Alliance> alliance) {
-    Optional<Rotation2d> facing =
-        switch (kind) {
-          case FIELD -> Optional.of(angle);
-          case DOWNFIELD -> alliance.map(ours -> FieldModel.driverForward(ours).rotateBy(angle));
-          case TOWARD -> bearing(robot, field, alliance);
+    Optional<Rotation2d> wayToFace =
+        switch (aim) {
+          case Aim.OnField onField -> Optional.of(onField.heading());
+          case Aim.FromDownfield fromDownfield ->
+              alliance.map(ours -> FieldModel.driverForward(ours).rotateBy(fromDownfield.offset()));
+          case Aim.AtPlace atPlace -> bearing(atPlace.place(), robot, field, alliance);
         };
-    return back ? facing.map(heading -> heading.rotateBy(Rotation2d.PI)) : facing;
+    return switch (end) {
+      case FRONT -> wayToFace;
+      // The robot's heading is where its front points, so its back faces a way when its front
+      // faces the opposite way.
+      case BACK -> wayToFace.map(way -> way.rotateBy(Rotation2d.PI));
+    };
   }
 
-  private Optional<Rotation2d> bearing(
-      Pose2d robot, FieldModel field, Optional<Alliance> alliance) {
+  /**
+   * The direction from the robot to a place, on the field. It is empty when the alliance is not
+   * known, since the place is then not known either, and when the robot is on the place.
+   */
+  private static Optional<Rotation2d> bearing(
+      Place place, Pose2d robot, FieldModel field, Optional<Alliance> alliance) {
     if (alliance.isEmpty()) {
       return Optional.empty();
     }
-    Translation2d to = target(field, alliance.get()).minus(robot.getTranslation());
-    return to.getNorm() < ON_THE_PLACE_METERS
-        ? Optional.empty()
-        : Optional.of(new Rotation2d(to.getX(), to.getY()));
+    Translation2d placeOnField = place.on(field, alliance.get()).getTranslation();
+    Translation2d robotToPlace = placeOnField.minus(robot.getTranslation());
+    if (robotToPlace.getNorm() < ON_THE_PLACE_METERS) {
+      return Optional.empty();
+    }
+    return Optional.of(new Rotation2d(robotToPlace.getX(), robotToPlace.getY()));
   }
 
   /**
@@ -112,15 +131,18 @@ public final class Heading {
    */
   public double rate(
       Pose2d robot, FieldModel field, Optional<Alliance> alliance, Translation2d fieldVelocity) {
-    if (kind != Kind.TOWARD || alliance.isEmpty()) {
+    if (!(aim instanceof Aim.AtPlace atPlace) || alliance.isEmpty()) {
       return 0;
     }
-    Translation2d from = robot.getTranslation().minus(target(field, alliance.get()));
-    double squared = from.getSquaredNorm();
-    if (squared < ON_THE_PLACE_METERS * ON_THE_PLACE_METERS) {
+    Translation2d placeOnField = atPlace.place().on(field, alliance.get()).getTranslation();
+    Translation2d placeToRobot = robot.getTranslation().minus(placeOnField);
+    double squaredDistance = placeToRobot.getSquaredNorm();
+    if (squaredDistance < ON_THE_PLACE_METERS * ON_THE_PLACE_METERS) {
       return 0;
     }
-    return (from.getX() * fieldVelocity.getY() - from.getY() * fieldVelocity.getX()) / squared;
+    double crossProduct =
+        placeToRobot.getX() * fieldVelocity.getY() - placeToRobot.getY() * fieldVelocity.getX();
+    return crossProduct / squaredDistance;
   }
 
   /**
@@ -128,39 +150,44 @@ public final class Heading {
    * facing, it says so: "the Hub, back first".
    */
   public String name() {
-    String shown =
-        switch (kind) {
-          case FIELD -> String.format(Locale.ROOT, "field %.0f°", angle.getDegrees());
-          case DOWNFIELD -> downfieldName();
-          case TOWARD -> "the " + Objects.requireNonNull(place).name();
+    String whatItFaces =
+        switch (aim) {
+          case Aim.OnField onField ->
+              String.format(Locale.ROOT, "field %.0f°", onField.heading().getDegrees());
+          case Aim.FromDownfield fromDownfield -> downfieldName(fromDownfield.offset());
+          case Aim.AtPlace atPlace -> "the " + atPlace.place().name();
         };
-    return back ? shown + ", back first" : shown;
+    return switch (end) {
+      case FRONT -> whatItFaces;
+      case BACK -> whatItFaces + ", back first";
+    };
   }
 
-  private String downfieldName() {
-    double degrees = angle.getDegrees();
-    if (Math.abs(degrees) < 0.05) {
+  /** An angle from the drivers' forward as people say it. Counterclockwise is to their left. */
+  private static String downfieldName(Rotation2d offset) {
+    double degrees = offset.getDegrees();
+    double size = Math.abs(degrees);
+    if (size < NAMED_WITHIN_DEGREES) {
       return "downfield";
     }
-    if (Math.abs(Math.abs(degrees) - 180) < 0.05) {
+    if (Math.abs(size - 180) < NAMED_WITHIN_DEGREES) {
       return "back toward the drivers";
     }
-    return String.format(
-        Locale.ROOT, "%.0f° %s of downfield", Math.abs(degrees), degrees > 0 ? "left" : "right");
+    String side = "right";
+    if (degrees > 0) {
+      side = "left";
+    }
+    return String.format(Locale.ROOT, "%.0f° %s of downfield", size, side);
   }
 
   @Override
   public boolean equals(Object other) {
-    return other instanceof Heading heading
-        && kind == heading.kind
-        && angle.equals(heading.angle)
-        && Objects.equals(place, heading.place)
-        && back == heading.back;
+    return other instanceof Heading heading && aim.equals(heading.aim) && end == heading.end;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(kind, angle, place, back);
+    return Objects.hash(aim, end);
   }
 
   @Override

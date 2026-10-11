@@ -9,8 +9,8 @@ import org.wpilib.fields.FieldTag;
 
 /**
  * The field's size and its AprilTags: what a {@link FieldModel} is built on. The official layout
- * gives only each tag's nominal pose ({@link #of}); a venue adds where its survey found them, and
- * how sure it is ({@link Venue#tagLayout}).
+ * gives only each tag's nominal pose ({@link #of}); a venue adds where its survey found them
+ * ({@link Venue#tagLayout}).
  *
  * @param name what it's called: the official layout's name (such as "2026 FRC Rebuilt Welded"), or
  *     a venue's
@@ -35,10 +35,7 @@ public record TagLayout(String name, double lengthMeters, double widthMeters, Li
     }
   }
 
-  /**
-   * WPILib's layout, each tag where it says: nominal, with nothing surveyed and the stated default
-   * sigma.
-   */
+  /** WPILib's layout, each tag where it says: nominal, with nothing surveyed. */
   public static TagLayout of(Field layout) {
     List<Tag> tags = new ArrayList<>();
     for (FieldTag tag : layout.getTags()) {

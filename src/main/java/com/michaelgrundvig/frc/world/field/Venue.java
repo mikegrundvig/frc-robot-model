@@ -80,7 +80,12 @@ public record Venue(
         throw new IllegalArgumentException(
             name + ": " + base.getName() + " has no tag " + tag.getID());
       }
-      tags.add(new Tag(tag.getID(), nominal, kind == Kind.OFFICIAL ? null : tag.getPose()));
+      if (kind == Kind.OFFICIAL) {
+        // The official layout is nobody's survey: its tags are where it says, and no more.
+        tags.add(Tag.nominal(tag.getID(), nominal));
+      } else {
+        tags.add(new Tag(tag.getID(), nominal, tag.getPose()));
+      }
     }
     return tags;
   }

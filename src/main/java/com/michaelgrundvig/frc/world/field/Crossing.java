@@ -19,8 +19,8 @@ public record Crossing(String name, Translation2d start, Translation2d end, Kind
     /** It rises to the line and falls away past it: a bump's ridge, climbed either way. */
     CREST,
     /**
-     * A slope meets level ground above it: the top of a ramp. The way {@link #across} it is the way
-     * up.
+     * A slope meets level ground above it: the top of a ramp. The crossing's ends are given in the
+     * order that makes the way {@link #across} it the way up the slope.
      */
     TOP
   }

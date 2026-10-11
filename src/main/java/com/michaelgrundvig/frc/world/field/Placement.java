@@ -1,8 +1,8 @@
 package com.michaelgrundvig.frc.world.field;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Pose2d;
@@ -50,37 +50,63 @@ public record Placement(
     if (alliance.isEmpty()) {
       return new Placement(Status.ALLIANCE_UNKNOWN, null, 0, 0);
     }
-    Placement nearest = null;
-    Placement onExpected = null;
-    List<Place> starts = field.starts();
-    int count = starts.size() + (expected == null || starts.contains(expected) ? 0 : 1);
-    for (int i = 0; i < count; i++) {
-      Place start = i < starts.size() ? starts.get(i) : Objects.requireNonNull(expected);
-      Pose2d spot = start.on(field, alliance.get());
-      Placement candidate =
-          new Placement(
-              Status.NOT_ON_A_START,
-              start.name(),
-              pose.getTranslation().getDistance(spot.getTranslation()),
-              Math.abs(pose.getRotation().minus(spot.getRotation()).getDegrees()));
+    // How far the robot is from each start it could be on. Until the end, none of these says the
+    // robot is on its start: that is decided below, against the tolerances.
+    Optional<Placement> fromNearest = Optional.empty();
+    Optional<Placement> fromExpected = Optional.empty();
+    for (Place start : startsToJudge(field, expected)) {
+      Placement fromStart = offsetFrom(start, start.on(field, alliance.get()), pose);
       if (start.equals(expected)) {
-        onExpected = candidate;
+        fromExpected = Optional.of(fromStart);
       }
-      if (nearest == null || candidate.distanceMeters < nearest.distanceMeters) {
-        nearest = candidate;
+      boolean nearerThanAnyBefore =
+          fromNearest.isEmpty() || fromStart.distanceMeters < fromNearest.get().distanceMeters;
+      if (nearerThanAnyBefore) {
+        fromNearest = Optional.of(fromStart);
       }
     }
-    if (nearest == null) {
+
+    if (fromNearest.isEmpty()) {
       return new Placement(Status.NOT_ON_A_START, null, 0, 0);
     }
-    if (onExpected != null && onExpected.within(toleranceMeters, toleranceDegrees)) {
-      return onExpected.withStatus(Status.READY);
+    boolean onTheExpectedStart =
+        fromExpected.isPresent() && fromExpected.get().within(toleranceMeters, toleranceDegrees);
+    if (onTheExpectedStart) {
+      return fromExpected.get().withStatus(Status.READY);
     }
-    if (nearest.within(toleranceMeters, toleranceDegrees)) {
-      return nearest.withStatus(expected == null ? Status.READY : Status.WRONG_START);
+    boolean onAnotherStart = fromNearest.get().within(toleranceMeters, toleranceDegrees);
+    if (onAnotherStart && expected == null) {
+      return fromNearest.get().withStatus(Status.READY);
     }
-    // Off every start: point the drive team to the one the auto expects.
-    return onExpected != null ? onExpected : nearest;
+    if (onAnotherStart) {
+      return fromNearest.get().withStatus(Status.WRONG_START);
+    }
+    // Off every start: point the drive team to the one the auto expects, if it expects one.
+    return fromExpected.orElse(fromNearest.get());
+  }
+
+  /**
+   * The starts the robot might be on: the field's, and the expected one too when it is not one of
+   * the field's.
+   */
+  private static List<Place> startsToJudge(FieldModel field, @Nullable Place expected) {
+    List<Place> starts = new ArrayList<>(field.starts());
+    if (expected != null && !starts.contains(expected)) {
+      starts.add(expected);
+    }
+    return starts;
+  }
+
+  /**
+   * How far a pose is from a start, and how far it is turned from the start's heading, with the
+   * robot not yet said to be on it.
+   *
+   * @param spot where the start is for the robot's alliance
+   */
+  private static Placement offsetFrom(Place start, Pose2d spot, Pose2d pose) {
+    double distanceMeters = pose.getTranslation().getDistance(spot.getTranslation());
+    double turnedDegrees = Math.abs(pose.getRotation().minus(spot.getRotation()).getDegrees());
+    return new Placement(Status.NOT_ON_A_START, start.name(), distanceMeters, turnedDegrees);
   }
 
   /** One line for the drive team, such as "Ready on Center: 2 cm, 1° off". */
@@ -89,9 +115,15 @@ public record Placement(
       case ALLIANCE_UNKNOWN -> "Alliance unknown";
       case READY -> "Ready on " + start + ": " + offBy();
       case WRONG_START -> "On " + start + ", not the expected start";
-      case NOT_ON_A_START ->
-          start == null ? "No start positions" : "Not on a start: " + start + " is " + away();
+      case NOT_ON_A_START -> describeNotOnAStart();
     };
+  }
+
+  private String describeNotOnAStart() {
+    if (start == null) {
+      return "No start positions";
+    }
+    return "Not on a start: " + start + " is " + away();
   }
 
   private boolean within(double toleranceMeters, double toleranceDegrees) {

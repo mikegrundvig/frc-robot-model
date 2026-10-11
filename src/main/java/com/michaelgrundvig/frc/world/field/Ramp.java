@@ -69,24 +69,36 @@ public record Ramp(
     return slopeRadians();
   }
 
+  /** Rising in a straight line from the floor at the foot to its height at the top edge. */
   @Override
   public double heightAt(Translation2d point) {
-    Translation2d local = point.minus(foot).rotateBy(up().unaryMinus());
-    if (!on(local)) {
+    Translation2d fromFoot = inRampFrame(point);
+    if (!on(fromFoot)) {
       return 0;
     }
-    return heightMeters * local.getX() / runMeters();
+    return heightMeters * fromFoot.getX() / runMeters();
   }
 
-  /** Leaning back down the slope, on the ramp; straight up off it. */
+  /**
+   * A point on the field as the ramp sees it: from the middle of its foot, with x the way it climbs
+   * and y to its left.
+   */
+  private Translation2d inRampFrame(Translation2d point) {
+    return point.minus(foot).rotateBy(up().unaryMinus());
+  }
+
+  /** On the ramp the ground faces up and back toward the foot. Off it, it faces straight up. */
   @Override
   public Vector3 normalAt(Translation2d point) {
-    if (!on(point.minus(foot).rotateBy(up().unaryMinus()))) {
+    if (!on(inRampFrame(point))) {
       return Vector3.UP;
     }
-    double lean = heightMeters / runMeters();
+    // The ground rises at the ramp's slope the way it climbs, so it faces up and back toward
+    // the foot: the normal of a plane that rises at a slope s in a direction is (-s in that
+    // direction, 1 up), made a unit vector.
+    double slope = heightMeters / runMeters();
     Rotation2d up = up();
-    return new Vector3(-lean * up.getCos(), -lean * up.getSin(), 1).unit();
+    return new Vector3(-slope * up.getCos(), -slope * up.getSin(), 1).unit();
   }
 
   /** The rectangle from its foot to its top edge. */
@@ -97,7 +109,11 @@ public record Ramp(
         List.of(foot.minus(side), top.minus(side), top.plus(side), foot.plus(side)));
   }
 
-  /** Its slope, its back straight down from the top edge, and a triangle on each side. */
+  /**
+   * The ramp as four faces: its slope, its back wall straight down from the top edge, and a
+   * triangle closing each side. "Left" and "right" are as seen climbing it. The corners named "top"
+   * are on the floor under the top edge, and those named "up" are the top edge itself.
+   */
   @Override
   public TriangleMesh mesh() {
     Translation2d side = side();
@@ -127,13 +143,14 @@ public record Ramp(
     return new Translation2d(widthMeters / 2, up().plus(Rotation2d.CCW_PI_2));
   }
 
-  /** Whether a point, given from the foot in the ramp's own frame (x up it), is over the ramp. */
-  private boolean on(Translation2d local) {
-    return local.getX() >= 0
-        && local.getX() <= runMeters()
-        && Math.abs(local.getY()) <= widthMeters / 2;
+  /** Whether a point, given in the ramp's own frame ({@link #inRampFrame}), is over the ramp. */
+  private boolean on(Translation2d fromFoot) {
+    boolean betweenFootAndTop = fromFoot.getX() >= 0 && fromFoot.getX() <= runMeters();
+    boolean betweenItsSides = Math.abs(fromFoot.getY()) <= widthMeters / 2;
+    return betweenFootAndTop && betweenItsSides;
   }
 
+  /** Adds a corner on the floor to a mesh, and gives its number in the mesh. */
   private static int floor(TriangleMesh.Builder mesh, Translation2d point) {
     return mesh.corner(point.getX(), point.getY(), 0);
   }

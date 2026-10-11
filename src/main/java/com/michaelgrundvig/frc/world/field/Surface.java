@@ -33,9 +33,10 @@ public sealed interface Surface permits Bump, Ramp, Platform, MeshSurface {
   double heightAt(Translation2d point);
 
   /**
-   * Which way the ground faces at a point: a unit vector, straight up off the surface and on its
-   * flat parts. How far it leans is the slope a robot standing there tilts by, which its IMU should
-   * feel. On a fold (a crest, a ramp's foot), one side's or straight up.
+   * Which way the ground faces at a point, as a unit vector in the field frame. It is straight up
+   * off the surface and on its flat parts. How far it leans from straight up is the slope a robot
+   * standing there tilts by, which its IMU should feel. On a fold, where two faces meet (a crest, a
+   * ramp's foot), it is either one face's direction or straight up; each surface says which.
    */
   Vector3 normalAt(Translation2d point);
 

@@ -30,6 +30,9 @@ public record Tag(int id, Pose3d nominal, @Nullable Pose3d surveyed) {
 
   /** Where it is: as surveyed, if it was, or else where the official layout puts it. */
   public Pose3d pose() {
-    return surveyed != null ? surveyed : nominal;
+    if (surveyed != null) {
+      return surveyed;
+    }
+    return nominal;
   }
 }

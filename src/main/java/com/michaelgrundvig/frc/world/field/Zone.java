@@ -111,6 +111,9 @@ public record Zone(String name, Side side, List<Polygon2d> blueAreas) {
   }
 
   private static Alliance other(Alliance alliance) {
-    return alliance == Alliance.BLUE ? Alliance.RED : Alliance.BLUE;
+    return switch (alliance) {
+      case BLUE -> Alliance.RED;
+      case RED -> Alliance.BLUE;
+    };
   }
 }

@@ -54,10 +54,13 @@ public enum Symmetry {
   }
 
   /**
-   * Where a pose in 3D is on the other half, at the same height: its x axis turned as a heading is
-   * ({@link #apply(Rotation2d)}), so a tag's image faces where the tag's face would. A mirror image
-   * of a frame is a left-handed one; its y axis is turned back, so the image is a pose still, with
-   * its x and z the mirror images of the pose's, and its y opposite its mirror image.
+   * Where a pose in 3D is on the other half, at the same height. Its x axis is turned as a heading
+   * is ({@link #apply(Rotation2d)}), so a tag's image faces where the tag's face would.
+   *
+   * <p>On a mirrored field there is one thing to know. The true mirror image of a frame is
+   * left-handed, which no pose can be. So the image's y axis is reversed to make it right-handed
+   * again: its x and z axes are the mirror images of the pose's, and its y axis points opposite to
+   * the mirror image of the pose's.
    */
   public Pose3d apply(Pose3d pose, double length, double width) {
     Translation2d image = apply(pose.getTranslation().toTranslation2d(), length, width);
@@ -65,14 +68,15 @@ public enum Symmetry {
   }
 
   /**
-   * Which way a frame in 3D is turned on the other half: as a pose's is ({@link #apply(Pose3d,
-   * double, double)}), its x axis turned as a heading is, and on a mirror image its y axis turned
-   * back.
+   * Which way a frame in 3D is turned on the other half. This is the rotation part of {@link
+   * #apply(Pose3d, double, double)}, which explains it.
    */
   public Rotation3d apply(Rotation3d rotation) {
     return switch (this) {
-      // A reflection across x = 0 turns a rotation's axis and reverses its sense: (w, x, -y, -z).
-      // Then its y axis turned back, with z as it is: a half turn about z, first.
+      // Reflecting a rotation across the plane x = 0 mirrors its axis and reverses the way it
+      // turns, which takes its quaternion (w, x, y, z) to (w, x, -y, -z). That maps the frame's
+      // x axis to the opposite of where it belongs and leaves y mirrored, so a half turn about z
+      // is applied to the frame first: it reverses both, leaving x mirrored and y reversed.
       case MIRRORED -> {
         Quaternion q = rotation.getQuaternion();
         yield HALF_TURN.rotateBy(
@@ -83,19 +87,21 @@ public enum Symmetry {
   }
 
   /**
-   * An offset within a frame, as it is within the frame's image on the other half: what takes a
-   * pose's image to the image of the pose it took the pose to. The same on a turned field; on a
-   * mirrored one, mirrored across the frame's x-z plane, since the image's y axis runs the other
-   * way. So something placed from a tag on blue's half lands, placed from the tag's partner, on its
-   * image.
+   * An offset from a frame, as it has to be written from the frame's image on the other half so
+   * that it leads to the image of where it led. Something placed at an offset from a tag on blue's
+   * half is then placed, at this offset from the tag's partner, on its own image.
+   *
+   * <p>On a turned field the offset is the same. On a mirrored field it is mirrored across the
+   * frame's x-z plane, because the image's y axis runs the other way ({@link #apply(Pose3d, double,
+   * double)}).
    */
   public Transform3d inImage(Transform3d offset) {
     if (!mirrors()) {
       return offset;
     }
     Translation3d move = offset.getTranslation();
-    // The frame's y axis reversed, on both sides of the turn: its axis's x and z reverse, and its
-    // sense too, so (w, -x, y, -z).
+    // Reversing the frame's y axis mirrors the rotation across the x-z plane: its axis is
+    // mirrored and the way it turns is reversed, which takes (w, x, y, z) to (w, -x, y, -z).
     Quaternion q = offset.getRotation().getQuaternion();
     return new Transform3d(
         new Translation3d(move.getX(), -move.getY(), move.getZ()),
@@ -109,14 +115,20 @@ public enum Symmetry {
   }
 
   /**
-   * An outline on the other half. A mirror image runs the other way round, so its corners are then
-   * listed backwards to stay counterclockwise, the first still first: its edge {@code i} is the
-   * image of edge {@code n - 1 - i}.
+   * An outline on the other half. A mirror image of a counterclockwise outline runs clockwise, so
+   * on a mirrored field the corners are listed backwards to keep them counterclockwise. The first
+   * corner is still first, and edge {@code i} of the image is the image of edge {@code n - 1 - i}.
    */
   public Polygon2d apply(Polygon2d polygon, double length, double width) {
     List<Translation2d> corners = new ArrayList<>();
-    for (int i = 0; i < polygon.corners().size(); i++) {
-      corners.add(apply(polygon.corner(mirrors() ? -i : i), length, width));
+    for (int index = 0; index < polygon.corners().size(); index++) {
+      // A polygon's corners wrap round, so corner -1 is its last: going down from zero lists
+      // them backwards, starting from the same first corner.
+      int original = index;
+      if (mirrors()) {
+        original = -index;
+      }
+      corners.add(apply(polygon.corner(original), length, width));
     }
     return new Polygon2d(corners);
   }
@@ -127,15 +139,18 @@ public enum Symmetry {
   }
 
   /**
-   * A crossing on the other half. A mirror image swaps its ends, so the way across it is still the
-   * image of the way across: a ramp's top still faces up the ramp.
+   * A crossing on the other half. The way across a crossing is a quarter turn left of the way along
+   * it, and a mirror image turns left into right. So on a mirrored field the crossing's ends are
+   * swapped, which keeps the way across the image the image of the way across: the top of a ramp
+   * still faces up the ramp.
    */
   public Crossing apply(Crossing crossing, double length, double width) {
     Translation2d start = apply(crossing.start(), length, width);
     Translation2d end = apply(crossing.end(), length, width);
-    return mirrors()
-        ? new Crossing(crossing.name(), end, start, crossing.kind())
-        : new Crossing(crossing.name(), start, end, crossing.kind());
+    if (mirrors()) {
+      return new Crossing(crossing.name(), end, start, crossing.kind());
+    }
+    return new Crossing(crossing.name(), start, end, crossing.kind());
   }
 
   /** A surface on the other half, under the same name. */
@@ -160,6 +175,8 @@ public enum Symmetry {
               ramp.heightMeters(),
               ramp.material());
       case Platform platform -> {
+        // The top's mirror image has its corners listed backwards (see apply(Polygon2d)), so its
+        // edge i is the image of edge n - 1 - i, and the sides are listed backwards to match.
         List<Platform.Side> sides = new ArrayList<>(platform.sides());
         if (mirrors()) {
           Collections.reverse(sides);
