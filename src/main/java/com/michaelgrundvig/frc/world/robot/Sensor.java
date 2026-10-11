@@ -335,12 +335,12 @@ public sealed interface Sensor permits Sensor.Encoder, Sensor.Placed {
       return SensorRangefinderBuilder.builder();
     }
 
-    /** Something nearer than a distance, inside its range. */
+    /** Something nearer than a distance, which must be short of its range. */
     public Condition.Nearer nearerThan(Distance distance) {
       return new Condition.Nearer(this, distance);
     }
 
-    /** Nothing nearer than a distance. */
+    /** Nothing nearer than a distance, which must be short of its range. */
     public Condition.Farther fartherThan(Distance distance) {
       return new Condition.Farther(this, distance);
     }

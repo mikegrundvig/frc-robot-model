@@ -83,7 +83,8 @@ public sealed interface Condition
   /**
    * Something nearer a rangefinder than a distance: {@code hopperRange.nearerThan(Inches.of(6))}.
    *
-   * @param distance inside its range
+   * @param distance more than none and short of the sensor's range. At the range or beyond it, the
+   *     sensor would read everything as nearer, so the condition is refused.
    */
   record Nearer(Sensor.Rangefinder sensor, Distance distance) implements OnSensor {
     public Nearer {
@@ -96,7 +97,12 @@ public sealed interface Condition
     }
   }
 
-  /** Nothing nearer a rangefinder than a distance: {@code hopperRange.fartherThan(...)}. */
+  /**
+   * Nothing nearer a rangefinder than a distance: {@code hopperRange.fartherThan(...)}.
+   *
+   * @param distance more than none and short of the sensor's range. At the range or beyond it, the
+   *     sensor would never read anything as farther, so the condition is refused.
+   */
   record Farther(Sensor.Rangefinder sensor, Distance distance) implements OnSensor {
     public Farther {
       Places.refuse(whyNotInRange(sensor, distance));
@@ -108,18 +114,39 @@ public sealed interface Condition
     }
   }
 
-  /** Why a rangefinder cannot tell a distance, if it cannot: the distance is outside its range. */
+  /**
+   * Why a rangefinder cannot tell a distance, if it cannot. The distance must be more than none and
+   * short of the farthest the sensor reads.
+   *
+   * <p>A distance at the sensor's range or beyond it is refused because the condition could never
+   * change: nothing the sensor reads is farther than its range, and everything it reads is nearer.
+   * A distance within a hair of the range counts as the range, as a position within a hair of a
+   * joint's stop counts as the stop ({@link Range#EDGE}).
+   */
   private static Optional<String> whyNotInRange(Sensor.Rangefinder sensor, Distance distance) {
-    boolean inRange = distance.in(Meters) > 0 && distance.lte(sensor.range());
-    if (inRange) {
+    double meters = distance.in(Meters);
+    double rangeMeters = sensor.range().in(Meters);
+    boolean moreThanNone = meters > 0;
+    if (!moreThanNone) {
+      return Optional.of(
+          shown(distance)
+              + " isn't inside "
+              + possessive(sensor.label())
+              + " range, "
+              + shown(sensor.range()));
+    }
+    boolean shortOfTheRange = meters < rangeMeters - Range.EDGE;
+    if (shortOfTheRange) {
       return Optional.empty();
     }
     return Optional.of(
         shown(distance)
-            + " isn't inside "
+            + " is at or beyond "
             + possessive(sensor.label())
             + " range, "
-            + shown(sensor.range()));
+            + shown(sensor.range())
+            + ", so the condition could never change: either the distance or the sensor's stated"
+            + " range is wrong");
   }
 
   private static String shown(Distance distance) {

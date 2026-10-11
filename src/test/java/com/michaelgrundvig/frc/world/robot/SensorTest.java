@@ -5,16 +5,23 @@ import static com.michaelgrundvig.frc.world.robot.MechanismFixtures.gearing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.offset;
+import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.Meters;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Translation3d;
+import org.wpilib.units.measure.Distance;
 
 /**
  * Switches and rangefinders as the physical devices they are, and the conditions over them that say
@@ -80,27 +87,67 @@ class SensorTest {
     assertThat(hopper.fartherThan(Meters.of(0.5))).hasToString("hopper range farther than 0.500 m");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> hopper.nearerThan(Meters.of(2)))
-        .withMessageContaining("2.000 m isn't inside hopper range's range, 1.300 m");
+        .withMessageContaining("2.000 m is at or beyond hopper range's range, 1.300 m");
   }
 
-  /**
-   * A rangefinder is asked about a distance it can tell: more than none, and no farther than it
-   * reads, nearer or farther alike.
-   */
-  @Test
-  void aRangefinderConditionNeedsADistanceItCanTell() {
-    Sensor.Rangefinder hopper =
-        Sensor.Rangefinder.of("hopper range", Part.CHASSIS, Meters.of(1.3), Degrees.of(27));
+  private static final Sensor.Rangefinder HOPPER_RANGE =
+      Sensor.Rangefinder.of("hopper range", Part.CHASSIS, Meters.of(1.3), Degrees.of(27));
 
-    assertThatIllegalArgumentException()
-        .isThrownBy(() -> hopper.nearerThan(Meters.of(0)))
-        .withMessage("0.000 m isn't inside hopper range's range, 1.300 m");
-    assertThatIllegalArgumentException()
-        .isThrownBy(() -> hopper.fartherThan(Meters.of(0)))
-        .withMessage("0.000 m isn't inside hopper range's range, 1.300 m");
-    assertThatIllegalArgumentException()
-        .isThrownBy(() -> hopper.fartherThan(Meters.of(2)))
-        .withMessage("2.000 m isn't inside hopper range's range, 1.300 m");
+  private static final String NEVER_CHANGES =
+      ", so the condition could never change: either the distance or the sensor's stated range is"
+          + " wrong";
+
+  /**
+   * A rangefinder is asked about a distance it can tell: more than none, and short of the farthest
+   * it reads, nearer or farther alike. At its range or beyond, nothing it reads could ever make the
+   * condition change.
+   */
+  @ParameterizedTest
+  @MethodSource("distancesARangefinderCannotTell")
+  void aRangefinderConditionNeedsADistanceItCanTell(Supplier<Condition> built, String refusal) {
+    assertThatIllegalArgumentException().isThrownBy(built::get).withMessage(refusal);
+  }
+
+  // spotless:off
+  static Stream<Arguments> distancesARangefinderCannotTell() {
+    return Stream.of(
+        argumentSet("nearer than no distance",
+            (Supplier<Condition>) () -> HOPPER_RANGE.nearerThan(Meters.of(0)),
+            "0.000 m isn't inside hopper range's range, 1.300 m"),
+        argumentSet("farther than no distance",
+            (Supplier<Condition>) () -> HOPPER_RANGE.fartherThan(Meters.of(0)),
+            "0.000 m isn't inside hopper range's range, 1.300 m"),
+        argumentSet("nearer than a distance behind it",
+            (Supplier<Condition>) () -> HOPPER_RANGE.nearerThan(Meters.of(-0.5)),
+            "-0.500 m isn't inside hopper range's range, 1.300 m"),
+        argumentSet("nearer than its range, which it reads anything as",
+            (Supplier<Condition>) () -> HOPPER_RANGE.nearerThan(Meters.of(1.3)),
+            "1.300 m is at or beyond hopper range's range, 1.300 m" + NEVER_CHANGES),
+        argumentSet("farther than its range, which it never reads",
+            (Supplier<Condition>) () -> HOPPER_RANGE.fartherThan(Meters.of(1.3)),
+            "1.300 m is at or beyond hopper range's range, 1.300 m" + NEVER_CHANGES),
+        argumentSet("nearer than a hair short of its range, which counts as its range",
+            (Supplier<Condition>) () -> HOPPER_RANGE.nearerThan(Meters.of(1.3 - Range.EDGE / 2)),
+            "1.300 m is at or beyond hopper range's range, 1.300 m" + NEVER_CHANGES),
+        argumentSet("farther than exactly a hair short of its range, which still counts as its range",
+            (Supplier<Condition>) () -> HOPPER_RANGE.fartherThan(Meters.of(1.3 - Range.EDGE)),
+            "1.300 m is at or beyond hopper range's range, 1.300 m" + NEVER_CHANGES),
+        argumentSet("nearer than beyond its range",
+            (Supplier<Condition>) () -> HOPPER_RANGE.nearerThan(Meters.of(2)),
+            "2.000 m is at or beyond hopper range's range, 1.300 m" + NEVER_CHANGES),
+        argumentSet("farther than beyond its range",
+            (Supplier<Condition>) () -> HOPPER_RANGE.fartherThan(Meters.of(2)),
+            "2.000 m is at or beyond hopper range's range, 1.300 m" + NEVER_CHANGES));
+  }
+  // spotless:on
+
+  /** Just short of its range is a distance it can tell, nearer or farther alike. */
+  @Test
+  void aRangefinderConditionMayBeJustShortOfItsRange() {
+    Distance justShort = Meters.of(1.3 - 2 * Range.EDGE);
+
+    assertThat(HOPPER_RANGE.nearerThan(justShort).distance()).isEqualTo(justShort);
+    assertThat(HOPPER_RANGE.fartherThan(justShort).distance()).isEqualTo(justShort);
   }
 
   /**
