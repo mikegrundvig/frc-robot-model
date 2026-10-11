@@ -74,6 +74,9 @@ class RulesTest {
         row("amps", () -> atMost(Amps.of(80)), Amps.of(120), "120 A must be at most 80 A"),
         row("angle", () -> below(Degrees.of(180)), Radians.of(3.2), "3.2 rad must be below 180 °"),
         row("distance", () -> atLeast(Meters.of(1)), Meters.of(0.5), "0.5 m must be at least 1 m"),
+        row("a measure at least, at it", () -> atLeast(Meters.of(1)), Meters.of(1), null),
+        row("a measure's range, at its low end", RulesTest::tilt, Degrees.of(-90), null),
+        row("a measure's range, at its high end", RulesTest::tilt, Degrees.of(90), null),
         row("not blank", () -> notBlank(), "front", null),
         row("blank", () -> notBlank(), "  ", "must not be blank"),
         row("one of, listed", () -> oneOf("left", "right"), "right", null),
@@ -96,6 +99,21 @@ class RulesTest {
   void aRuleSaysWhyNotInThePeoplesWords(
       Supplier<Rule<Object>> rule, Object value, @Nullable String why) {
     assertThat(rule.get().whyNot(value)).isEqualTo(why);
+  }
+
+  /** A rule gives its reason as an Optional too, whichever way the rule itself was written. */
+  @Test
+  void aRuleGivesItsReasonEitherWay() {
+    Rule<Integer> even = value -> value % 2 == 0 ? null : "must be even";
+    Rule<Integer> small = Rule.of(value -> value < 10 ? Optional.empty() : Optional.of("too big"));
+
+    assertThat(even.reason(3)).contains("must be even");
+    assertThat(even.reason(4)).isEmpty();
+    assertThat(small.whyNot(12)).isEqualTo("too big");
+    assertThat(small.whyNot(4)).isNull();
+    assertThat(small.reason(12)).contains("too big");
+    assertThat(Finding.doubt("pivot", "pivot's kG is far off"))
+        .hasToString("pivot's kG is far off");
   }
 
   @Test

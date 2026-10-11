@@ -22,18 +22,34 @@ import org.jspecify.annotations.Nullable;
  * never compare a value that's already reported. Values are named from the record that checks them
  * ({@code PortEncoder.port}): a nested record is built, and checked, before the record that holds
  * it.
+ *
+ * <p>The two kinds of check run at different times. A value's rule runs as it is listed, since the
+ * value is in hand. A check across values is only kept as it is listed, and runs in {@link
+ * #orThrow()}, once it is known whether every value passed.
  */
 public final class Checks {
-  /** A check across values: what's wrong, each a refusal or not. */
+  /**
+   * A check across values, kept until {@link Checks#orThrow()} runs it.
+   *
+   * @param name what its refusals are reported under
+   * @param found runs the check: everything it finds, each a refusal or not
+   */
   private record Across(String name, Supplier<List<Finding>> found) {}
 
-  private final String where;
-  private final List<Violation> violations = new ArrayList<>();
-  private final List<Across> checks = new ArrayList<>();
-  private final Set<String> broken = new HashSet<>();
+  /** What a rule or a check that threw is reported as, followed by what it threw. */
+  private static final String COULD_NOT_BE_CHECKED = "couldn't be checked: ";
 
-  private Checks(String where) {
-    this.where = where;
+  /** The record the values are named from, with its own name if it has one: {@code Gains}. */
+  private final String record;
+
+  private final List<Violation> violations = new ArrayList<>();
+  private final List<Across> checksAcrossValues = new ArrayList<>();
+
+  /** The names of the values that have broken a rule, whose later rules are skipped. */
+  private final Set<String> brokeARule = new HashSet<>();
+
+  private Checks(String record) {
+    this.record = record;
   }
 
   /**
@@ -56,12 +72,34 @@ public final class Checks {
 
   /** Checks a number, or a whole number, against a rule. */
   public Checks field(String name, double value, Rule<Double> rule) {
-    return broken.contains(name) ? this : run(name, () -> rule.whyNot(value));
+    return checkValue(name, () -> rule.reason(value));
   }
 
   /** Checks a value against a rule. */
   public <V> Checks field(String name, V value, Rule<? super V> rule) {
-    return broken.contains(name) ? this : run(name, () -> rule.whyNot(value));
+    return checkValue(name, () -> rule.reason(value));
+  }
+
+  /**
+   * Runs one value's rule, unless the value has already broken an earlier one. A rule that throws
+   * is a bug in the rule. It is reported as a violation with the rest, so that the others are not
+   * lost.
+   */
+  private Checks checkValue(String name, Supplier<Optional<String>> reason) {
+    if (brokeARule.contains(name)) {
+      return this;
+    }
+    Optional<String> whyNot;
+    try {
+      whyNot = reason.get();
+    } catch (RuntimeException e) {
+      whyNot = Optional.of(COULD_NOT_BE_CHECKED + e);
+    }
+    if (whyNot.isPresent()) {
+      violations.add(new Violation(record + "." + name, whyNot.get()));
+      brokeARule.add(name);
+    }
+    return this;
   }
 
   /**
@@ -71,14 +109,7 @@ public final class Checks {
    * @param why what's wrong, written to follow the name, or null when it's fine
    */
   public Checks check(String name, Supplier<@Nullable String> why) {
-    checks.add(
-        new Across(
-            name,
-            () -> {
-              String problem = why.get();
-              return problem == null ? List.of() : List.of(Finding.refused(where, problem));
-            }));
-    return this;
+    return whyNot(name, () -> Optional.ofNullable(why.get()));
   }
 
   /**
@@ -89,7 +120,15 @@ public final class Checks {
    * @param whyNot the reason, written to follow the name, or empty when the values are fine
    */
   public Checks whyNot(String name, Supplier<Optional<String>> whyNot) {
-    return check(name, () -> whyNot.get().orElse(null));
+    return findings(name, () -> asFindings(whyNot.get()));
+  }
+
+  /** A reason the values are wrong as the one refusal it is, or no reason as nothing found. */
+  private List<Finding> asFindings(Optional<String> whyNot) {
+    if (whyNot.isEmpty()) {
+      return List.of();
+    }
+    return List.of(Finding.refused(record, whyNot.get()));
   }
 
   /**
@@ -98,7 +137,7 @@ public final class Checks {
    * startup. It runs in {@link #orThrow()}, only if every value passed its own rule.
    */
   public Checks findings(String name, Supplier<List<Finding>> found) {
-    checks.add(new Across(name, found));
+    checksAcrossValues.add(new Across(name, found));
     return this;
   }
 
@@ -109,21 +148,10 @@ public final class Checks {
    * @throws ConfigException listing every violation
    */
   public void orThrow() {
-    if (violations.isEmpty()) {
-      for (Across check : checks) {
-        List<Finding> found;
-        try {
-          found = check.found().get();
-        } catch (RuntimeException e) {
-          // A check that throws is a bug in the check; report it with the rest rather than lose
-          // them.
-          found = List.of(Finding.refused(where, "couldn't be checked: " + e));
-        }
-        for (Finding finding : found) {
-          if (finding.refused()) {
-            violations.add(new Violation(where + "." + check.name(), finding.message()));
-          }
-        }
+    boolean everyValuePassed = violations.isEmpty();
+    if (everyValuePassed) {
+      for (Across check : checksAcrossValues) {
+        run(check);
       }
     }
     if (!violations.isEmpty()) {
@@ -131,18 +159,22 @@ public final class Checks {
     }
   }
 
-  private Checks run(String name, Supplier<@Nullable String> why) {
-    String problem;
+  /**
+   * Runs one check across values, and adds a violation for each refusal it finds. A check that
+   * throws is a bug in the check. It is reported as a violation with the rest, so that the others
+   * are not lost.
+   */
+  private void run(Across check) {
+    List<Finding> found;
     try {
-      problem = why.get();
+      found = check.found().get();
     } catch (RuntimeException e) {
-      // A rule that throws is a bug in the rule; report it with the rest rather than lose them.
-      problem = "couldn't be checked: " + e;
+      found = List.of(Finding.refused(record, COULD_NOT_BE_CHECKED + e));
     }
-    if (problem != null) {
-      violations.add(new Violation(where + "." + name, problem));
-      broken.add(name);
+    for (Finding finding : found) {
+      if (finding.refused()) {
+        violations.add(new Violation(record + "." + check.name(), finding.message()));
+      }
     }
-    return this;
   }
 }
