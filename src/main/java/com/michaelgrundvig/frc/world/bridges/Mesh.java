@@ -20,11 +20,51 @@ final class Mesh {
    */
   record Material(String name, double red, double green, double blue, double alpha) {}
 
+  /**
+   * A flat arrow along its frame's x axis: a shaft, then a triangular head.
+   *
+   * @param tail where the shaft starts, along x
+   * @param tip where the head ends, at a point
+   * @param headLength how long the head is, along x
+   * @param shaftWidth how wide the shaft is, along y
+   * @param headWidth how wide the head is at its base
+   * @param underside the arrow's underside, along z
+   * @param top its top
+   */
+  record Arrow(
+      double tail,
+      double tip,
+      double headLength,
+      double shaftWidth,
+      double headWidth,
+      double underside,
+      double top) {}
+
+  /** One end of a box along one of its axes. */
+  private enum End {
+    LOW,
+    HIGH
+  }
+
+  /** A corner has three numbers, and a triangle three corners. */
+  private static final int NUMBERS_PER_CORNER = 3;
+
+  private static final int CORNERS_PER_TRIANGLE = 3;
+
+  /** Room for a box's twelve triangles to start with. The arrays double as they fill. */
+  private static final int STARTING_CORNERS = 36;
+
   private final String name;
   private final Material material;
-  private float[] positions = new float[3 * 36];
-  private float[] normals = new float[3 * 36];
-  private int vertices;
+
+  /** Every corner's x, y and z in turn, with room to spare at the end. */
+  private float[] positions = new float[NUMBERS_PER_CORNER * STARTING_CORNERS];
+
+  /** Every corner's face normal, as the positions are listed. */
+  private float[] normals = new float[NUMBERS_PER_CORNER * STARTING_CORNERS];
+
+  /** How many corners have been added. */
+  private int corners;
 
   Mesh(String name, Material material) {
     this.name = name;
@@ -41,38 +81,73 @@ final class Mesh {
 
   /** How many corners: three for each triangle. */
   int vertexCount() {
-    return vertices;
+    return corners;
   }
 
   /** Each corner's x, y and z in turn, in the robot's frame. */
   float[] positions() {
-    return Arrays.copyOf(positions, 3 * vertices);
+    return Arrays.copyOf(positions, NUMBERS_PER_CORNER * corners);
   }
 
   /** Each corner's face normal, as positions lists them. */
   float[] normals() {
-    return Arrays.copyOf(normals, 3 * vertices);
+    return Arrays.copyOf(normals, NUMBERS_PER_CORNER * corners);
   }
 
   /** A box, square to its frame, between two opposite corners given in the frame. */
   Mesh box(Frame frame, Vector3 low, Vector3 high) {
-    Vector3[] c = new Vector3[8];
-    for (int i = 0; i < 8; i++) {
-      c[i] =
-          frame.place(
-              new Vector3(
-                  (i & 1) == 0 ? low.x() : high.x(),
-                  (i & 2) == 0 ? low.y() : high.y(),
-                  (i & 4) == 0 ? low.z() : high.z()));
-    }
     Vector3 inside = frame.place(low.plus(high).times(0.5));
-    face(inside, c[0], c[2], c[3], c[1]); // bottom
-    face(inside, c[4], c[5], c[7], c[6]); // top
-    face(inside, c[0], c[1], c[5], c[4]); // the side at low y
-    face(inside, c[2], c[6], c[7], c[3]); // high y
-    face(inside, c[0], c[4], c[6], c[2]); // low x
-    face(inside, c[1], c[3], c[7], c[5]); // high x
+    // Each face is named for the end of the box it is at, and lists its four corners in order
+    // around it.
+    face( // The bottom.
+        inside,
+        corner(frame, low, high, End.LOW, End.LOW, End.LOW),
+        corner(frame, low, high, End.LOW, End.HIGH, End.LOW),
+        corner(frame, low, high, End.HIGH, End.HIGH, End.LOW),
+        corner(frame, low, high, End.HIGH, End.LOW, End.LOW));
+    face( // The top.
+        inside,
+        corner(frame, low, high, End.LOW, End.LOW, End.HIGH),
+        corner(frame, low, high, End.HIGH, End.LOW, End.HIGH),
+        corner(frame, low, high, End.HIGH, End.HIGH, End.HIGH),
+        corner(frame, low, high, End.LOW, End.HIGH, End.HIGH));
+    face( // The side at low y.
+        inside,
+        corner(frame, low, high, End.LOW, End.LOW, End.LOW),
+        corner(frame, low, high, End.HIGH, End.LOW, End.LOW),
+        corner(frame, low, high, End.HIGH, End.LOW, End.HIGH),
+        corner(frame, low, high, End.LOW, End.LOW, End.HIGH));
+    face( // The side at high y.
+        inside,
+        corner(frame, low, high, End.LOW, End.HIGH, End.LOW),
+        corner(frame, low, high, End.LOW, End.HIGH, End.HIGH),
+        corner(frame, low, high, End.HIGH, End.HIGH, End.HIGH),
+        corner(frame, low, high, End.HIGH, End.HIGH, End.LOW));
+    face( // The side at low x.
+        inside,
+        corner(frame, low, high, End.LOW, End.LOW, End.LOW),
+        corner(frame, low, high, End.LOW, End.LOW, End.HIGH),
+        corner(frame, low, high, End.LOW, End.HIGH, End.HIGH),
+        corner(frame, low, high, End.LOW, End.HIGH, End.LOW));
+    face( // The side at high x.
+        inside,
+        corner(frame, low, high, End.HIGH, End.LOW, End.LOW),
+        corner(frame, low, high, End.HIGH, End.HIGH, End.LOW),
+        corner(frame, low, high, End.HIGH, End.HIGH, End.HIGH),
+        corner(frame, low, high, End.HIGH, End.LOW, End.HIGH));
     return this;
+  }
+
+  /**
+   * One of a box's eight corners, in the robot's frame: the corner at the given end of the box
+   * along each of its frame's axes.
+   */
+  private static Vector3 corner(
+      Frame frame, Vector3 low, Vector3 high, End alongX, End alongY, End alongZ) {
+    double x = alongX == End.LOW ? low.x() : high.x();
+    double y = alongY == End.LOW ? low.y() : high.y();
+    double z = alongZ == End.LOW ? low.z() : high.z();
+    return frame.place(new Vector3(x, y, z));
   }
 
   /**
@@ -81,16 +156,18 @@ final class Mesh {
    */
   Mesh pyramid(Frame frame, Vector3 apex, List<Vector3> base) {
     Vector3 tip = frame.place(apex);
-    Vector3[] corners = base.stream().map(frame::place).toArray(Vector3[]::new);
-    Vector3 inside = tip;
-    for (Vector3 corner : corners) {
-      inside = inside.plus(corner);
+    Vector3[] baseCorners = base.stream().map(frame::place).toArray(Vector3[]::new);
+    // The average of all its corners is inside it.
+    Vector3 sum = tip;
+    for (Vector3 corner : baseCorners) {
+      sum = sum.plus(corner);
     }
-    inside = inside.times(1.0 / (corners.length + 1));
-    for (int i = 0; i < corners.length; i++) {
-      face(inside, tip, corners[i], corners[(i + 1) % corners.length]);
+    Vector3 inside = sum.times(1.0 / (baseCorners.length + 1));
+    for (int index = 0; index < baseCorners.length; index++) {
+      Vector3 next = baseCorners[(index + 1) % baseCorners.length];
+      face(inside, tip, baseCorners[index], next);
     }
-    face(inside, corners);
+    face(inside, baseCorners);
     return this;
   }
 
@@ -101,82 +178,82 @@ final class Mesh {
    * @param sides how many flat faces stand in for the round tread
    */
   Mesh wheel(Frame frame, double radius, double halfWidth, int sides) {
+    // The rim's corners, evenly spaced around the axle, on the wheel's left side and its right.
     Vector3[] left = new Vector3[sides];
     Vector3[] right = new Vector3[sides];
-    for (int i = 0; i < sides; i++) {
-      double around = 2 * StrictMath.PI * i / sides;
-      double x = radius * StrictMath.cos(around);
-      double z = radius * StrictMath.sin(around);
-      left[i] = frame.place(new Vector3(x, halfWidth, z));
-      right[i] = frame.place(new Vector3(x, -halfWidth, z));
+    for (int side = 0; side < sides; side++) {
+      double angleAround = 2 * StrictMath.PI * side / sides;
+      double x = radius * StrictMath.cos(angleAround);
+      double z = radius * StrictMath.sin(angleAround);
+      left[side] = frame.place(new Vector3(x, halfWidth, z));
+      right[side] = frame.place(new Vector3(x, -halfWidth, z));
     }
     Vector3 inside = frame.place(Vector3.ZERO);
-    for (int i = 0; i < sides; i++) {
-      int next = (i + 1) % sides;
-      face(inside, left[i], left[next], right[next], right[i]);
+    // The tread, one flat face between each pair of neighboring corners, and then the two sides.
+    for (int side = 0; side < sides; side++) {
+      int next = (side + 1) % sides;
+      face(inside, left[side], left[next], right[next], right[side]);
     }
     face(inside, left);
     face(inside, right);
     return this;
   }
 
-  /**
-   * A flat arrow along its frame's x, between two heights: a shaft, then a head whose tip is at
-   * {@code tip}.
-   *
-   * @param tail where the shaft starts, along x
-   * @param tip where the head ends
-   * @param headLength how long the head is, along x
-   * @param shaftWidth how wide the shaft is, along y
-   * @param headWidth how wide the head is at its base
-   * @param low the arrow's underside, along z
-   * @param high its top
-   */
-  Mesh arrow(
-      Frame frame,
-      double tail,
-      double tip,
-      double headLength,
-      double shaftWidth,
-      double headWidth,
-      double low,
-      double high) {
-    double neck = tip - headLength;
-    box(frame, new Vector3(tail, -shaftWidth / 2, low), new Vector3(neck, shaftWidth / 2, high));
-    Vector3[] bottom = {
-      frame.place(new Vector3(neck, -headWidth / 2, low)),
-      frame.place(new Vector3(tip, 0, low)),
-      frame.place(new Vector3(neck, headWidth / 2, low))
-    };
-    Vector3[] top = {
-      frame.place(new Vector3(neck, -headWidth / 2, high)),
-      frame.place(new Vector3(tip, 0, high)),
-      frame.place(new Vector3(neck, headWidth / 2, high))
-    };
-    Vector3 inside = frame.place(new Vector3(neck + headLength / 3, 0, (low + high) / 2));
-    face(inside, bottom);
-    face(inside, top);
-    for (int i = 0; i < 3; i++) {
-      int next = (i + 1) % 3;
-      face(inside, bottom[i], bottom[next], top[next], top[i]);
+  /** A flat arrow, given in a frame. Its shaft is a box, and its head a triangular prism. */
+  Mesh arrow(Frame frame, Arrow arrow) {
+    // The neck is where the shaft ends and the head begins.
+    double neck = arrow.tip() - arrow.headLength();
+    double shaftHalfWidth = arrow.shaftWidth() / 2;
+    double headHalfWidth = arrow.headWidth() / 2;
+    box(
+        frame,
+        new Vector3(arrow.tail(), -shaftHalfWidth, arrow.underside()),
+        new Vector3(neck, shaftHalfWidth, arrow.top()));
+    Vector3[] headUnderside =
+        headOutline(frame, neck, arrow.tip(), headHalfWidth, arrow.underside());
+    Vector3[] headTop = headOutline(frame, neck, arrow.tip(), headHalfWidth, arrow.top());
+    // A third of the way from the head's base to its tip, halfway up, is inside it.
+    double midHeight = (arrow.underside() + arrow.top()) / 2;
+    Vector3 inside = frame.place(new Vector3(neck + arrow.headLength() / 3, 0, midHeight));
+    face(inside, headUnderside);
+    face(inside, headTop);
+    for (int corner = 0; corner < 3; corner++) {
+      int next = (corner + 1) % 3;
+      face(inside, headUnderside[corner], headUnderside[next], headTop[next], headTop[corner]);
     }
     return this;
   }
 
+  /** An arrow head's triangle at a height: its base's two ends, with its tip between them. */
+  private static Vector3[] headOutline(
+      Frame frame, double neck, double tip, double halfWidth, double height) {
+    return new Vector3[] {
+      frame.place(new Vector3(neck, -halfWidth, height)),
+      frame.place(new Vector3(tip, 0, height)),
+      frame.place(new Vector3(neck, halfWidth, height))
+    };
+  }
+
   /**
-   * A flat, convex face, cut into triangles from its first corner, each turned to face away from a
-   * point inside the solid.
+   * A flat, convex face, cut into a fan of triangles from its first corner, each turned to face
+   * away from a point inside the solid.
+   *
+   * <p>A triangle's normal is the cross product of two of its sides, and points toward whoever sees
+   * its corners run counterclockwise. If that is toward the inside, the triangle is listed the
+   * other way round and its normal reversed.
    */
-  private void face(Vector3 inside, Vector3... corners) {
-    for (int i = 1; i + 1 < corners.length; i++) {
-      Vector3 a = corners[0];
-      Vector3 b = corners[i];
-      Vector3 c = corners[i + 1];
+  private void face(Vector3 inside, Vector3... faceCorners) {
+    for (int index = 1; index + 1 < faceCorners.length; index++) {
+      Vector3 a = faceCorners[0];
+      Vector3 b = faceCorners[index];
+      Vector3 c = faceCorners[index + 1];
       Vector3 normal = b.minus(a).cross(c.minus(a));
-      if (normal.length() == 0) {
-        continue; // no area to draw
+      boolean hasNoArea = normal.length() == 0;
+      if (hasNoArea) {
+        continue;
       }
-      if (normal.dot(a.minus(inside)) < 0) {
+      boolean facesInward = normal.dot(a.minus(inside)) < 0;
+      if (facesInward) {
         triangle(a, c, b, normal.times(-1).unit());
       } else {
         triangle(a, b, c, normal.unit());
@@ -185,12 +262,14 @@ final class Mesh {
   }
 
   private void triangle(Vector3 a, Vector3 b, Vector3 c, Vector3 normal) {
-    if (3 * (vertices + 3) > positions.length) {
+    boolean full = NUMBERS_PER_CORNER * (corners + CORNERS_PER_TRIANGLE) > positions.length;
+    if (full) {
       positions = Arrays.copyOf(positions, 2 * positions.length);
       normals = Arrays.copyOf(normals, 2 * normals.length);
     }
     for (Vector3 corner : new Vector3[] {a, b, c}) {
-      int at = 3 * vertices++;
+      int at = NUMBERS_PER_CORNER * corners;
+      corners++;
       positions[at] = (float) corner.x();
       positions[at + 1] = (float) corner.y();
       positions[at + 2] = (float) corner.z();

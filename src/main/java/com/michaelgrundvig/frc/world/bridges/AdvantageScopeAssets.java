@@ -1,30 +1,14 @@
 package com.michaelgrundvig.frc.world.bridges;
 
-import static org.wpilib.units.Units.Degrees;
-import static org.wpilib.units.Units.Meters;
-import static org.wpilib.units.Units.Radians;
-
-import com.michaelgrundvig.frc.world.physical.Vector3;
-import com.michaelgrundvig.frc.world.robot.Body;
-import com.michaelgrundvig.frc.world.robot.CameraConfig;
-import com.michaelgrundvig.frc.world.robot.DrivetrainGeometry;
-import io.avaje.jsonb.JsonType;
-import io.avaje.jsonb.Jsonb;
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import org.jspecify.annotations.Nullable;
-import org.wpilib.math.geometry.Translation2d;
-import org.wpilib.math.geometry.Translation3d;
 
 /**
  * A robot for AdvantageScope's 3D field, generated from its configuration: a schematic model and
@@ -65,8 +49,9 @@ import org.wpilib.math.geometry.Translation3d;
  * <p><b>Coordinates.</b> The robot's frame is the configuration's: x forward, y left, z up, from
  * the frame's center on the floor, which is where AdvantageScope puts the logged pose. The glTF
  * files use glTF's own axes ({@link Glb}), and every config turns them back with {@link
- * #GLTF_TO_ROBOT}. Each wheel is drawn where it sits, and its component's zeroed position moves it
- * back to the origin, so a logged pose at the wheel's center, turned to its angle, puts it there.
+ * RobotConfigJson#GLTF_TO_ROBOT}. Each wheel is drawn where it sits, and its component's zeroed
+ * position moves it back to the origin, so a logged pose at the wheel's center, turned to its
+ * angle, puts it there.
  *
  * <p>Every file comes out the same, byte for byte, for the same configuration on any computer: the
  * build compares them with what's committed.
@@ -129,37 +114,6 @@ public final class AdvantageScopeAssets {
           "CameraConfig.Sensor.frameRate",
           "CameraConfig.Sensor.latency");
 
-  /**
-   * From glTF's axes to the robot's, as AdvantageScope applies a config's rotations: each about the
-   * fixed axes, in order. 90° about x stands glTF's up (+y) along +z; 90° about z then turns its
-   * front (+z, now -y) to +x.
-   */
-  static final List<Map<String, Object>> GLTF_TO_ROBOT = List.of(turn("x", 90), turn("z", 90));
-
-  /** A wheel is drawn this wide for its radius: a 4 in wheel 1.5 in wide, as typical. */
-  private static final double WHEEL_WIDTH_PER_RADIUS = 0.75;
-
-  /** Flat faces around a wheel's tread. */
-  private static final int WHEEL_SIDES = 24;
-
-  /** How long a camera's arrow is, from its lens. */
-  private static final double CAMERA_ARROW_METERS = 0.2;
-
-  /** How thick the flat arrows are. */
-  private static final double ARROW_THICKNESS_METERS = 0.008;
-
-  private static final double IMU_SIZE_METERS = 0.05;
-
-  // The colors, distinct for each kind of part. AdvantageScope draws each see-through one at its
-  // own fixed opacity.
-  static final Mesh.Material FRAME = new Mesh.Material("frame", 0.55, 0.62, 0.72, 0.25);
-  static final Mesh.Material BUMPERS = new Mesh.Material("bumpers", 0.16, 0.16, 0.19, 1);
-  static final Mesh.Material FRONT = new Mesh.Material("front", 1.0, 0.45, 0.0, 1);
-  static final Mesh.Material CAMERA = new Mesh.Material("camera", 0.0, 0.7, 0.9, 1);
-  static final Mesh.Material CONE = new Mesh.Material("field of view", 0.0, 0.7, 0.9, 0.25);
-  static final Mesh.Material IMU = new Mesh.Material("imu", 0.85, 0.2, 0.75, 1);
-  static final Mesh.Material WHEEL = new Mesh.Material("wheel", 0.12, 0.12, 0.12, 1);
-
   /** The wheels, in the drivetrain's order, as the module poses are logged. */
   static final List<String> WHEELS =
       List.of("front left", "front right", "back left", "back right");
@@ -174,12 +128,6 @@ public final class AdvantageScopeAssets {
       robot in `Robots.java` instead. See docs/simulator.md, "See it in AdvantageScope".
       """;
 
-  /** Any JSON value: maps in their own order, lists, text, numbers, true or false. */
-  private static final JsonType<Object> JSON = Jsonb.instance().type(Object.class);
-
-  private static final String USAGE =
-      "AdvantageScopeAssets --catalog=<a RobotCatalog's class> --out=<folder> [--robot=<name>]...";
-
   private AdvantageScopeAssets() {}
 
   /**
@@ -191,31 +139,21 @@ public final class AdvantageScopeAssets {
    *     doesn't have
    */
   public static void main(String... args) throws IOException, ReflectiveOperationException {
-    @Nullable String catalogClass = null;
-    @Nullable Path out = null;
-    List<String> names = new ArrayList<>();
-    for (String arg : args) {
-      if (arg.startsWith("--catalog=")) {
-        catalogClass = arg.substring("--catalog=".length());
-      } else if (arg.startsWith("--out=")) {
-        out = Path.of(arg.substring("--out=".length()));
-      } else if (arg.startsWith("--robot=")) {
-        names.add(arg.substring("--robot=".length()));
-      } else {
-        throw new IllegalArgumentException("unknown argument " + arg + "; " + USAGE);
-      }
-    }
-    if (catalogClass == null || out == null) {
-      throw new IllegalArgumentException(USAGE);
-    }
+    AssetArguments arguments = AssetArguments.parse(args);
     RobotCatalog catalog =
-        Class.forName(catalogClass)
+        Class.forName(arguments.catalogClass())
             .asSubclass(RobotCatalog.class)
             .getDeclaredConstructor()
             .newInstance();
-    List<RobotDescription> robots =
-        names.isEmpty() ? catalog.all() : names.stream().map(catalog::named).toList();
-    write(robots, out);
+    write(robotsToWrite(catalog, arguments.robots()), arguments.out());
+  }
+
+  /** The robots named, or every robot the catalog has when none is named. */
+  private static List<RobotDescription> robotsToWrite(RobotCatalog catalog, List<String> names) {
+    if (names.isEmpty()) {
+      return catalog.all();
+    }
+    return names.stream().map(catalog::named).toList();
   }
 
   /**
@@ -224,9 +162,10 @@ public final class AdvantageScopeAssets {
    * @throws IllegalArgumentException if two robots' folders would have the same name
    */
   public static void write(List<RobotDescription> robots, Path folder) throws IOException {
-    Map<String, String> folders = new HashMap<>();
+    // Nothing is written until every robot is known to have a folder of its own.
+    Map<String, String> robotByFolder = new HashMap<>();
     for (RobotDescription robot : robots) {
-      String earlier = folders.put(folder(robot.name()), robot.name());
+      String earlier = robotByFolder.put(folder(robot.name()), robot.name());
       if (earlier != null) {
         throw new IllegalArgumentException(
             "the robots " + earlier + " and " + robot.name() + " would share a folder");
@@ -264,290 +203,39 @@ public final class AdvantageScopeAssets {
     return robot + " (schematic, no cones)";
   }
 
-  /** Every file of a robot's two folders, by its path from the assets folder. */
+  /**
+   * Every file of a robot's two folders, by its path from the assets folder.
+   *
+   * <p>AdvantageScope reads a folder's {@code model.glb} as the robot's base model, and {@code
+   * model_0.glb}, {@code model_1.glb} and on as its components, in the order its config lists them:
+   * here each wheel, and then the fields of view. The two folders hold the same base model and
+   * wheels; only the one with cones has the fields of view, and only if the robot has a camera to
+   * draw one for.
+   */
   public static Map<String, byte[]> files(RobotDescription robot) {
-    Map<String, byte[]> files = new TreeMap<>();
-    byte[] model = Glb.write(GENERATOR, body(robot));
-    List<byte[]> wheels = new ArrayList<>();
-    for (Mesh[] wheel : wheels(robot)) {
-      wheels.add(Glb.write(GENERATOR, List.of(wheel)));
+    byte[] baseModel = Glb.write(GENERATOR, RobotSchematic.body(robot));
+    List<byte[]> wheelModels = new ArrayList<>();
+    for (RobotSchematic.WheelModel wheel : RobotSchematic.wheels(robot)) {
+      wheelModels.add(Glb.write(GENERATOR, wheel.meshes()));
     }
-    List<Mesh> cones = cones(robot);
+    List<Mesh> cones = RobotSchematic.cones(robot);
     byte[] note = GENERATED_NOTE.getBytes(StandardCharsets.UTF_8);
-    for (boolean withCones : new boolean[] {true, false}) {
-      String folder = withCones ? folder(robot.name()) : withoutConesFolder(robot.name());
-      boolean drawCones = withCones && !cones.isEmpty();
-      files.put(folder + "/config.json", config(robot, withCones, drawCones));
-      files.put(folder + "/model.glb", model);
-      for (int i = 0; i < wheels.size(); i++) {
-        files.put(folder + "/model_" + i + ".glb", wheels.get(i));
+
+    Map<String, byte[]> files = new TreeMap<>();
+    for (SchematicModel model : SchematicModel.values()) {
+      String folder = model.folder(robot.name());
+      boolean conesAreDrawn = model == SchematicModel.WITH_CONES && !cones.isEmpty();
+      files.put(folder + "/config.json", RobotConfigJson.write(robot, model, conesAreDrawn));
+      files.put(folder + "/model.glb", baseModel);
+      for (int wheel = 0; wheel < wheelModels.size(); wheel++) {
+        files.put(folder + "/model_" + wheel + ".glb", wheelModels.get(wheel));
       }
-      if (drawCones) {
-        files.put(folder + "/model_" + wheels.size() + ".glb", Glb.write(GENERATOR, cones));
+      if (conesAreDrawn) {
+        int afterTheWheels = wheelModels.size();
+        files.put(folder + "/model_" + afterTheWheels + ".glb", Glb.write(GENERATOR, cones));
       }
       files.put(folder + "/GENERATED.md", note);
     }
     return files;
-  }
-
-  /**
-   * The robot's config.json: its model's name, the turn from glTF's axes, its cameras as fixed
-   * views (only beside the cones), and its components, each wheel and then the cones.
-   */
-  private static byte[] config(RobotDescription robot, boolean withCones, boolean drawCones) {
-    Map<String, Object> config = new LinkedHashMap<>();
-    config.put("name", withCones ? modelName(robot.name()) : withoutConesModelName(robot.name()));
-    config.put("isFTC", false);
-    // A schematic's parts are few, and some small (a camera, the IMU): AdvantageScope leaves out
-    // small parts of a model to save drawing, unless told not to.
-    config.put("disableSimplification", true);
-    config.put("rotations", GLTF_TO_ROBOT);
-    config.put("position", List.of(0.0, 0.0, 0.0));
-    List<Object> cameras = new ArrayList<>();
-    if (withCones) {
-      for (CameraConfig camera : onChassis(robot)) {
-        cameras.add(camera(camera));
-      }
-    }
-    config.put("cameras", cameras);
-    List<Object> components = new ArrayList<>();
-    for (DrivetrainGeometry.Corner corner : robot.drivetrain().corners()) {
-      Translation2d wheel = corner.position();
-      double radius = corner.module().wheelRadius().in(Meters);
-      Map<String, Object> component = new LinkedHashMap<>();
-      component.put("zeroedRotations", GLTF_TO_ROBOT);
-      component.put("zeroedPosition", List.of(-wheel.getX(), -wheel.getY(), -radius));
-      components.add(component);
-    }
-    if (drawCones) {
-      Map<String, Object> cones = new LinkedHashMap<>();
-      cones.put("zeroedRotations", GLTF_TO_ROBOT);
-      cones.put("zeroedPosition", List.of(0.0, 0.0, 0.0));
-      components.add(cones);
-    }
-    config.put("components", components);
-    return (JSON.toJsonPretty(rounded(config)) + "\n").getBytes(StandardCharsets.UTF_8);
-  }
-
-  /**
-   * Every number to six places (a micrometer, a millionth of a degree), so a config.json changes
-   * only where the robot did, never in a last digit.
-   */
-  private static Object rounded(Object value) {
-    return switch (value) {
-      case Double number ->
-          BigDecimal.valueOf(number).setScale(6, RoundingMode.HALF_EVEN).doubleValue();
-      case Map<?, ?> map -> {
-        Map<Object, Object> copy = new LinkedHashMap<>();
-        map.forEach((key, item) -> copy.put(key, rounded(item)));
-        yield copy;
-      }
-      case List<?> list -> list.stream().map(AdvantageScopeAssets::rounded).toList();
-      default -> value;
-    };
-  }
-
-  /**
-   * A camera as AdvantageScope's fixed view: its lens, turned as WPILib's {@code Rotation3d(roll,
-   * pitch, yaw)} turns it, and its field of view.
-   *
-   * <p>AdvantageScope's docs call {@code fov} the horizontal field of view, but its renderer takes
-   * the view's vertical angle as {@code fov} over the image's aspect ratio (Field3dRendererImpl.ts,
-   * at the release this writes for): a linear scaling that's only right for narrow lenses. So this
-   * writes the vertical angle times the aspect ratio (76.7° for an 80° diagonal across 1280 x 800,
-   * whose true horizontal angle is 70.9°), and the view sees exactly what the camera does. The
-   * cones are drawn from the true angles.
-   */
-  private static Map<String, Object> camera(CameraConfig camera) {
-    CameraConfig.Sensor sensor = camera.sensor();
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("name", camera.name());
-    view.put(
-        "rotations",
-        List.of(
-            turn("x", camera.roll().in(Degrees)),
-            turn("y", -camera.tiltUp().in(Degrees)),
-            turn("z", camera.yaw().in(Degrees))));
-    Translation3d lens = camera.position();
-    view.put("position", List.of(lens.getX(), lens.getY(), lens.getZ()));
-    view.put("resolution", List.of(sensor.widthPixels(), sensor.heightPixels()));
-    double aspect = (double) sensor.widthPixels() / sensor.heightPixels();
-    view.put("fov", StrictMath.toDegrees(2 * halfAngle(sensor, sensor.heightPixels())) * aspect);
-    return view;
-  }
-
-  /**
-   * Half the angle the camera sees across one side of its image, for a lens that sees its diagonal
-   * field of view across the image's diagonal, with square pixels: the way PhotonVision's
-   * simulation reads it.
-   *
-   * @param pixels the side's length in pixels: the width, or the height
-   */
-  static double halfAngle(CameraConfig.Sensor sensor, int pixels) {
-    double diagonal = StrictMath.hypot(sensor.widthPixels(), sensor.heightPixels());
-    return StrictMath.atan(
-        StrictMath.tan(sensor.diagonalFieldOfView().in(Radians) / 2) * pixels / diagonal);
-  }
-
-  /** The base model: the frame, bumpers, the front arrow, the IMU, and the cameras. */
-  static List<Mesh> body(RobotDescription robot) {
-    Body body = robot.body();
-    double length = body.frameLength().in(Meters);
-    double width = body.frameWidth().in(Meters);
-    double height = body.height().in(Meters);
-    double ends = body.bumperEnds().in(Meters);
-    double sides = body.bumperSides().in(Meters);
-    double low = body.bumperBottom().in(Meters);
-    double high = body.bumperTop().in(Meters);
-    List<Mesh> meshes = new ArrayList<>();
-
-    Mesh frame = new Mesh("frame", FRAME);
-    if (height > low) {
-      frame.box(
-          Frame.ROBOT,
-          new Vector3(-length / 2, -width / 2, low),
-          new Vector3(length / 2, width / 2, height));
-    }
-    meshes.add(frame);
-
-    double outsideX = length / 2 + ends;
-    double outsideY = width / 2 + sides;
-    meshes.add(
-        new Mesh("bumpers", BUMPERS)
-            .box(
-                Frame.ROBOT,
-                new Vector3(length / 2, -outsideY, low),
-                new Vector3(outsideX, outsideY, high))
-            .box(
-                Frame.ROBOT,
-                new Vector3(-outsideX, -outsideY, low),
-                new Vector3(-length / 2, outsideY, high))
-            .box(
-                Frame.ROBOT,
-                new Vector3(-length / 2, width / 2, low),
-                new Vector3(length / 2, outsideY, high))
-            .box(
-                Frame.ROBOT,
-                new Vector3(-length / 2, -outsideY, low),
-                new Vector3(length / 2, -width / 2, high)));
-
-    meshes.add(
-        new Mesh("front", FRONT)
-            .arrow(
-                Frame.ROBOT,
-                -0.3 * length,
-                0.35 * length,
-                0.2 * length,
-                0.1 * width,
-                0.35 * width,
-                height,
-                height + ARROW_THICKNESS_METERS));
-
-    robot
-        .imu()
-        .ifPresent(
-            imu -> {
-              Vector3 half = new Vector3(IMU_SIZE_METERS / 2, IMU_SIZE_METERS / 2, 0.01);
-              Frame at = Frame.at(new Vector3(imu.getX(), imu.getY(), imu.getZ()));
-              meshes.add(new Mesh("imu", IMU).box(at, half.times(-1), half));
-            });
-
-    for (CameraConfig camera : onChassis(robot)) {
-      Frame lens = lens(camera);
-      double shaft = CAMERA_ARROW_METERS * 0.7;
-      double head = 0.02;
-      meshes.add(
-          new Mesh("camera " + camera.name(), CAMERA)
-              .box(lens, new Vector3(-0.04, -0.03, -0.02), new Vector3(0, 0.03, 0.02))
-              .box(lens, new Vector3(0, -0.006, -0.006), new Vector3(shaft, 0.006, 0.006))
-              .pyramid(
-                  lens,
-                  new Vector3(CAMERA_ARROW_METERS, 0, 0),
-                  List.of(
-                      new Vector3(shaft, head, head),
-                      new Vector3(shaft, -head, head),
-                      new Vector3(shaft, -head, -head),
-                      new Vector3(shaft, head, -head))));
-    }
-    return meshes;
-  }
-
-  /**
-   * Each wheel: a disc where it sits, a wheel radius up, and an arrow above it the way it rolls
-   * forward. A model of its own each, for AdvantageScope to turn.
-   */
-  static List<Mesh[]> wheels(RobotDescription robot) {
-    Translation2d[] places = robot.drivetrain().moduleTranslations();
-    List<Mesh[]> wheels = new ArrayList<>();
-    for (int i = 0; i < places.length; i++) {
-      double radius = robot.drivetrain().module(i).wheelRadius().in(Meters);
-      Frame at = Frame.at(new Vector3(places[i].getX(), places[i].getY(), radius));
-      String name = i < WHEELS.size() ? WHEELS.get(i) : "module " + i;
-      wheels.add(
-          new Mesh[] {
-            new Mesh("wheel " + name, WHEEL)
-                .wheel(at, radius, radius * WHEEL_WIDTH_PER_RADIUS / 2, WHEEL_SIDES),
-            new Mesh("wheel arrow " + name, FRONT)
-                .arrow(
-                    at,
-                    -0.7 * radius,
-                    1.3 * radius,
-                    0.6 * radius,
-                    0.3 * radius,
-                    0.9 * radius,
-                    radius + 0.004,
-                    radius + 0.004 + ARROW_THICKNESS_METERS)
-          });
-    }
-    return wheels;
-  }
-
-  /**
-   * The cameras fixed to the chassis: a camera that rides a mechanism moves with its joint, which a
-   * model drawn once can't follow, so it's left out.
-   */
-  private static List<CameraConfig> onChassis(RobotDescription robot) {
-    return robot.cameras().stream().filter(camera -> camera.joint().isEmpty()).toList();
-  }
-
-  /**
-   * Each camera's field of view: a pyramid from its lens out to its sight range along its optical
-   * axis, as wide and tall as the image sees there.
-   */
-  static List<Mesh> cones(RobotDescription robot) {
-    List<Mesh> cones = new ArrayList<>();
-    for (CameraConfig camera : onChassis(robot)) {
-      CameraConfig.Sensor sensor = camera.sensor();
-      double reach = sensor.sightRange().in(Meters);
-      double across = reach * StrictMath.tan(halfAngle(sensor, sensor.widthPixels()));
-      double up = reach * StrictMath.tan(halfAngle(sensor, sensor.heightPixels()));
-      cones.add(
-          new Mesh("field of view " + camera.name(), CONE)
-              .pyramid(
-                  lens(camera),
-                  Vector3.ZERO,
-                  List.of(
-                      new Vector3(reach, across, up),
-                      new Vector3(reach, -across, up),
-                      new Vector3(reach, -across, -up),
-                      new Vector3(reach, across, -up))));
-    }
-    return cones;
-  }
-
-  /** A camera's frame: at its lens, x along its optical axis, as its configuration mounts it. */
-  private static Frame lens(CameraConfig camera) {
-    return Frame.turned(
-        new Vector3(camera.forward().in(Meters), camera.left().in(Meters), camera.up().in(Meters)),
-        camera.roll().in(Radians),
-        -camera.tiltUp().in(Radians),
-        camera.yaw().in(Radians));
-  }
-
-  private static Map<String, Object> turn(String axis, double degrees) {
-    Map<String, Object> turn = new LinkedHashMap<>();
-    turn.put("axis", axis);
-    turn.put("degrees", degrees);
-    return turn;
   }
 }
