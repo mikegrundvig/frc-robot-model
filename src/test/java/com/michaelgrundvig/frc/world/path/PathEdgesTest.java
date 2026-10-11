@@ -120,15 +120,17 @@ class PathEdgesTest {
     return Keyframe.at(new Pose2d(x, y, Rotation2d.ZERO));
   }
 
-  /** Whether a path to one keyframe is refused for the keyframe being too near the start. */
-  private static boolean tooNear(Keyframe keyframe) {
+  /** What a path from the origin through keyframes is refused for, or "a path" when there is one. */
+  private static String refusalOf(Keyframe... keyframes) {
     try {
-      Trajectories.through(Pose2d.ZERO, new ChassisVelocities(), List.of(keyframe), LIMITS, STEP);
-      return false;
+      Trajectories.through(Pose2d.ZERO, new ChassisVelocities(), List.of(keyframes), LIMITS, STEP);
+      return "a path";
     } catch (IllegalArgumentException e) {
-      return String.valueOf(e.getMessage()).contains("is within 5 cm of where the robot starts");
+      return String.valueOf(e.getMessage());
     }
   }
+
+  private static final String TOO_NEAR_THE_START = "(0.05, 0.00) is within 5 cm of where the robot starts";
 
   private static double startSpeed(Trajectories.Plan plan) {
     ChassisVelocities start = plan.trajectory().start().velocity;
@@ -150,9 +152,14 @@ class PathEdgesTest {
             () -> startSpeed(Trajectories.through(Pose2d.ZERO, moving, List.of(at(3, 4)), LIMITS, STEP)), 2.2),
         answers("...but from rest, if the robot is moving away from it",
             () -> startSpeed(Trajectories.through(Pose2d.ZERO, backing, List.of(at(3, 4)), LIMITS, STEP)), 0.0),
-        answers("a keyframe exactly 5 cm from the start is not refused as too near it",
-            () -> tooNear(at(0.05, 0)), false),
-        answers("a keyframe a hair nearer is", () -> tooNear(at(0.0499999, 0)), true));
+        answers("a keyframe exactly 5 cm from the start is too near it", () -> refusalOf(at(0.05, 0)), TOO_NEAR_THE_START),
+        answers("a keyframe a hair nearer is too", () -> refusalOf(at(0.0499999, 0)), TOO_NEAR_THE_START),
+        answers("a keyframe a hair farther is not refused as too near, though a path that short still has none",
+            () -> refusalOf(at(0.0500001, 0)).startsWith("no path through its keyframes"), true),
+        answers("a keyframe 15 cm from the start has a path", () -> refusalOf(at(0.15, 0)), "a path"),
+        answers("a second keyframe exactly 5 cm from the first is too near it",
+            () -> refusalOf(at(0, 1), at(0.05, 1)), "(0.05, 1.00) is within 5 cm of the keyframe before"),
+        answers("...and a hair farther has a path", () -> refusalOf(at(0, 1), at(0.0500001, 1)), "a path"));
   }
 
   /** A hop of 0.3 m with a half turn: the path is there long before the robot has turned. */

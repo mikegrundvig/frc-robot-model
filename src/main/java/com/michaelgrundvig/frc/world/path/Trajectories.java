@@ -44,7 +44,8 @@ public final class Trajectories {
   public record Plan(HolonomicTrajectory trajectory, double[] passing) {}
 
   /**
-   * How far apart keyframes must be, meters: closer, a spline through them folds back on itself.
+   * How far apart keyframes must be, meters: more than this. Any closer, and at this distance
+   * exactly, a spline through them folds back on itself.
    */
   static final double APART_METERS = 0.05;
 
@@ -203,7 +204,7 @@ public final class Trajectories {
     Translation2d before = start.getTranslation();
     for (Keyframe keyframe : keyframes) {
       Translation2d place = poseOf(keyframe).getTranslation();
-      if (place.getDistance(before) < APART_METERS) {
+      if (place.getDistance(before) <= APART_METERS) {
         String whatIsBefore = "the keyframe before";
         if (places.isEmpty()) {
           whatIsBefore = "where the robot starts";
