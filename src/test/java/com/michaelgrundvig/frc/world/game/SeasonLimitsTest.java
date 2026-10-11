@@ -3,9 +3,11 @@ package com.michaelgrundvig.frc.world.game;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.within;
+import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Kilograms;
+import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.Pounds;
 
 import com.michaelgrundvig.frc.world.physical.Inertia;
@@ -28,7 +30,13 @@ import com.michaelgrundvig.frc.world.robot.Range;
 import com.michaelgrundvig.frc.world.robot.RobotDefinition;
 import com.michaelgrundvig.frc.world.robot.RobotDefinitionBuilder;
 import java.util.List;
+import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Transform3d;
@@ -190,6 +198,101 @@ class SeasonLimitsTest {
     assertThatIllegalArgumentException()
         .isThrownBy(() -> SeasonLimitsBuilder.builder(LIMITS).bumperZoneTop(Inches.of(2.5)).build())
         .withMessageStartingWith("SeasonLimits.bumperZoneTop: ");
+  }
+
+  /** The base robot with its body changed. */
+  private static RobotDefinition withBody(UnaryOperator<BodyBuilder> change) {
+    Body body = change.apply(BodyBuilder.builder(BASE.body())).build();
+    return RobotDefinitionBuilder.builder(BASE).body(body).build();
+  }
+
+  /** The base robot with an arm of a length that it lays flat, forward, in a configuration. */
+  private static RobotDefinition layingFlat(double armLength) {
+    Joint.Revolute arm =
+        JointRevoluteBuilder.builder(arm(armLength, UPRIGHT))
+            .positions(List.of(Position.degrees("flat", 0)))
+            .build();
+    return RobotDefinitionBuilder.builder(withArm(arm))
+        .configurations(List.of(Configuration.of("flat", arm.at(arm.position("flat")))))
+        .build();
+  }
+
+  /**
+   * Limits in meters that the base robot fits with room to spare, except where a row changes it: 2
+   * m around, 0.75 m tall, and bumpers from 0.0625 m to 0.125 m up. Given in meters, a robot's size
+   * can be put exactly a rounding past one of them.
+   */
+  private static SeasonLimits metric() {
+    return SeasonLimitsBuilder.builder(LIMITS)
+        .framePerimeter(Meters.of(4))
+        .startingHeight(Meters.of(1))
+        .bumperZoneBottom(Meters.of(0.0625))
+        .bumperZoneTop(Meters.of(0.15))
+        .build();
+  }
+
+  private static Arguments answers(String label, Supplier<?> question, Object answer) {
+    return argumentSet(label, question, answer);
+  }
+
+  // spotless:off
+
+  /**
+   * A robot at a limit fits it, and so does one past it by less than a rounding of its conversion
+   * from inches or pounds. One past it by more is told so.
+   */
+  static Stream<Arguments> robotsAtTheLimits() {
+    // The frame is 27.5 in long, so an arm pivoting at its center reaches 13.75 in to its edge,
+    // and may reach 12 in beyond.
+    double reachesTheLimit = Inches.of(13.75 + 12).in(Meters);
+    return Stream.of(
+        answers("a frame a rounding over the perimeter fits",
+            () -> LIMITS.problems(withBody(body -> body.frameLength(Inches.of(27.5000000001)).frameWidth(Inches.of(27.5)))), List.of()),
+        answers("a frame a little more over does not",
+            () -> LIMITS.problems(withBody(body -> body.frameLength(Inches.of(27.51)).frameWidth(Inches.of(27.5)))),
+            List.of("its frame is 110 in around, more than the 110 in allowed")),
+        answers("a robot a rounding over the starting height fits",
+            () -> LIMITS.problems(withBody(body -> body.height(Inches.of(30.0000000001)))), List.of()),
+        answers("a robot a little taller does not",
+            () -> LIMITS.problems(withBody(body -> body.height(Inches.of(30.01)))),
+            List.of("it starts 0.762 m tall, more than the 0.762 m allowed")),
+        answers("bumpers a rounding below the bumper zone fit",
+            () -> LIMITS.problems(withBody(body -> body.bumperBottom(Inches.of(2.4999999999)))), List.of()),
+        answers("bumpers a little lower do not",
+            () -> LIMITS.problems(withBody(body -> body.bumperBottom(Inches.of(2.49)))),
+            List.of("its bumpers, 2.49 in to 5.75 in up, aren't within the bumper zone, 2.5 in to 5.75 in")),
+        answers("bumpers a rounding above the bumper zone fit",
+            () -> LIMITS.problems(withBody(body -> body.bumperTop(Inches.of(5.7500000001)))), List.of()),
+        answers("bumpers a little higher do not",
+            () -> LIMITS.problems(withBody(body -> body.bumperTop(Inches.of(5.76)))),
+            List.of("its bumpers, 2.5 in to 5.76 in up, aren't within the bumper zone, 2.5 in to 5.75 in")),
+        answers("a robot a rounding over the weight fits",
+            () -> LIMITS.problems(withBody(body -> body.weight(Body.Weight.weighed(Pounds.of(149.5000000001))))), List.of()),
+        answers("a robot a little heavier does not",
+            () -> LIMITS.problems(withBody(body -> body.weight(Body.Weight.weighed(Pounds.of(149.6))))),
+            List.of("it weighs 135.1 lb. without its battery, more than the 135 lb. allowed: lighten it, or weigh it again")),
+        answers("a frame over the perimeter by exactly the rounding allowed fits",
+            () -> metric().problems(withBody(body -> body.frameLength(Meters.of((4 + 1e-9) / 4)).frameWidth(Meters.of((4 + 1e-9) / 4)))),
+            List.of()),
+        answers("a robot over the starting height by exactly the rounding allowed fits",
+            () -> metric().problems(withBody(body -> body.height(Meters.of(1 + 1e-9)))), List.of()),
+        answers("bumpers below the bumper zone by exactly the rounding allowed fit",
+            () -> metric().problems(withBody(body -> body.bumperBottom(Meters.of(0.0625 - 1e-9)))), List.of()),
+        answers("bumpers above the bumper zone by exactly the rounding allowed fit",
+            () -> metric().problems(withBody(body -> body.bumperTop(Meters.of(0.15 + 1e-9)))), List.of()),
+        answers("an arm that reaches exactly as far as is allowed fits",
+            () -> LIMITS.problems(layingFlat(reachesTheLimit)), List.of()),
+        answers("an arm a little longer does not",
+            () -> LIMITS.problems(layingFlat(reachesTheLimit + 0.001)),
+            List.of("configuration flat reaches 0.306 m beyond its frame perimeter, more than the 0.305 m allowed")));
+  }
+
+  // spotless:on
+
+  @ParameterizedTest
+  @MethodSource("robotsAtTheLimits")
+  void itAnswers(Supplier<?> question, Object answer) {
+    assertThat(question.get()).isEqualTo(answer);
   }
 
   /** The base robot with one arm, the arm's own reference its start. */

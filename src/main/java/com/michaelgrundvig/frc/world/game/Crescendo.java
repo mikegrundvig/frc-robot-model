@@ -74,8 +74,6 @@ public final class Crescendo {
   /** 3 ft ⅛ in out from the alliance wall, 3 ft 1 in tall, its vertical panels 8⅜ in tall. */
   static final double SUBWOOFER_DEPTH = 36.125 * IN;
 
-  // ---- The amp, set into the guardrail by the alliance wall (5.3) ----
-
   // ---- The sources, each in the corner by the opposing alliance's wall (5.4) ----
 
   /**
@@ -168,25 +166,33 @@ public final class Crescendo {
     return across(SOURCE_TAGS.plus(new Translation2d(SOURCE_ZONE_DEPTH, SOURCE_FACING)), x);
   }
 
-  /** Where a line along the source wall, through a point, crosses a line across the field at x. */
+  /**
+   * Where a line parallel to the source wall, through a point, is at a distance x from the blue
+   * alliance wall.
+   *
+   * <p>The source wall runs a quarter turn from the way its tags face. Going along it from the
+   * point, each meter moves the cosine of that direction along x and its sine along y, so reaching
+   * x takes (x - the point's x) / cosine meters, and moves that many times the sine along y.
+   */
   private static Translation2d across(Translation2d point, double x) {
-    Rotation2d along = SOURCE_FACING.plus(Rotation2d.CCW_PI_2);
-    double run = (x - point.getX()) / along.getCos();
-    return new Translation2d(x, point.getY() + run * along.getSin());
+    Rotation2d alongTheWall = SOURCE_FACING.plus(Rotation2d.CCW_PI_2);
+    double metersAlongTheWall = (x - point.getX()) / alongTheWall.getCos();
+    return new Translation2d(x, point.getY() + metersAlongTheWall * alongTheWall.getSin());
   }
 
-  /** The corners of the stage's three legs, seen from above: the stage zone's outline. */
+  /**
+   * The corners of the stage's three legs, seen from above: the stage zone's outline. The legs
+   * stand a third of a turn apart around the stage's center, at 60°, 180° and 300°, and each is a
+   * square post turned to face the center.
+   */
   private static List<Translation2d> legCorners() {
     Translation2d center = new Translation2d(STAGE_X, STAGE_Y);
     List<Translation2d> corners = new ArrayList<>();
-    for (int face = 0; face < 3; face++) {
-      Rotation2d leg = Rotation2d.fromDegrees(120 * face + 60);
-      Translation2d middle = center.plus(new Translation2d(LEG_FROM_CENTER, leg));
-      for (double[] sign : new double[][] {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}}) {
-        corners.add(
-            middle.plus(
-                new Translation2d(sign[0] * LEG_SIZE / 2, sign[1] * LEG_SIZE / 2).rotateBy(leg)));
-      }
+    for (int leg = 0; leg < 3; leg++) {
+      Rotation2d toLeg = Rotation2d.fromDegrees(120 * leg + 60);
+      Translation2d middle = center.plus(new Translation2d(LEG_FROM_CENTER, toLeg));
+      Polygon2d post = Polygon2d.rectangle(new Pose2d(middle, toLeg), LEG_SIZE, LEG_SIZE);
+      corners.addAll(post.corners());
     }
     return corners;
   }

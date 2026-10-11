@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.wpilib.units.measure.Distance;
 import org.wpilib.units.measure.Mass;
 
@@ -56,16 +57,16 @@ public record SeasonLimits(
         .field("bumperZoneTop", bumperZoneTop, positive())
         .field("weight", weight, positive())
         .field("battery", battery, positive())
-        .check(
-            "bumperZoneTop",
-            () ->
-                bumperZoneTop.gt(bumperZoneBottom)
-                    ? null
-                    : shown(bumperZoneTop)
-                        + " must be above the zone's bottom ("
-                        + shown(bumperZoneBottom)
-                        + ")")
+        .whyNot("bumperZoneTop", () -> whyNotAZone(bumperZoneBottom, bumperZoneTop))
         .orThrow();
+  }
+
+  /** Why two heights are no bumper zone, if they are not: its top has to be above its bottom. */
+  private static Optional<String> whyNotAZone(Distance bottom, Distance top) {
+    if (top.gt(bottom)) {
+      return Optional.empty();
+    }
+    return Optional.of(shown(top) + " must be above the zone's bottom (" + shown(bottom) + ")");
   }
 
   /**
@@ -97,69 +98,120 @@ public record SeasonLimits(
   public List<String> problems(RobotDefinition definition) {
     Body body = definition.body();
     RobotMath math = definition.math();
-    Map<Joint, Double> stowed = math.rests();
-    List<String> problems = new ArrayList<>();
-    if (body.framePerimeter().in(Meters) > framePerimeter.in(Meters) + SLACK) {
-      problems.add(
-          "its frame is "
-              + shown(body.framePerimeter())
-              + " around, more than the "
-              + shown(framePerimeter)
-              + " allowed");
-    }
-    double tallest = Math.max(body.height().in(Meters), math.top(stowed));
-    if (tallest > startingHeight.in(Meters) + SLACK) {
-      problems.add(
-          String.format(
-              Locale.ROOT,
-              "it starts %.3f m tall, more than the %.3f m allowed",
-              tallest,
-              startingHeight.in(Meters)));
-    }
-    double reach = math.extension(stowed);
-    if (reach > SLACK) {
-      problems.add(
-          String.format(
-              Locale.ROOT,
-              "it starts reaching %.3f m beyond its frame perimeter: it must start inside it",
-              reach));
-    }
+    Map<Joint, Double> atRest = math.rests();
+    List<Optional<String>> found = new ArrayList<>();
+    found.add(whyFrameIsTooBig(body));
+    found.add(whyItStartsTooTall(body, math.top(atRest)));
+    found.add(whyItStartsOutsideItsFrame(math.extension(atRest)));
     for (Configuration configuration : definition.configurations()) {
-      double out = math.extension(positions(configuration));
-      if (out > extension.in(Meters) + SLACK) {
-        problems.add(
-            String.format(
-                Locale.ROOT,
-                "configuration %s reaches %.3f m beyond its frame perimeter, more than the %.3f m"
-                    + " allowed",
-                configuration.name(),
-                out,
-                extension.in(Meters)));
-      }
+      double reach = math.extension(positions(configuration));
+      found.add(whyItReachesTooFar(configuration, reach));
     }
-    if (body.bumperBottom().in(Meters) < bumperZoneBottom.in(Meters) - SLACK
-        || body.bumperTop().in(Meters) > bumperZoneTop.in(Meters) + SLACK) {
-      problems.add(
-          "its bumpers, "
-              + shown(body.bumperBottom())
-              + " to "
-              + shown(body.bumperTop())
-              + " up, aren't within the bumper zone, "
-              + shown(bumperZoneBottom)
-              + " to "
-              + shown(bumperZoneTop));
+    found.add(whyBumpersAreOutOfTheirZone(body));
+    found.add(whyItIsTooHeavy(body));
+    return found.stream().flatMap(Optional::stream).toList();
+  }
+
+  private Optional<String> whyFrameIsTooBig(Body body) {
+    boolean tooBig = body.framePerimeter().in(Meters) > framePerimeter.in(Meters) + SLACK;
+    if (!tooBig) {
+      return Optional.empty();
     }
-    Mass weighed = body.mass().minus(battery);
-    if (weighed.in(Kilograms) > weight.in(Kilograms) + SLACK) {
-      // In the rule's own unit, as the rule book says it: 135 lb, not a mix of it and kilograms.
-      problems.add(
-          "it weighs "
-              + shown(weight.unit().of(weighed.in(weight.unit())))
-              + " without its battery, more than the "
-              + shown(weight)
-              + " allowed: lighten it, or weigh it again");
+    return Optional.of(
+        "its frame is "
+            + shown(body.framePerimeter())
+            + " around, more than the "
+            + shown(framePerimeter)
+            + " allowed");
+  }
+
+  /**
+   * @param topOfLinks how high the highest point of any link is as the robot starts, in meters
+   */
+  private Optional<String> whyItStartsTooTall(Body body, double topOfLinks) {
+    double tallest = Math.max(body.height().in(Meters), topOfLinks);
+    boolean tooTall = tallest > startingHeight.in(Meters) + SLACK;
+    if (!tooTall) {
+      return Optional.empty();
     }
-    return problems;
+    return Optional.of(
+        String.format(
+            Locale.ROOT,
+            "it starts %.3f m tall, more than the %.3f m allowed",
+            tallest,
+            startingHeight.in(Meters)));
+  }
+
+  /**
+   * @param reachAtStart how far any link reaches beyond the frame perimeter as the robot starts, in
+   *     meters
+   */
+  private static Optional<String> whyItStartsOutsideItsFrame(double reachAtStart) {
+    boolean startsOutside = reachAtStart > SLACK;
+    if (!startsOutside) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        String.format(
+            Locale.ROOT,
+            "it starts reaching %.3f m beyond its frame perimeter: it must start inside it",
+            reachAtStart));
+  }
+
+  /**
+   * @param reach how far any link reaches beyond the frame perimeter in the configuration, in
+   *     meters
+   */
+  private Optional<String> whyItReachesTooFar(Configuration configuration, double reach) {
+    boolean tooFar = reach > extension.in(Meters) + SLACK;
+    if (!tooFar) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        String.format(
+            Locale.ROOT,
+            "configuration %s reaches %.3f m beyond its frame perimeter, more than the %.3f m"
+                + " allowed",
+            configuration.name(),
+            reach,
+            extension.in(Meters)));
+  }
+
+  private Optional<String> whyBumpersAreOutOfTheirZone(Body body) {
+    boolean tooLow = body.bumperBottom().in(Meters) < bumperZoneBottom.in(Meters) - SLACK;
+    boolean tooHigh = body.bumperTop().in(Meters) > bumperZoneTop.in(Meters) + SLACK;
+    if (!tooLow && !tooHigh) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "its bumpers, "
+            + shown(body.bumperBottom())
+            + " to "
+            + shown(body.bumperTop())
+            + " up, aren't within the bumper zone, "
+            + shown(bumperZoneBottom)
+            + " to "
+            + shown(bumperZoneTop));
+  }
+
+  /**
+   * The robot's mass is given with its battery in, and the rule weighs it with the battery out, so
+   * the battery's mass is taken off first.
+   */
+  private Optional<String> whyItIsTooHeavy(Body body) {
+    Mass withoutBattery = body.mass().minus(battery);
+    boolean tooHeavy = withoutBattery.in(Kilograms) > weight.in(Kilograms) + SLACK;
+    if (!tooHeavy) {
+      return Optional.empty();
+    }
+    // In the rule's own unit, as the rule book says it: 135 lb, not a mix of it and kilograms.
+    Mass inTheRulesUnit = weight.unit().of(withoutBattery.in(weight.unit()));
+    return Optional.of(
+        "it weighs "
+            + shown(inTheRulesUnit)
+            + " without its battery, more than the "
+            + shown(weight)
+            + " allowed: lighten it, or weigh it again");
   }
 
   /**

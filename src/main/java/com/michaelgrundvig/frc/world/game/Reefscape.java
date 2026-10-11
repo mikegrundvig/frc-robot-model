@@ -66,17 +66,6 @@ public final class Reefscape {
   /** The cages' centers from mid field: 3 ft 5½ in, 7 ft ⅜ in, and 10 ft 7⅜ in. */
   static final List<Double> CAGES = List.of(41.5 * IN, 84.375 * IN, 127.375 * IN);
 
-  /**
-   * Which way across the field blue's half of the barge is, its cages and net: to the blue drivers'
-   * left, where figure 5-4 draws blue's barge zone, and maple-sim's arena scores blue's net ({@code
-   * ReefscapeBargeSimulation} at 1b1e8ea). The manual's text doesn't say.
-   */
-  static final double BLUE_BARGE_SIDE = 1;
-
-  // ---- The coral stations, one in each corner (5.6.2) ----
-
-  // ---- The processor, set into the guardrail by the alliance's reef (5.5) ----
-
   // ---- Places and zones ----
 
   /** The robot starting line, 7 ft 4 in from the reef: taken to the tape's near edge (5.2). */
@@ -91,12 +80,17 @@ public final class Reefscape {
   /**
    * The barge zone, 3 ft 10 in deep and 12 ft 2½ in long around the alliance's half of the barge
    * (5.2), on the center line: centered on the middle cage, which the text doesn't say.
+   *
+   * <p>Blue's half of the barge, with its cages and net, is the half to the blue drivers' left, so
+   * the middle cage is that far toward +y from mid field. That is where figure 5-4 draws blue's
+   * barge zone, and where maple-sim's arena scores blue's net ({@code ReefscapeBargeSimulation} at
+   * 1b1e8ea). The manual's text doesn't say.
    */
   static final Zone BARGE_ZONE =
       Zone.ours(
           "Barge zone",
           Polygon2d.rectangle(
-              new Pose2d(LENGTH / 2, WIDTH / 2 + BLUE_BARGE_SIDE * CAGES.get(1), Rotation2d.ZERO),
+              new Pose2d(LENGTH / 2, WIDTH / 2 + CAGES.get(1), Rotation2d.ZERO),
               46 * IN,
               146.5 * IN));
 
@@ -116,12 +110,15 @@ public final class Reefscape {
    * @param across between opposite flats
    */
   private static Polygon2d hexagon(double across) {
+    // A regular hexagon's corners are farther from its center than its flats are, by the cosine
+    // of 30°. With flats facing 0°, 60° and on round, the corners are midway between: at 30°,
+    // 90° and on round.
+    double centerToCorner = across / 2 / Math.cos(Math.PI / 6);
+    Translation2d center = new Translation2d(REEF_X, REEF_Y);
     List<Translation2d> corners = new ArrayList<>();
-    double circumradius = across / 2 / Math.cos(Math.PI / 6);
     for (int corner = 0; corner < 6; corner++) {
-      corners.add(
-          new Translation2d(REEF_X, REEF_Y)
-              .plus(new Translation2d(circumradius, Rotation2d.fromDegrees(30 + 60 * corner))));
+      Rotation2d toCorner = Rotation2d.fromDegrees(30 + 60 * corner);
+      corners.add(center.plus(new Translation2d(centerToCorner, toCorner)));
     }
     return new Polygon2d(corners);
   }
@@ -138,6 +135,8 @@ public final class Reefscape {
 
   /** The field model on another of the season's layouts: the AndyMark build, say. */
   static FieldModel field(Body body, Fields layout) {
+    // The robot's center is half its length back from its front bumper, which is on the far edge
+    // of the starting line's tape.
     double x = STARTING_LINE_X + TAPE_WIDTH - body.bumperLength().in(Meters) / 2;
     double cage = CAGES.get(1);
     return FieldModel.builder(TagLayout.of(layout.loadField()), SYMMETRY)

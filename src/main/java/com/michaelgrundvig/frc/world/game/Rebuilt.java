@@ -1,5 +1,6 @@
 package com.michaelgrundvig.frc.world.game;
 
+import static com.michaelgrundvig.frc.world.game.Manuals.IN;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.Pounds;
@@ -66,9 +67,6 @@ public final class Rebuilt {
   static final Symmetry SYMMETRY = Symmetry.ROTATED;
 
   private static final double WIDTH = LAYOUT.width;
-
-  /** One inch, in meters: the manual measures in inches. */
-  private static final double IN = 0.0254;
 
   // ---- Materials, where the manual names them. Contact numbers come later, per pair. ----
 
@@ -140,8 +138,6 @@ public final class Rebuilt {
   static final double BASE_DEPTH = 45.18 * IN;
   static final double BASE_HEIGHT = 0.25 * IN;
 
-  // ---- The outpost, in the alliance wall's corner by the guardrail (5.9.2) ----
-
   // ---- The depot, along the alliance wall (5.7) ----
 
   /** The depot: 42.0 in wide and 27.0 in deep. */
@@ -189,6 +185,8 @@ public final class Rebuilt {
    * barriers. Each vertical edge is a step a wheel climbs, not a ramp.
    */
   static List<Surface> surfaces() {
+    // The depot's outside edges. Its front barrier lies across the whole width, and the two side
+    // barriers run from the wall out to the front barrier's inside edge.
     double depotFront = DEPOT_DEPTH - BARRIER_WIDTH;
     double depotLeft = DEPOT_Y + DEPOT_WIDTH / 2;
     double depotRight = DEPOT_Y - DEPOT_WIDTH / 2;
@@ -229,22 +227,28 @@ public final class Rebuilt {
             STEEL));
   }
 
-  /** A flat plate on the floor between two corners, a vertical edge all round. */
+  /**
+   * A flat plate lying on the floor, its sides along the field's axes and a vertical edge all
+   * round: a platform with no ramps.
+   *
+   * @param nearX its edge nearer the blue alliance wall, in meters along x
+   * @param farX its edge farther from that wall
+   * @param rightY its edge to the blue drivers' right, in meters along y
+   * @param leftY its edge to their left
+   * @param heightMeters how thick it is
+   */
   private static Platform plate(
       String name,
-      double x0,
-      double x1,
-      double y0,
-      double y1,
+      double nearX,
+      double farX,
+      double rightY,
+      double leftY,
       double heightMeters,
       Material material) {
-    Polygon2d top =
-        Polygon2d.rectangle(
-            new Pose2d((x0 + x1) / 2, (y0 + y1) / 2, Rotation2d.ZERO),
-            Math.abs(x1 - x0),
-            Math.abs(y1 - y0));
-    return new Platform(
-        name, top, heightMeters, Collections.nCopies(4, Platform.Side.EDGE), material);
+    Pose2d center = new Pose2d((nearX + farX) / 2, (rightY + leftY) / 2, Rotation2d.ZERO);
+    Polygon2d top = Polygon2d.rectangle(center, Math.abs(farX - nearX), Math.abs(leftY - rightY));
+    List<Platform.Side> edgeAllRound = Collections.nCopies(4, Platform.Side.EDGE);
+    return new Platform(name, top, heightMeters, edgeAllRound, material);
   }
 
   /**
