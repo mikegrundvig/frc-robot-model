@@ -574,6 +574,34 @@ class RobotMathTest {
   }
 
   /**
+   * A reading taken every loop is asked of a reader made once, which gives the very numbers a
+   * reading worked out afresh does: inside the window, below it, above it, and on its edges.
+   */
+  @Test
+  void aReaderMadeOnceGivesTheSameNumbersAsAReadingWorkedOutAfresh() {
+    Joint.Revolute turret =
+        revolute(
+            "turret",
+            Part.CHASSIS,
+            point(0, 0, 0.6),
+            UP,
+            Optional.of(Range.degrees(-390, 40)),
+            0,
+            link("turret", 3, point(0.05, 0, 0.1), point(0.3, 0.3, 0.2)));
+    Sensor.Encoder coarse =
+        encoder("turret coarse", turret, (220.0 / 25) * (8.0 / 30) * (8.0 / 35), true);
+    Drive drive = MechanismFixtures.motors(turret, Motor.KRAKEN_X60, 1, gearing(56.6, 1));
+    RobotMath math = definition(List.of(turret), List.of(), List.of(drive), List.of(coarse)).math();
+    AbsoluteReader reader = math.absoluteReader(coarse);
+
+    for (double turns = -3; turns <= 3; turns += 0.0625) {
+      assertThat(reader.position(turns))
+          .as("at %s turns", turns)
+          .isEqualTo(math.fromAbsolute(coarse, turns));
+    }
+  }
+
+  /**
    * A differential wrist: two motors, each turning pitch and roll together, one the roll backwards.
    * Their average is Phoenix's differential's average axis, pitch; half their difference, roll.
    */

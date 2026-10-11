@@ -106,7 +106,7 @@ final class AbsoluteEncoders {
   }
 
   /** How far a joint moves for one turn of it: 2π radians, or 1 for a joint measured in meters. */
-  private static double jointUnitsPerTurn(Joint joint) {
+  static double jointUnitsPerTurn(Joint joint) {
     if (joint instanceof Joint.Revolute) {
       return 2 * Math.PI;
     }
@@ -170,22 +170,13 @@ final class AbsoluteEncoders {
 
   /**
    * Where a joint is for one absolute encoder's reading, in the joint's units, inside the window
-   * the encoder tells apart ({@link #window}).
+   * the encoder tells apart ({@link #window}). The window is worked out for each reading: a reading
+   * taken every loop is asked of an {@link AbsoluteReader} instead, which works it out once.
    *
    * @param turns the encoder's reading, in its turns, growing as the joint moves forward
    */
   static double positionFor(Sensor.Encoder encoder, double turns) {
-    Range window = window(List.of(encoder));
-    Joint joint = encoder.joint();
-    double position = turns / Math.abs(encoder.ratio(joint)) * jointUnitsPerTurn(joint);
-    double span = window.upper() - window.lower();
-    // Java's remainder keeps the sign of what is divided, so a position below the window gives a
-    // negative remainder, which one more span brings into the window.
-    double pastTheBottom = (position - window.lower()) % span;
-    if (pastTheBottom < 0) {
-      pastTheBottom = pastTheBottom + span;
-    }
-    return window.lower() + pastTheBottom;
+    return AbsoluteReader.of(encoder).position(turns);
   }
 
   /**

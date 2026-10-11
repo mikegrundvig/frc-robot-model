@@ -90,6 +90,17 @@ class LoopCostTest {
   private static final Sensor.Encoder PIVOT_ENCODER =
       MechanismFixtures.encoder("pivot encoder", PIVOT, 1, true);
 
+  /** What a joint's IO keeps to read its absolute encoder with: made once, as the IO is built. */
+  private static final AbsoluteReader PIVOT_READER = AbsoluteReader.of(PIVOT_ENCODER);
+
+  /** A reading that changes each time it is asked for, as an encoder's does from loop to loop. */
+  private static double turns;
+
+  private static double nextReading() {
+    turns += 0.0137;
+    return turns;
+  }
+
   /** Hash maps, as the robot keeps them: one finds a key that is the very object it holds. */
   private static final Map<Joint, Integer> BY_JOINT =
       new HashMap<>(Map.of(PIVOT, 1, StandardRobot.ELEVATOR, 2, WHEEL, 3));
@@ -108,6 +119,9 @@ class LoopCostTest {
         asks("the hash of a switch", PIVOT_DOWN::hashCode),
         asks("the hash of a rangefinder", HOPPER::hashCode),
         asks("the hash of an encoder, which hashes its joint", PIVOT_ENCODER::hashCode),
+        asks(
+            "where a joint is from its absolute encoder's reading",
+            () -> (int) Math.signum(PIVOT_READER.position(nextReading()))),
         asks("what a map holds for a joint", () -> BY_JOINT.getOrDefault(PIVOT, 0)),
         asks(
             "what a map holds for a sensor",

@@ -642,12 +642,28 @@ public final class RobotMath {
    * window the encoder tells apart ({@link #absoluteWindow}). What a motor controller is told at
    * startup, from an encoder read once, as a turret's coarse one is.
    *
+   * <p>Each call works the encoder's window out again, which makes about 6,000 bytes of objects.
+   * That is nothing for a reading taken once. One taken every loop is asked of {@link
+   * #absoluteReader} instead, which gives the same answers.
+   *
    * @param turns the encoder's reading in its turns, its offset applied so it reads zero with the
    *     joint at zero, and growing as the joint moves forward
    * @throws IllegalArgumentException as {@link #absoluteWindow} does
    */
   public double fromAbsolute(Sensor.Encoder encoder, double turns) {
     return AbsoluteEncoders.positionFor(encoder, turns);
+  }
+
+  /**
+   * What reads a joint from one absolute encoder's readings, every loop: {@link #fromAbsolute} with
+   * everything that depends only on the definition worked out once, here, so that each reading
+   * after is arithmetic and makes no objects. Whatever reads the encoder each loop asks for this
+   * once, as it is built.
+   *
+   * @throws IllegalArgumentException as {@link #absoluteWindow} does
+   */
+  public AbsoluteReader absoluteReader(Sensor.Encoder encoder) {
+    return AbsoluteReader.of(encoder);
   }
 
   /**
