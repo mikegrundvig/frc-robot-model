@@ -18,18 +18,9 @@ import static org.wpilib.units.Units.Value;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
-import java.util.List;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
-import org.wpilib.units.AngleUnit;
-import org.wpilib.units.AngularAccelerationUnit;
-import org.wpilib.units.AngularVelocityUnit;
-import org.wpilib.units.DistanceUnit;
-import org.wpilib.units.LinearAccelerationUnit;
-import org.wpilib.units.LinearVelocityUnit;
 import org.wpilib.units.Measure;
 import org.wpilib.units.PerUnit;
-import org.wpilib.units.Unit;
 import org.wpilib.units.VoltageUnit;
 import org.wpilib.units.measure.Angle;
 import org.wpilib.units.measure.AngularAcceleration;
@@ -118,8 +109,8 @@ public record MechanismControl(
    * @throws IllegalArgumentException for a kP per anything but an angle or a length
    */
   public static MechanismControl position(Measure<? extends PerUnit<VoltageUnit, ?>> kP) {
-    return defaults(
-        Loop.POSITION, kP.baseUnitMagnitude(), Optional.of(per("kP", kP, POSITION, null)));
+    Position.Kind per = GainUnits.kindOf("kP", kP, GainUnits.Per.POSITION, Optional.empty());
+    return defaults(Loop.POSITION, kP.baseUnitMagnitude(), Optional.of(per));
   }
 
   /**
@@ -143,7 +134,8 @@ public record MechanismControl(
    * @throws IllegalArgumentException for a kP per anything but a speed
    */
   public static MechanismControl velocity(Measure<? extends PerUnit<VoltageUnit, ?>> kP) {
-    return defaults(Loop.VELOCITY, kP.baseUnitMagnitude(), Optional.of(per("kP", kP, SPEED, null)));
+    Position.Kind per = GainUnits.kindOf("kP", kP, GainUnits.Per.SPEED, Optional.empty());
+    return defaults(Loop.VELOCITY, kP.baseUnitMagnitude(), Optional.of(per));
   }
 
   /** The same, coasting when told nothing: a flywheel spinning down rather than stopping hard. */
@@ -192,8 +184,9 @@ public record MechanismControl(
    *     kind than its other gains
    */
   public MechanismControl withKp(Measure<? extends PerUnit<VoltageUnit, ?>> kP) {
-    int takes = loop == Loop.POSITION ? POSITION : SPEED;
-    return with(gainsWith().kP(kP.baseUnitMagnitude()).kind(kind("kP", kP, takes, loop)).build());
+    Position.Kind per =
+        kindWithTheOtherGains("kP", kP, GainUnits.Per.ofKp(loop), Optional.of(loop));
+    return with(gainsWith().kP(kP.baseUnitMagnitude()).kind(per).build());
   }
 
   /** The same, with an integral gain: volts per radian (or meter) of error, per second it lasts. */
@@ -218,8 +211,9 @@ public record MechanismControl(
    *     kind than its other gains
    */
   public MechanismControl withKd(Measure<? extends PerUnit<VoltageUnit, ?>> kD) {
-    int takes = loop == Loop.POSITION ? SPEED : ACCELERATION;
-    return with(gainsWith().kD(kD.baseUnitMagnitude()).kind(kind("kD", kD, takes, loop)).build());
+    Position.Kind per =
+        kindWithTheOtherGains("kD", kD, GainUnits.Per.ofKd(loop), Optional.of(loop));
+    return with(gainsWith().kD(kD.baseUnitMagnitude()).kind(per).build());
   }
 
   /** The same, with SysId's kS: the volts that overcome static friction. */
@@ -244,7 +238,8 @@ public record MechanismControl(
    *     its other gains
    */
   public MechanismControl withKv(Measure<? extends PerUnit<VoltageUnit, ?>> kV) {
-    return with(gainsWith().kV(kV.baseUnitMagnitude()).kind(kind("kV", kV, SPEED, null)).build());
+    Position.Kind per = kindWithTheOtherGains("kV", kV, GainUnits.Per.SPEED, Optional.empty());
+    return with(gainsWith().kV(kV.baseUnitMagnitude()).kind(per).build());
   }
 
   /**
@@ -264,8 +259,9 @@ public record MechanismControl(
    *     kind than its other gains
    */
   public MechanismControl withKa(Measure<? extends PerUnit<VoltageUnit, ?>> kA) {
-    return with(
-        gainsWith().kA(kA.baseUnitMagnitude()).kind(kind("kA", kA, ACCELERATION, null)).build());
+    Position.Kind per =
+        kindWithTheOtherGains("kA", kA, GainUnits.Per.ACCELERATION, Optional.empty());
+    return with(gainsWith().kA(kA.baseUnitMagnitude()).kind(per).build());
   }
 
   /**
@@ -419,92 +415,19 @@ public record MechanismControl(
         .build();
   }
 
-  /** A gain per a position: an angle or a length. */
-  private static final int POSITION = 0;
-
-  /** A gain per a speed. */
-  private static final int SPEED = 1;
-
-  /** A gain per an acceleration. */
-  private static final int ACCELERATION = 2;
-
-  /** What a gain may be per, a position, a speed or an acceleration, and how to write each. */
-  private static final List<String> TAKES =
-      List.of(
-          "an angle, Volts.per(Rotation), or a length, Volts.per(Meter)",
-          "a speed, Volts.per(RotationsPerSecond) or Volts.per(MetersPerSecond)",
-          "an acceleration, Volts.per(RotationsPerSecondPerSecond) or"
-              + " Volts.per(MetersPerSecondPerSecond)");
-
   /**
-   * What a gain given with its unit is per: an angle or a length, and how many times per second
-   * ({@link #POSITION}, {@link #SPEED}, {@link #ACCELERATION}).
-   */
-  private record Per(Position.Kind kind, int perSecond) {}
-
-  /** What a unit a gain is per is, or null for one no gain is per: a time, a current. */
-  private static @Nullable Per per(Unit unit) {
-    return switch (unit) {
-      case AngleUnit _ -> new Per(Position.Kind.ANGLE, POSITION);
-      case DistanceUnit _ -> new Per(Position.Kind.LENGTH, POSITION);
-      case AngularVelocityUnit _ -> new Per(Position.Kind.ANGLE, SPEED);
-      case LinearVelocityUnit _ -> new Per(Position.Kind.LENGTH, SPEED);
-      case AngularAccelerationUnit _ -> new Per(Position.Kind.ANGLE, ACCELERATION);
-      case LinearAccelerationUnit _ -> new Per(Position.Kind.LENGTH, ACCELERATION);
-      default -> null;
-    };
-  }
-
-  /**
-   * What a gain given with its unit is per, an angle or a length: refused unless it's per what the
-   * gain takes, a position, a speed or an acceleration ({@code takes}).
+   * Whether a gain given with its unit is per an angle or per a length, which must be the same as
+   * this control's other gains were given in ({@link GainUnits}).
    *
-   * @param loop the loop that decides what it takes, said in the refusal; null when the gain takes
-   *     the same in either
+   * @param loopThatDecides this control's loop, when what the gain takes depends on it
+   * @throws IllegalArgumentException if the gain cannot be per what it was given per
    */
-  private static Position.Kind per(
+  private Position.Kind kindWithTheOtherGains(
       String gain,
       Measure<? extends PerUnit<VoltageUnit, ?>> value,
-      int takes,
-      @Nullable Loop loop) {
-    Unit unit = value.unit().denominator();
-    Per per = per(unit);
-    if (per != null && per.perSecond() == takes) {
-      return per.kind();
-    }
-    throw new IllegalArgumentException(
-        "Gains."
-            + gain
-            + ": volts per "
-            + unit.name()
-            + " can't be one"
-            + (loop == null ? "" : " in a control for " + loop.held())
-            + ": give it per "
-            + TAKES.get(takes));
-  }
-
-  /**
-   * The gains' kind with one more gain given with its unit: refused if it's per the other kind than
-   * the gains already are.
-   */
-  private Optional<Position.Kind> kind(
-      String gain,
-      Measure<? extends PerUnit<VoltageUnit, ?>> value,
-      int takes,
-      @Nullable Loop loop) {
-    Position.Kind kind = per(gain, value, takes, loop);
-    if (gains.kind().isPresent() && gains.kind().get() != kind) {
-      boolean angle = kind == Position.Kind.ANGLE;
-      throw new IllegalArgumentException(
-          "Gains."
-              + gain
-              + ": it's per "
-              + (angle ? "an angle" : "a length")
-              + ", and the other gains are per "
-              + (angle ? "a length" : "an angle")
-              + ": a control drives one joint, which turns or slides");
-    }
-    return Optional.of(kind);
+      GainUnits.Per takes,
+      Optional<Loop> loopThatDecides) {
+    return GainUnits.kindAgreeingWith(gains.kind(), gain, value, takes, loopThatDecides);
   }
 
   /**
@@ -520,7 +443,10 @@ public record MechanismControl(
 
     /** What it holds, as a message says it: "positions" or "speeds". */
     String held() {
-      return this == POSITION ? "positions" : "speeds";
+      return switch (this) {
+        case POSITION -> "positions";
+        case VELOCITY -> "speeds";
+      };
     }
   }
 
@@ -606,13 +532,16 @@ public record MechanismControl(
       Checks.on(SoftLimits.class)
           .field("lower", lower, finite())
           .field("upper", upper, finite())
-          .check(
-              "upper",
-              () ->
-                  upper > lower
-                      ? null
-                      : shown(upper) + " must be above the lower limit (" + shown(lower) + ")")
+          .whyNot("upper", () -> whyNotAbove(lower, upper))
           .orThrow();
+    }
+
+    /** Why the upper limit is not above the lower, if it is not. */
+    private static Optional<String> whyNotAbove(double lower, double upper) {
+      if (upper > lower) {
+        return Optional.empty();
+      }
+      return Optional.of(shown(upper) + " must be above the lower limit (" + shown(lower) + ")");
     }
 
     /** Starts describing soft limits, one named value at a time. */
@@ -719,7 +648,10 @@ public record MechanismControl(
 
     /** A band as the team gave it: degrees, meters, or a share of a speed. */
     private static String shownBand(double band, Optional<Position.Kind> kind) {
-      return kind.isEmpty() ? shown(band * 100) + "%" : kind.get().shown(band);
+      if (kind.isEmpty()) {
+        return shown(band * 100) + "%";
+      }
+      return kind.get().shown(band);
     }
 
     /** Starts describing bands, one named value at a time. */
@@ -779,16 +711,23 @@ public record MechanismControl(
           .field("drawing", drawing, positive())
           .field("dead", dead, positive())
           .field("time", time, positive())
-          .check(
-              "dead",
-              () ->
-                  dead.lt(drawing)
-                      ? null
-                      : shown(dead)
-                          + " must be under what the joint's leader draws, "
-                          + shown(drawing)
-                          + ": a motor drawing as much as its leader isn't dead")
+          .whyNot("dead", () -> whyNotUnder(drawing, dead))
           .orThrow();
+    }
+
+    /**
+     * Why the current that counts as dead is not under the current that counts as drawing, if it is
+     * not.
+     */
+    private static Optional<String> whyNotUnder(Current drawing, Current dead) {
+      if (dead.lt(drawing)) {
+        return Optional.empty();
+      }
+      return Optional.of(
+          shown(dead)
+              + " must be under what the joint's leader draws, "
+              + shown(drawing)
+              + ": a motor drawing as much as its leader isn't dead");
     }
 
     /** Starts describing when a channel is dead, one named value at a time. */
@@ -842,50 +781,27 @@ public record MechanismControl(
     }
 
     /**
-     * How long a joint takes to cross its travel at a push, from its model, in seconds: its range
-     * at the speed the push gives it, its free speed through its gearing scaled by the push over
-     * its motors' 12 V (the push over {@link RobotMath#idealGains}'s kV). A joint that turns freely
-     * has no range: it reaches anywhere within a turn. A slide with no hard stops goes only between
-     * its named places and where it rests.
+     * How long a joint takes to cross its travel when pushed at a voltage, in seconds, as its model
+     * says ({@link HomingTime#travelSeconds}).
      *
      * @param volts the push
      * @throws IllegalArgumentException if no motors move it, or it follows another joint
      */
     static double travelSeconds(RobotMath math, Joint joint, double volts) {
-      double travel =
-          joint
-              .range()
-              .map(Range::width)
-              .orElseGet(() -> joint instanceof Joint.Revolute ? 2 * Math.PI : spread(joint));
-      return travel * math.idealGains(joint).kV() / volts;
+      return HomingTime.travelSeconds(math, joint, volts);
     }
 
     /**
-     * How long homing may push a joint before it's faulted, in seconds: the timeout its recipe
-     * gives, or, left to the joint, twice its travel's time at the push ({@link #travelSeconds})
-     * and half a second more, as a move's default deadline is. Twice leaves room for friction, and
-     * for gravity, to take half the push; the half second, for a hard stop's quarter second of
-     * stillness.
+     * The longest homing may push a joint before the joint is faulted, in seconds: the timeout its
+     * recipe gives, or, when the recipe gives none, twice the time the joint's model says its
+     * travel takes and half a second more ({@link HomingTime#secondsAllowed}).
      *
-     * @param timeout the recipe's, or empty to work it out from the joint
+     * @param timeout the recipe's own timeout, or empty to work one out from the joint
      * @param volts the push
      */
     static double secondsAllowed(
         Optional<Time> timeout, double volts, RobotMath math, Joint joint) {
-      return timeout
-          .map(time -> time.in(Seconds))
-          .orElseGet(() -> 2 * travelSeconds(math, joint, volts) + 0.5);
-    }
-
-    /** How far apart a slide's named places and where it rests lie: its travel, without stops. */
-    private static double spread(Joint joint) {
-      double lowest = joint.restPosition();
-      double highest = joint.restPosition();
-      for (Position place : joint.positions()) {
-        lowest = Math.min(lowest, place.value());
-        highest = Math.max(highest, place.value());
-      }
-      return highest - lowest;
+      return HomingTime.secondsAllowed(timeout, volts, math, joint);
     }
 
     /** The joint is where it rests at power on ({@link #assumeAtRest}). */
