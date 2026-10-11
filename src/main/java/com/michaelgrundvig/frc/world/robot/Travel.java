@@ -169,21 +169,46 @@ public record Travel(
   }
 
   /**
-   * Where the joint comes to a stop if it's held from the next loop, not this one: going on a loop
-   * as it goes now, at its speed and speeding up as it is, then braking at its acceleration, inside
-   * its limits. A hold on a point starts in time to stop short of it the loop this reaches it; one
-   * that waits for where it stops from now ({@link #stoppingPoint}) is a loop late, by a loop's
-   * travel and what it gained in it, 6° at the fixtures' pivot's 5 rad/s.
+   * Where the joint would come to a stop if it carried on for one more loop as it is moving now,
+   * and only then began to brake.
    *
-   * @param accelerating how fast its speed changes, measured over the last loop, a second squared:
-   *     only speeding up counts, so slowing down never shortens it
-   * @param loopSeconds how long a loop is, in seconds
+   * <p>This is the stopping point that matters to anything that has to stop the joint short of a
+   * place, because a hold decided in one loop only takes effect in the next. A hold that waited
+   * until {@link #stoppingPoint} reached the place would be one loop late, and the joint would
+   * overshoot by the distance it travels in a loop. At 5 rad/s and a 20 ms loop that is about 6°.
+   *
+   * <p>Over that one loop the joint is taken to go on as it is going: at its speed, and if it is
+   * speeding up, speeding up at the same rate. A joint that is slowing down is taken to keep its
+   * speed, so that this never promises a shorter stop than the joint may manage.
+   *
+   * @param at where the joint is
+   * @param velocity how fast it is moving, a second
+   * @param accelerating how fast its velocity is changing, measured over the last loop, a second
+   *     squared
+   * @param loopSeconds how long one loop lasts, in seconds
    */
   public double stoppingPointLoopOn(
       double at, double velocity, double accelerating, double loopSeconds) {
-    double gained =
-        velocity == 0 ? 0 : Math.max(0, accelerating * Math.signum(velocity)) * loopSeconds;
-    double then = velocity + Math.signum(velocity) * gained;
-    return stoppingPoint(at + (velocity + then) / 2 * loopSeconds, then);
+    double velocityALoopOn = velocityALoopOn(velocity, accelerating, loopSeconds);
+    double averageVelocity = (velocity + velocityALoopOn) / 2;
+    double positionALoopOn = at + averageVelocity * loopSeconds;
+    return stoppingPoint(positionALoopOn, velocityALoopOn);
+  }
+
+  /**
+   * The joint's velocity one loop on, if it goes on speeding up as it is. Only speeding up changes
+   * it: for a joint moving up that is accelerating upward, and for one moving down, downward. A
+   * joint at rest is moving neither way, so it is not speeding up.
+   */
+  private static double velocityALoopOn(double velocity, double accelerating, double loopSeconds) {
+    if (velocity > 0) {
+      double speedingUp = Math.max(0, accelerating);
+      return velocity + speedingUp * loopSeconds;
+    }
+    if (velocity < 0) {
+      double speedingUp = Math.min(0, accelerating);
+      return velocity + speedingUp * loopSeconds;
+    }
+    return velocity;
   }
 }

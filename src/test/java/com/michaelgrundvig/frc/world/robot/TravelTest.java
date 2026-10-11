@@ -195,5 +195,14 @@ class TravelTest {
     assertThat(pivot.stoppingPointLoopOn(1, -3, -50, LOOP))
         .isCloseTo(0.93 - 16 / 60.0, within(1e-12));
     assertThat(pivot.stoppingPointLoopOn(1, 0, 50, LOOP)).as("still, it stays").isEqualTo(1);
+    assertThat(pivot.stoppingPointLoopOn(1, 0, -50, LOOP))
+        .as("still, it stays, whichever way it is pushed")
+        .isEqualTo(1);
+    assertThat(pivot.stoppingPointLoopOn(1, -3, 50, LOOP))
+        .as("moving down and slowing: it goes on at its speed")
+        .isCloseTo(0.79, within(1e-12));
+    assertThat(pivot.stoppingPointLoopOn(1, Double.NaN, 0, LOOP))
+        .as("a speed that was not read gives no stopping point, not a made-up one")
+        .isNaN();
   }
 }
