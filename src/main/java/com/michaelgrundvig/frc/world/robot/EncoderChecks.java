@@ -60,7 +60,9 @@ final class EncoderChecks {
     }
 
     Range window = AbsoluteEncoders.window(encoders);
-    boolean crossesTheWrap = range.lower() < window.lower() || range.upper() >= window.upper();
+    // A range that ends exactly on the wrap reaches it and does not cross it: that is too near,
+    // below, as a motor controller's own wrap point is judged (ControllerPlan.wrapProblem).
+    boolean crossesTheWrap = range.lower() < window.lower() || range.upper() > window.upper();
     if (crossesTheWrap) {
       return Optional.of(
           String.format(

@@ -142,7 +142,12 @@ class AbsoluteEncodersTest {
     return Stream.of(
         row("a range well inside the turn is taken", () -> judged(0, 0.5), "taken"),
         row("a range as wide as the turn is not told apart", () -> judged(0, 1), "tells too little apart"),
-        row("a range that reaches the wrap crosses it", () -> judged(0.5, 1.0), "crosses the wrap"),
+        row("a range that ends on the wrap is too near, not across", () -> judged(0.5, 1.0), "too near the wrap"),
+        row("...and is said to come within nothing of it",
+            () -> EncoderChecks.whyNotReadAllAlong(slide(0.5, 1.0), List.of(onceAMeter(slide(0.5, 1.0)))).orElseThrow(),
+            "slide's absolute encoders read it from 0 m to 1 m, and its range, 0.5 m to 1 m, comes within 0 m of"
+                + " where they wrap, a fortieth of their turn: a reading a hair past the wrap reads a turn away"),
+        row("the next range longer crosses the wrap", () -> judged(0.5, Math.nextUp(1.0)), "crosses the wrap"),
         row("a range just short of the wrap is too near it", () -> judged(0.5, Math.nextDown(1.0)), "too near the wrap"),
         row("a range a fortieth of a turn short of the wrap is taken", () -> judged(0.5, 1 - MARGIN), "taken"),
         row("the next range longer is too near", () -> judged(0.5, Math.nextUp(1 - MARGIN)), "too near the wrap"),
@@ -157,7 +162,11 @@ class AbsoluteEncodersTest {
     return Stream.of(
         row("a range that ends a fortieth of a turn short of the wrap is clear", () -> wrapping(-0.5, 0.025, 0.05), "clear"),
         row("the next range longer is too near", () -> wrapping(-0.5, Math.nextUp(0.025), 0.05), "too near the range"),
-        row("a range that ends on the wrap is too near, not across", () -> wrapping(-0.5, 0.05, 0.05), "too near the range"),
+        row("a range that ends on the wrap is too near, not across, as the definition judges it",
+            () -> wrapping(-0.5, 0.05, 0.05), "too near the range"),
+        row("...and the wrap is said to be no distance from it",
+            () -> String.valueOf(ControllerPlan.wrapProblem(onceAMeter(slide(-0.5, 0.05)), 0.05)).contains(", 0 m from slide's range (-0.5 m to 0.05 m),"),
+            true),
         row("the next range longer has the wrap inside it", () -> wrapping(-0.5, Math.nextUp(0.05), 0.05), "inside the range"));
   }
 
