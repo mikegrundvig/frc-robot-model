@@ -6,7 +6,9 @@ import static org.wpilib.units.Units.Kilograms;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rule;
 import java.util.List;
+import java.util.Optional;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
 import org.wpilib.units.measure.Mass;
@@ -41,14 +43,17 @@ public record MassProperties(Mass mass, Translation3d cg, Inertia inertia) {
   public MassProperties {
     Checks.on(MassProperties.class)
         .field("mass", mass, nonNegative())
-        .field(
-            "cg",
-            cg,
-            point ->
-                Double.isFinite(point.getX() + point.getY() + point.getZ())
-                    ? null
-                    : point + " must be a point, numbers all")
+        .field("cg", cg, Rule.of(MassProperties::whyNotAPoint))
         .orThrow();
+  }
+
+  /** Why a center of mass is no point, if it is not: one of its numbers is missing or infinite. */
+  private static Optional<String> whyNotAPoint(Translation3d point) {
+    // A sum with anything that is not a number, or is infinite, is not finite either.
+    if (Double.isFinite(point.getX() + point.getY() + point.getZ())) {
+      return Optional.empty();
+    }
+    return Optional.of(point + " must be a point, numbers all");
   }
 
   /** Whether it has no mass: none given. */
@@ -73,18 +78,29 @@ public record MassProperties(Mass mass, Translation3d cg, Inertia inertia) {
         .build();
   }
 
-  /** Its inertia tensor about a point rather than its center of mass, row by row. */
+  /**
+   * Its inertia tensor about a point rather than its center of mass, row by row, by the
+   * parallel-axis theorem. With d the offset from the point to the center of mass, moving the axes
+   * there adds the mass times (|d|² on the diagonal, less d's own outer product) to the tensor:
+   * m·(|d|²·1 - d dᵀ).
+   */
   double[] tensorAbout(Translation3d point) {
-    double m = mass.in(Kilograms);
-    double[] t = inertia.entries();
-    double[] d = {cg.getX() - point.getX(), cg.getY() - point.getY(), cg.getZ() - point.getZ()};
-    double squared = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-    for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-        t[3 * i + j] += m * ((i == j ? squared : 0) - d[i] * d[j]);
+    double kilograms = mass.in(Kilograms);
+    double[] tensor = inertia.entries();
+    double[] offset = {
+      cg.getX() - point.getX(), cg.getY() - point.getY(), cg.getZ() - point.getZ()
+    };
+    double offsetSquared = offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2];
+    for (int row = 0; row < 3; row++) {
+      for (int column = 0; column < 3; column++) {
+        double onDiagonal = 0;
+        if (row == column) {
+          onDiagonal = offsetSquared;
+        }
+        tensor[Inertia.at(row, column)] += kilograms * (onDiagonal - offset[row] * offset[column]);
       }
     }
-    return t;
+    return tensor;
   }
 
   /**
@@ -97,25 +113,31 @@ public record MassProperties(Mass mass, Translation3d cg, Inertia inertia) {
     if (parts.isEmpty()) {
       throw new IllegalArgumentException("a sum of no parts has no mass");
     }
-    double total = 0;
-    Translation3d moment = Translation3d.ZERO;
+    // The common center of mass is the parts' centers, weighted by their masses.
+    double totalKilograms = 0;
+    Translation3d massTimesCenter = Translation3d.ZERO;
     for (MassProperties part : parts) {
-      double m = part.mass.in(Kilograms);
-      total += m;
-      moment = moment.plus(part.cg.times(m));
+      double kilograms = part.mass.in(Kilograms);
+      totalKilograms += kilograms;
+      massTimesCenter = massTimesCenter.plus(part.cg.times(kilograms));
     }
-    if (total == 0) {
+    if (totalKilograms == 0) {
       return NONE;
     }
-    Translation3d center = moment.div(total);
+    Translation3d center = massTimesCenter.div(totalKilograms);
+    // Tensors about the same point add, so each part's is taken about the common center first.
     double[] tensor = new double[9];
     for (MassProperties part : parts) {
-      double[] about = part.tensorAbout(center);
-      for (int i = 0; i < 9; i++) {
-        tensor[i] += about[i];
+      double[] aboutCenter = part.tensorAbout(center);
+      for (int entry = 0; entry < 9; entry++) {
+        tensor[entry] += aboutCenter[entry];
       }
     }
-    return builder().mass(Kilograms.of(total)).cg(center).inertia(Inertia.of(tensor)).build();
+    return builder()
+        .mass(Kilograms.of(totalKilograms))
+        .cg(center)
+        .inertia(Inertia.of(tensor))
+        .build();
   }
 
   /**
@@ -126,18 +148,26 @@ public record MassProperties(Mass mass, Translation3d cg, Inertia inertia) {
    *     turns more easily than any body could
    */
   public MassProperties minus(MassProperties part) {
-    double left = mass.in(Kilograms) - part.mass.in(Kilograms);
-    if (!(left > 0)) {
+    double kilogramsLeft = mass.in(Kilograms) - part.mass.in(Kilograms);
+    if (!(kilogramsLeft > 0)) {
       throw new IllegalArgumentException(
           "nothing is left: " + shown(part.mass) + " taken from " + shown(mass));
     }
-    Translation3d center =
-        cg.times(mass.in(Kilograms)).minus(part.cg.times(part.mass.in(Kilograms))).div(left);
-    double[] whole = tensorAbout(center);
-    double[] away = part.tensorAbout(center);
-    for (int i = 0; i < 9; i++) {
-      whole[i] -= away[i];
+    // The reverse of a sum: what is left is centered where the whole's mass times its center,
+    // less the part's, puts it, and its tensor is the whole's less the part's, both taken about
+    // that center.
+    Translation3d wholeMassTimesCenter = cg.times(mass.in(Kilograms));
+    Translation3d partMassTimesCenter = part.cg.times(part.mass.in(Kilograms));
+    Translation3d center = wholeMassTimesCenter.minus(partMassTimesCenter).div(kilogramsLeft);
+    double[] tensor = tensorAbout(center);
+    double[] partsTensor = part.tensorAbout(center);
+    for (int entry = 0; entry < 9; entry++) {
+      tensor[entry] -= partsTensor[entry];
     }
-    return builder().mass(Kilograms.of(left)).cg(center).inertia(Inertia.of(whole)).build();
+    return builder()
+        .mass(Kilograms.of(kilogramsLeft))
+        .cg(center)
+        .inertia(Inertia.of(tensor))
+        .build();
   }
 }

@@ -2,9 +2,10 @@ package com.michaelgrundvig.frc.world.physical;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rule;
 import java.util.ArrayList;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
+import java.util.Optional;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Quaternion;
 import org.wpilib.math.geometry.Translation3d;
@@ -50,18 +51,19 @@ public sealed interface Shape {
   record Box(Pose3d pose, Translation3d size, Material material) implements Shape {
     public Box {
       Checks.on(Box.class)
-          .field("pose", pose, Shape::notAPose)
-          .field(
-              "size",
-              size,
-              each ->
-                  each.getX() > 0
-                          && each.getY() > 0
-                          && each.getZ() > 0
-                          && Double.isFinite(each.getX() + each.getY() + each.getZ())
-                      ? null
-                      : each + " must be positive along each axis")
+          .field("pose", pose, Rule.of(Shape::whyNotAPose))
+          .field("size", size, Rule.of(Box::whyNotASize))
           .orThrow();
+    }
+
+    /** Why a box cannot be a size, if it cannot: it needs some length along each axis. */
+    private static Optional<String> whyNotASize(Translation3d size) {
+      boolean positiveAlongEachAxis = size.getX() > 0 && size.getY() > 0 && size.getZ() > 0;
+      boolean finite = Double.isFinite(size.getX() + size.getY() + size.getZ());
+      if (positiveAlongEachAxis && finite) {
+        return Optional.empty();
+      }
+      return Optional.of(size + " must be positive along each axis");
     }
 
     /** Starts describing a box, one named value at a time. */
@@ -69,13 +71,18 @@ public sealed interface Shape {
       return ShapeBoxBuilder.builder();
     }
 
+    /**
+     * In the box's own frame, a point is past each pair of faces by some distance, or not at all.
+     * Its distance from the box is the length of those three distances taken together, which is the
+     * distance to the nearest face, edge or corner as the case may be.
+     */
     @Override
     public double distance(Translation3d point) {
-      Translation3d local = local(pose, point);
-      return Math.sqrt(
-          square(outside(Math.abs(local.getX()) - size.getX() / 2))
-              + square(outside(Math.abs(local.getY()) - size.getY() / 2))
-              + square(outside(Math.abs(local.getZ()) - size.getZ() / 2)));
+      Translation3d fromCenter = inShapesFrame(pose, point);
+      double pastX = distancePast(Math.abs(fromCenter.getX()) - size.getX() / 2);
+      double pastY = distancePast(Math.abs(fromCenter.getY()) - size.getY() / 2);
+      double pastZ = distancePast(Math.abs(fromCenter.getZ()) - size.getZ() / 2);
+      return Math.sqrt(pastX * pastX + pastY * pastY + pastZ * pastZ);
     }
 
     @Override
@@ -83,53 +90,58 @@ public sealed interface Shape {
       return pose.getTranslation();
     }
 
+    /** Its eight corners: half its size either way along each of its own axes. */
     @Override
     public List<Translation3d> points() {
+      int[] eitherWay = {-1, 1};
       List<Translation3d> corners = new ArrayList<>();
-      for (int i = 0; i < 8; i++) {
-        corners.add(
-            placed(
-                pose,
+      for (int alongZ : eitherWay) {
+        for (int alongY : eitherWay) {
+          for (int alongX : eitherWay) {
+            Translation3d fromCenter =
                 new Translation3d(
-                    ((i & 1) == 0 ? -1 : 1) * size.getX() / 2,
-                    ((i & 2) == 0 ? -1 : 1) * size.getY() / 2,
-                    ((i & 4) == 0 ? -1 : 1) * size.getZ() / 2)));
+                    alongX * size.getX() / 2, alongY * size.getY() / 2, alongZ * size.getZ() / 2);
+            corners.add(inOwnersFrame(pose, fromCenter));
+          }
+        }
       }
       return corners;
     }
   }
 
-  /** A point in a shape's own frame, in its owner's. */
-  private static Translation3d placed(Pose3d pose, Translation3d local) {
-    return local.rotateBy(pose.getRotation()).plus(pose.getTranslation());
+  /** A point given in a shape's own frame, in its owner's. */
+  private static Translation3d inOwnersFrame(Pose3d pose, Translation3d inShapesFrame) {
+    return inShapesFrame.rotateBy(pose.getRotation()).plus(pose.getTranslation());
   }
 
-  /** A point in a shape's own frame. */
-  private static Translation3d local(Pose3d pose, Translation3d point) {
-    return point.minus(pose.getTranslation()).rotateBy(pose.getRotation().inverse());
+  /** A point given in a shape's owner's frame, in the shape's own. */
+  private static Translation3d inShapesFrame(Pose3d pose, Translation3d inOwnersFrame) {
+    return inOwnersFrame.minus(pose.getTranslation()).rotateBy(pose.getRotation().inverse());
   }
 
-  /** How far past a side a coordinate is: zero inside it. */
-  private static double outside(double past) {
-    return Math.max(past, 0);
+  /**
+   * How far past a face a coordinate is, given how far it is from the face with outside positive:
+   * zero for a coordinate on the inside.
+   */
+  private static double distancePast(double outsideByThisMuch) {
+    return Math.max(outsideByThisMuch, 0);
   }
 
-  private static double square(double value) {
-    return value * value;
-  }
-
-  /** What's wrong with a pose, or null when it's a pose, numbers all. */
-  private static @Nullable String notAPose(Pose3d pose) {
+  /** Why a pose is no pose, if it is not: one of its numbers is missing or infinite. */
+  private static Optional<String> whyNotAPose(Pose3d pose) {
     Quaternion turn = pose.getRotation().getQuaternion();
-    return Double.isFinite(
-            pose.getX()
-                + pose.getY()
-                + pose.getZ()
-                + turn.getW()
-                + turn.getX()
-                + turn.getY()
-                + turn.getZ())
-        ? null
-        : pose + " must be a pose, numbers all";
+    // A sum with anything that is not a number, or is infinite, is not finite either.
+    double sumOfItsNumbers =
+        pose.getX()
+            + pose.getY()
+            + pose.getZ()
+            + turn.getW()
+            + turn.getX()
+            + turn.getY()
+            + turn.getZ();
+    if (Double.isFinite(sumOfItsNumbers)) {
+      return Optional.empty();
+    }
+    return Optional.of(pose + " must be a pose, numbers all");
   }
 }

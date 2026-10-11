@@ -7,6 +7,7 @@ import static org.wpilib.units.Units.Kilograms;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Translation3d;
@@ -50,37 +51,62 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
         .field("ixy", ixy, finite())
         .field("ixz", ixz, finite())
         .field("iyz", iyz, finite())
-        .check(
-            "ixx",
-            () -> {
-              double slack = ROUNDING * (ixx + iyy + izz);
-              return ixx <= iyy + izz + slack
-                      && iyy <= ixx + izz + slack
-                      && izz <= ixx + iyy + slack
-                  ? null
-                  : "("
-                      + shown(ixx)
-                      + ", "
-                      + shown(iyy)
-                      + ", "
-                      + shown(izz)
-                      + ") can't be a body's: each must be at most the sum of the other two";
-            })
-        .check(
-            "ixy",
-            () -> {
-              // Positive semidefinite, by its principal minors: no axis turns with less than no
-              // effort. Zero is a part with none given; a point mass has none about its center.
-              double size = ixx + iyy + izz;
-              double slack = ROUNDING * size * size;
-              double xy = ixx * iyy - ixy * ixy;
-              double xz = ixx * izz - ixz * ixz;
-              double yz = iyy * izz - iyz * iyz;
-              return xy >= -slack && xz >= -slack && yz >= -slack && determinant() >= -slack * size
-                  ? null
-                  : "the products of inertia are too large for the moments: no body turns that way";
-            })
+        .whyNot("ixx", () -> whyNotABodysMoments(ixx, iyy, izz))
+        .whyNot("ixy", () -> whyProductsAreTooLarge(ixx, iyy, izz, ixy, ixz, iyz))
         .orThrow();
+  }
+
+  /**
+   * Why three moments of inertia cannot be one body's, if they cannot.
+   *
+   * <p>A moment about an axis adds up each bit of mass times the square of its distance from that
+   * axis: about x, that is y² + z². So the moments about y and z together add up x² + y² + 2z²,
+   * which is never less than the moment about x, and likewise for the other two. This is the
+   * triangle inequality of moments of inertia.
+   */
+  private static Optional<String> whyNotABodysMoments(double ixx, double iyy, double izz) {
+    double slack = ROUNDING * (ixx + iyy + izz);
+    boolean eachAtMostTheOtherTwo =
+        ixx <= iyy + izz + slack && iyy <= ixx + izz + slack && izz <= ixx + iyy + slack;
+    if (eachAtMostTheOtherTwo) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "("
+            + shown(ixx)
+            + ", "
+            + shown(iyy)
+            + ", "
+            + shown(izz)
+            + ") can't be a body's: each must be at most the sum of the other two");
+  }
+
+  /**
+   * Why the products of inertia are too large for the moments, if they are.
+   *
+   * <p>No body takes less than no effort to turn about any axis, which is to say that its tensor is
+   * positive semidefinite. That is judged here by the tensor's three second-order principal minors,
+   * one for each pair of axes: each product of inertia, squared, is at most the product of its two
+   * axes' moments. All zero passes, for a part with no inertia given, and so does a point mass,
+   * which has none about its center.
+   *
+   * <p>The full test would also ask that the tensor's determinant is not negative. That is not
+   * asked, and never has been: a tensor that passes the three minors and has a negative determinant
+   * is accepted. Asking it would refuse tensors that are accepted today.
+   */
+  private static Optional<String> whyProductsAreTooLarge(
+      double ixx, double iyy, double izz, double ixy, double ixz, double iyz) {
+    double size = ixx + iyy + izz;
+    double slack = ROUNDING * size * size;
+    double minorXy = ixx * iyy - ixy * ixy;
+    double minorXz = ixx * izz - ixz * ixz;
+    double minorYz = iyy * izz - iyz * iyz;
+    boolean noMinorIsNegative = minorXy >= -slack && minorXz >= -slack && minorYz >= -slack;
+    if (noMinorIsNegative) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "the products of inertia are too large for the moments: no body turns that way");
   }
 
   /**
@@ -89,15 +115,29 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
    * drivetrain couldn't turn it.
    */
   public @Nullable String whyNotSolid() {
-    return ixx > 0 && iyy > 0 && izz > 0 && ixx * iyy - ixy * ixy > 0 && determinant() > 0
-        ? null
-        : "("
+    return whyItTurnsTooEasily().orElse(null);
+  }
+
+  /**
+   * The reason it is not a solid body's, if it is not. A solid body's tensor is positive definite,
+   * which by Sylvester's criterion is when its leading principal minors are all positive: ixx, the
+   * minor of x and y, and the determinant. The moments about y and z are asked to be positive too,
+   * which that already implies.
+   */
+  private Optional<String> whyItTurnsTooEasily() {
+    boolean momentsArePositive = ixx > 0 && iyy > 0 && izz > 0;
+    boolean minorXyIsPositive = ixx * iyy - ixy * ixy > 0;
+    if (momentsArePositive && minorXyIsPositive && determinant() > 0) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "("
             + shown(ixx)
             + ", "
             + shown(iyy)
             + ", "
             + shown(izz)
-            + ") turns too easily: a whole body takes effort to turn about every axis";
+            + ") turns too easily: a whole body takes effort to turn about every axis");
   }
 
   /** Whether it's all zero: none given. */
@@ -105,6 +145,7 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
     return ixx == 0 && iyy == 0 && izz == 0 && ixy == 0 && ixz == 0 && iyz == 0;
   }
 
+  /** The tensor's determinant, expanded along its first row. */
   private double determinant() {
     return ixx * (iyy * izz - iyz * iyz)
         - ixy * (ixy * izz - iyz * ixz)
@@ -121,35 +162,45 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
    * on its mount is seen from what it's mounted on ({@code R I R}<sup>T</sup>).
    */
   public Inertia rotated(Rotation3d rotation) {
-    double[] r = rotation(rotation);
+    double[] turn = rotation(rotation);
     double[] tensor = entries();
     double[] turned = new double[9];
-    for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
+    for (int row = 0; row < 3; row++) {
+      for (int column = 0; column < 3; column++) {
+        // The entry of R I Rᵀ in this row and column: the sum, over every entry of I, of that
+        // entry times R's entry in this row and times R's entry in this column.
         double sum = 0;
         for (int k = 0; k < 3; k++) {
           for (int l = 0; l < 3; l++) {
-            sum += r[3 * i + k] * tensor[3 * k + l] * r[3 * j + l];
+            sum += turn[at(row, k)] * tensor[at(k, l)] * turn[at(column, l)];
           }
         }
-        turned[3 * i + j] = sum;
+        turned[at(row, column)] = sum;
       }
     }
     return of(turned);
   }
 
-  /** How hard it is to turn about an axis through its center of mass, in kg·m². */
+  /**
+   * How hard it is to turn about an axis through its center of mass, in kg·m²: with the axis as a
+   * unit vector n, the tensor's quadratic form, n<sup>T</sup> I n.
+   */
   public double about(Vector3 axis) {
-    Vector3 a = axis.unit();
-    double[] t = entries();
-    double[] v = {a.x(), a.y(), a.z()};
+    Vector3 unit = axis.unit();
+    double[] tensor = entries();
+    double[] n = {unit.x(), unit.y(), unit.z()};
     double sum = 0;
-    for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-        sum += v[i] * t[3 * i + j] * v[j];
+    for (int row = 0; row < 3; row++) {
+      for (int column = 0; column < 3; column++) {
+        sum += n[row] * tensor[at(row, column)] * n[column];
       }
     }
     return sum;
+  }
+
+  /** Where a matrix's entry in a row and a column is, in its nine entries listed row by row. */
+  static int at(int row, int column) {
+    return 3 * row + column;
   }
 
   /** The tensor's nine entries, row by row. */
@@ -162,27 +213,29 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
    *
    * @throws com.michaelgrundvig.frc.world.config.ConfigException if no body has it
    */
-  static Inertia of(double[] t) {
+  static Inertia of(double[] tensor) {
+    // A tensor is symmetric, but one that was summed or turned may differ across its diagonal by
+    // a rounding, so each pair of entries across it is averaged.
     return builder()
-        .ixx(t[0])
-        .iyy(t[4])
-        .izz(t[8])
-        .ixy((t[1] + t[3]) / 2)
-        .ixz((t[2] + t[6]) / 2)
-        .iyz((t[5] + t[7]) / 2)
+        .ixx(tensor[at(0, 0)])
+        .iyy(tensor[at(1, 1)])
+        .izz(tensor[at(2, 2)])
+        .ixy((tensor[at(0, 1)] + tensor[at(1, 0)]) / 2)
+        .ixz((tensor[at(0, 2)] + tensor[at(2, 0)]) / 2)
+        .iyz((tensor[at(1, 2)] + tensor[at(2, 1)]) / 2)
         .build();
   }
 
   /** A rotation's matrix, row by row. */
   static double[] rotation(Rotation3d rotation) {
     var matrix = rotation.toMatrix();
-    double[] r = new double[9];
-    for (int i = 0; i < 3; i++) {
-      for (int j = 0; j < 3; j++) {
-        r[3 * i + j] = matrix.get(i, j);
+    double[] entries = new double[9];
+    for (int row = 0; row < 3; row++) {
+      for (int column = 0; column < 3; column++) {
+        entries[at(row, column)] = matrix.get(row, column);
       }
     }
-    return r;
+    return entries;
   }
 
   /**
@@ -190,17 +243,20 @@ public record Inertia(double ixx, double iyy, double izz, double ixy, double ixz
    * the provisional stand-in until CAD or a measurement gives the real one. A robot or a link isn't
    * solid and even, so this is a guess, and its register row says so.
    *
+   * <p>About each axis it is a twelfth of the mass times the sum of the squares of the two sides
+   * across that axis.
+   *
    * @param size its length along x, width along y, and height along z, in meters
    */
   public static Inertia box(Mass mass, Translation3d size) {
-    double m = mass.in(Kilograms) / 12;
-    double x = size.getX() * size.getX();
-    double y = size.getY() * size.getY();
-    double z = size.getZ() * size.getZ();
+    double twelfthOfMass = mass.in(Kilograms) / 12;
+    double lengthSquared = size.getX() * size.getX();
+    double widthSquared = size.getY() * size.getY();
+    double heightSquared = size.getZ() * size.getZ();
     return builder()
-        .ixx(m * (y + z))
-        .iyy(m * (x + z))
-        .izz(m * (x + y))
+        .ixx(twelfthOfMass * (widthSquared + heightSquared))
+        .iyy(twelfthOfMass * (lengthSquared + heightSquared))
+        .izz(twelfthOfMass * (lengthSquared + widthSquared))
         .ixy(0)
         .ixz(0)
         .iyz(0)
