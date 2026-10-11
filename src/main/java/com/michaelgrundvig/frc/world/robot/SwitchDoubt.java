@@ -39,9 +39,17 @@ public final class SwitchDoubt {
    * @param limit one of its limit switches
    * @param at where the joint is
    * @param tripped whether the switch reads tripped
+   * @throws IllegalArgumentException if the switch is no limit switch: a beam or a contact trips
+   *     wherever its joint is, so there is nothing to check it against
    */
   public static @Nullable String of(Joint joint, Sensor.Switch limit, double at, boolean tripped) {
-    Sensor.Switch.Limit kind = (Sensor.Switch.Limit) limit.kind();
+    if (!(limit.kind() instanceof Sensor.Switch.Limit kind)) {
+      throw new IllegalArgumentException(
+          limit.label()
+              + " isn't a limit switch, so where "
+              + joint.label()
+              + " is says nothing about what it should read: check only a joint's limit switches");
+    }
     if (kind.position().isEmpty()) {
       return null;
     }

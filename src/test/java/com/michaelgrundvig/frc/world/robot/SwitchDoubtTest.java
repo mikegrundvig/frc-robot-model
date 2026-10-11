@@ -1,10 +1,16 @@
 package com.michaelgrundvig.frc.world.robot;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * A joint's limit switch checked against where it is: doubted when it disagrees by more than a
@@ -72,5 +78,25 @@ class SwitchDoubtTest {
     assertThat(SwitchDoubt.of(turret, placed, Math.toRadians(-16), false)).isNull();
     assertThat(SwitchDoubt.of(turret, placed, Math.toRadians(-14), true)).isNull();
     assertThat(SwitchDoubt.of(turret, placed, Math.toRadians(-16), true)).isNotNull();
+  }
+
+  /** Only a limit switch trips at a place along its joint's travel: any other is refused. */
+  static Stream<Arguments> switchesThatAreNoLimit() {
+    return Stream.of(
+        argumentSet("a beam", Sensor.Switch.beam("claw beam", Part.CHASSIS)),
+        argumentSet("a contact", Sensor.Switch.contact("bumper contact", Part.CHASSIS)));
+  }
+
+  @ParameterizedTest
+  @MethodSource("switchesThatAreNoLimit")
+  void aSwitchThatIsNoLimitSwitchIsRefused(Sensor.Switch notALimit) {
+    for (boolean tripped : new boolean[] {true, false}) {
+      assertThatIllegalArgumentException()
+          .isThrownBy(() -> SwitchDoubt.of(PIVOT, notALimit, 0, tripped))
+          .withMessage(
+              notALimit.label()
+                  + " isn't a limit switch, so where pivot is says nothing about what it should"
+                  + " read: check only a joint's limit switches");
+    }
   }
 }
