@@ -361,7 +361,9 @@ public sealed interface Condition
 
   /**
    * Why a position is not where the joint has the place it is named for, if it is not. This is only
-   * so for a condition built by hand with a place and some other position.
+   * so for a condition built by hand with a place and some other position. A position within a hair
+   * of the place ({@link Range#EDGE}) is at it: the same angle converted from degrees two ways can
+   * differ by a rounding step.
    */
   private static Optional<String> whyNotAtItsPlace(
       Joint joint, double position, Optional<Position> place) {
@@ -370,7 +372,8 @@ public sealed interface Condition
     }
     String name = place.get().name();
     double placedAt = joint.position(name).value();
-    if (placedAt == position) {
+    boolean atItsPlace = Math.abs(placedAt - position) <= Range.EDGE;
+    if (atItsPlace) {
       return Optional.empty();
     }
     return Optional.of(name + " is " + joint.shown(placedAt) + ", not " + joint.shown(position));

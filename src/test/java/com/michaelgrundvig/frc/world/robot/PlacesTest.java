@@ -306,7 +306,10 @@ class PlacesTest {
             "NaN isn't a position"),
         refuses("a condition described by hand at other than its place",
             () -> Condition.AtMost.builder().joint(PIVOT).position(inRadians(100)).place(PIVOT_RUN).build(),
-            "run is 110°, not 100°"));
+            "run is 110°, not 100°"),
+        refuses("a condition described by hand two hairs off its place, which shows as the place and is not it",
+            () -> Condition.AtMost.builder().joint(PIVOT).position(inRadians(110) + 2 * Range.EDGE).place(PIVOT_RUN).build(),
+            "run is 110°, not 110°"));
   }
 
   /** A keep-out region is part of the joint's range, and held by something other than itself. */
@@ -566,6 +569,14 @@ class PlacesTest {
     return Stream.of(
         accepts("at least two hairs above the lowest: an edge of its own",
             () -> Condition.AtLeast.builder().joint(ELEVATOR).position(2 * Range.EDGE).build()),
+        accepts("a condition described by hand a rounding step off its place: at it",
+            () -> Condition.AtMost.builder().joint(PIVOT).position(Math.nextUp(inRadians(110))).place(PIVOT_RUN).build()),
+        accepts("...and a hair above it",
+            () -> Condition.AtLeast.builder().joint(PIVOT).position(inRadians(110) + Range.EDGE / 2).place(PIVOT_RUN).build()),
+        accepts("...and a hair below it",
+            () -> Condition.AtLeast.builder().joint(PIVOT).position(inRadians(110) - Range.EDGE / 2).place(PIVOT_RUN).build()),
+        accepts("...and exactly a hair off it",
+            () -> Condition.AtMost.builder().joint(ELEVATOR).position(Range.EDGE).place(ELEVATOR_DOWN).build()),
         accepts("between two positions two hairs apart",
             () -> Condition.Between.builder().joint(ELEVATOR).from(0).to(2 * Range.EDGE).build()),
         accepts("a speed along a slide for a slide",
