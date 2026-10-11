@@ -29,6 +29,20 @@ public record KeepOutState(
    */
   public static final KeepOutState INITIAL = notHolding(Optional.empty());
 
+  private static final Optional<Side> LAST_BELOW = Optional.of(Side.BELOW);
+  private static final Optional<Side> LAST_ABOVE = Optional.of(Side.ABOVE);
+
+  /**
+   * A side, as the side a joint was last outside on. There are only two, so each is made once and a
+   * joint that stays on its side makes nothing new each loop.
+   */
+  static Optional<Side> lastOutsideOn(Side side) {
+    return switch (side) {
+      case BELOW -> LAST_BELOW;
+      case ABOVE -> LAST_ABOVE;
+    };
+  }
+
   /** A keep-out that is holding nothing this loop, the joint last outside on the side given. */
   public static KeepOutState notHolding(Optional<Side> lastOutside) {
     return new KeepOutState(lastOutside, OptionalDouble.empty(), false);
@@ -42,5 +56,32 @@ public record KeepOutState(
   /** A keep-out holding a joint that is run at an output at its region's edge. */
   public static KeepOutState heldAtEdge(Optional<Side> lastOutside) {
     return new KeepOutState(lastOutside, OptionalDouble.empty(), true);
+  }
+
+  /**
+   * Whether this is the state of the loop in which the keep-out began to hold the joint at a point
+   * inside its region.
+   *
+   * @param before what the keep-out remembered in the loop before
+   */
+  boolean startedHoldingInside(KeepOutState before) {
+    return heldInsideAt.isPresent() && before.heldInsideAt().isEmpty();
+  }
+
+  /**
+   * What a keep-out that remembered this state remembers a loop later. When that is exactly what
+   * this state already says, this very object is handed back, so a keep-out with nothing new to
+   * remember makes no new state.
+   */
+  KeepOutState remembering(
+      Optional<Side> lastOutside, OptionalDouble heldInsideAt, boolean outputHeldAtEdge) {
+    boolean nothingNew =
+        this.lastOutside.equals(lastOutside)
+            && this.heldInsideAt.equals(heldInsideAt)
+            && this.outputHeldAtEdge == outputHeldAtEdge;
+    if (nothingNew) {
+      return this;
+    }
+    return new KeepOutState(lastOutside, heldInsideAt, outputHeldAtEdge);
   }
 }

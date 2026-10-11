@@ -18,4 +18,24 @@ public record InterlockState(OptionalDouble runsOnlyWhenHeldAt, List<KeepOutStat
   public InterlockState {
     keepOuts = List.copyOf(keepOuts);
   }
+
+  /**
+   * What the interlocks remember now, as the loop after this state worked it out. When that is
+   * exactly what this state already says, this very object is handed back, so a loop in which the
+   * interlocks have nothing new to remember makes no new state. Otherwise a new state is made,
+   * which copies the list.
+   *
+   * @param runsOnlyWhenHeldAt where a run-only-when holds the joint now, or empty
+   * @param keepOuts what each keep-out remembers now. It may be a list the caller goes on to
+   *     change: it is only read here, or copied.
+   */
+  InterlockState remembering(OptionalDouble runsOnlyWhenHeldAt, List<KeepOutState> keepOuts) {
+    boolean nothingNew =
+        this.runsOnlyWhenHeldAt.equals(runsOnlyWhenHeldAt)
+            && InterlockWorkspace.sameThings(this.keepOuts, keepOuts);
+    if (nothingNew) {
+      return this;
+    }
+    return new InterlockState(runsOnlyWhenHeldAt, keepOuts);
+  }
 }

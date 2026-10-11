@@ -22,4 +22,36 @@ public record InterlockVerdict(
   public InterlockVerdict {
     heldBy = List.copyOf(heldBy);
   }
+
+  /**
+   * The verdict to hand to the first {@link InterlockEnforcement#decide} of a run, which has no
+   * last loop's verdict to hand it: one that carries what the interlocks remember and says that
+   * nothing holds the joint.
+   */
+  public static InterlockVerdict startingFrom(InterlockState state) {
+    return new InterlockVerdict(state, JointAsk.NEUTRAL, List.of(), false);
+  }
+
+  /**
+   * What the interlocks decided in the loop after this verdict. When that is exactly what this
+   * verdict already says, this very object is handed back, so a loop in which nothing changed makes
+   * no new verdict. Otherwise a new verdict is made, which copies the list.
+   *
+   * @param state what the interlocks remember now. It is the last loop's own object whenever they
+   *     remember nothing new ({@link InterlockState#remembering}), so it is compared as an object.
+   * @param heldBy the interlocks that hold the joint now. It may be a list the caller goes on to
+   *     change: it is only read here, or copied.
+   */
+  InterlockVerdict deciding(
+      InterlockState state, JointAsk allowed, List<Interlock> heldBy, boolean restartProfile) {
+    boolean nothingChanged =
+        this.state == state
+            && this.allowed.equals(allowed)
+            && this.restartProfile == restartProfile
+            && InterlockWorkspace.sameThings(this.heldBy, heldBy);
+    if (nothingChanged) {
+      return this;
+    }
+    return new InterlockVerdict(state, allowed, heldBy, restartProfile);
+  }
 }
