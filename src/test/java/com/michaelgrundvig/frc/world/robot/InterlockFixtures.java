@@ -24,14 +24,21 @@ final class InterlockFixtures {
       StandardRobot.lightSlide("rail", new Vector3(1, 0, 0), Range.meters(0, 16));
 
   /** The rail brakes at 2 m/s², and a full battery runs it at 8 m/s, so 3 V runs it at 2 m/s. */
-  static final Travel RAIL_TRAVEL = new Travel(RAIL, 0, 16, false, false, 4, 2, 8);
+  static final Travel RAIL_TRAVEL = new Travel(RAIL, 0, 16, Travel.Taking.AS_IT_IS, 4, 2, 8);
 
   /** A wheel that turns freely: it has no range and no named positions, so it holds none. */
   static final Joint.Revolute WHEEL = StandardRobot.lightPivot("wheel", Optional.empty());
 
   /** The wheel brakes at 2 rad/s², and takes a goal the short way round. */
   static final Travel WHEEL_TRAVEL =
-      new Travel(WHEEL, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, true, false, 4, 2, 8);
+      new Travel(
+          WHEEL,
+          Double.NEGATIVE_INFINITY,
+          Double.POSITIVE_INFINITY,
+          Travel.Taking.SHORT_WAY_ROUND,
+          4,
+          2,
+          8);
 
   // What each condition is about does not matter to these tests, which say what it reads.
   private static final Condition ELEVATOR_LOW = ELEVATOR.atMost(ELEVATOR_CLEAR);

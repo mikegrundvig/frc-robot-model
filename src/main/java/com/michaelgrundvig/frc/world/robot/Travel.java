@@ -16,24 +16,12 @@ import org.wpilib.math.util.MathUtil;
  * <p>The limits are the control's soft limits if it has them, otherwise the joint's hard stops, and
  * otherwise there are none: the limits are then infinite.
  *
- * <p>A joint takes a position it is asked for in one of three ways, and the two flags say which:
- *
- * <ul>
- *   <li>Most joints take the position as it is, held inside the limits. Both flags are false.
- *   <li>A joint that turns with no stops at all ({@code wraps}) can reach any angle either way
- *       round, so it goes the short way ({@link #goalNear}).
- *   <li>A turret whose range spans a whole turn or more ({@code choosesTurn}) can face every
- *       direction, and some directions at more than one position. An angle that code computes for
- *       it, such as the bearing of a target, is therefore a heading, and the joint picks which turn
- *       of that heading to go to ({@link #turnNear}).
- * </ul>
+ * <p>A joint takes a position it is asked for in one of three ways ({@link Taking}).
  *
  * @param joint the joint, which says how a position in its units is shown
  * @param lower its lower limit, or negative infinity for none
  * @param upper its upper limit, or positive infinity for none
- * @param wraps whether it turns freely, with no stops, so that a goal is taken the short way round
- * @param choosesTurn whether its range spans a whole turn or more, as a turret's does, so that a
- *     computed angle is a heading ({@link #turnNear})
+ * @param taking how it takes a position it is asked for
  * @param cruise the cruise speed of its profile, in its units a second
  * @param acceleration the acceleration of its profile, in its units a second squared. It brakes at
  *     this too.
@@ -44,11 +32,28 @@ public record Travel(
     Joint joint,
     double lower,
     double upper,
-    boolean wraps,
-    boolean choosesTurn,
+    Taking taking,
     double cruise,
     double acceleration,
     double freeSpeed) {
+  /** How a joint takes a position it is asked for. */
+  public enum Taking {
+    /** As it is, held inside the limits. Most joints do. */
+    AS_IT_IS,
+    /**
+     * The short way round. A joint that turns with no stops at all can reach any angle either way
+     * round, so it goes the short way ({@link #goalNear}).
+     */
+    SHORT_WAY_ROUND,
+    /**
+     * As a heading. A turret whose range spans a whole turn or more can face every direction, and
+     * some directions at more than one position. An angle that code computes for it, such as the
+     * bearing of a target, is therefore a heading, and the joint picks which turn of that heading
+     * to go to ({@link #turnNear}).
+     */
+    AS_A_HEADING
+  }
+
   /**
    * A joint whose control gives no profile cruises at this share of its free speed, which is slow
    * enough to be safe the first time it is enabled. Giving it a profile lets it go faster.
@@ -77,10 +82,6 @@ public record Travel(
   /** A joint's travel, from its block and its control. */
   public static Travel of(RobotMath math, Joint joint, MechanismControl control) {
     Limits limits = limitsOf(joint, control);
-    boolean turns = joint instanceof Joint.Revolute;
-    boolean turnsFreely = turns && joint.range().isEmpty();
-    boolean spansAWholeTurn =
-        turns && joint.range().map(range -> range.width() >= TURN - EDGE).orElse(false);
 
     double freeSpeed = math.freeSpeed(joint);
     double defaultCruise = DEFAULT_CRUISE_SHARE * freeSpeed;
@@ -91,14 +92,26 @@ public record Travel(
         profile.map(MechanismControl.Profile::acceleration).orElse(defaultAcceleration);
 
     return new Travel(
-        joint,
-        limits.lower(),
-        limits.upper(),
-        turnsFreely,
-        spansAWholeTurn,
-        cruise,
-        acceleration,
-        freeSpeed);
+        joint, limits.lower(), limits.upper(), takingOf(joint), cruise, acceleration, freeSpeed);
+  }
+
+  /**
+   * How a joint takes a position it is asked for: by whether it turns, and how far its range lets
+   * it.
+   */
+  private static Taking takingOf(Joint joint) {
+    boolean turns = joint instanceof Joint.Revolute;
+    if (!turns) {
+      return Taking.AS_IT_IS;
+    }
+    if (joint.range().isEmpty()) {
+      return Taking.SHORT_WAY_ROUND;
+    }
+    boolean spansAWholeTurn = joint.range().get().width() >= TURN - EDGE;
+    if (spansAWholeTurn) {
+      return Taking.AS_A_HEADING;
+    }
+    return Taking.AS_IT_IS;
   }
 
   /**
@@ -132,7 +145,7 @@ public record Travel(
    */
   public double goalNear(double position, double from) {
     double inside = clamp(position);
-    if (!wraps) {
+    if (taking != Taking.SHORT_WAY_ROUND) {
       return inside;
     }
     double shortWayRound = MathUtil.angleModulus(inside - from);
@@ -158,7 +171,7 @@ public record Travel(
    * @param from where the joint is
    */
   public double turnNear(double angle, double from) {
-    if (!choosesTurn) {
+    if (taking != Taking.AS_A_HEADING) {
       return angle;
     }
     OptionalDouble inside = nearestTurnInside(angle, from);
@@ -227,7 +240,7 @@ public record Travel(
     if (insideLimits) {
       return null;
     }
-    if (!choosesTurn) {
+    if (taking != Taking.AS_A_HEADING) {
       return joint.shown(position) + " is outside " + shownLimits();
     }
     if (nearestTurnInside(position, from).isPresent()) {

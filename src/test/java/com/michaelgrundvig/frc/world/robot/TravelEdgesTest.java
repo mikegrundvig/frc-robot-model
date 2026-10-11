@@ -24,16 +24,31 @@ class TravelEdgesTest {
   private static final double HAIR = 1e-9;
 
   /** A turret that can go one whole turn either way from its middle, so two turns in all. */
-  private static final Travel TURRET = new Travel(WHEEL, -TURN, TURN, false, true, 4, 2, 8);
+  private static final Travel TURRET =
+      new Travel(WHEEL, -TURN, TURN, Travel.Taking.AS_A_HEADING, 4, 2, 8);
 
   /**
    * A turret whose soft limits leave it only 0 to 1 rad, so that most headings have no turn it can
    * reach.
    */
-  private static final Travel NARROWED = new Travel(WHEEL, 0, 1, false, true, 4, 2, 8);
+  private static final Travel NARROWED =
+      new Travel(WHEEL, 0, 1, Travel.Taking.AS_A_HEADING, 4, 2, 8);
 
   /** The same kind of turret, limited to 1 rad either side of its middle. */
-  private static final Travel NARROWED_EVENLY = new Travel(WHEEL, -1, 1, false, true, 4, 2, 8);
+  private static final Travel NARROWED_EVENLY =
+      new Travel(WHEEL, -1, 1, Travel.Taking.AS_A_HEADING, 4, 2, 8);
+
+  /**
+   * A turret whose lower limit is a hair above a quarter of a radian, so that a hair below the
+   * limit is a quarter of a radian exactly, and a heading one turn below that comes round to it
+   * exactly.
+   */
+  private static final Travel FROM_A_HAIR_ABOVE_A_QUARTER =
+      new Travel(WHEEL, 0.25 + HAIR, 2, Travel.Taking.AS_A_HEADING, 4, 2, 8);
+
+  /** A turret whose upper limit is a hair below one and a half radians, for the same reason. */
+  private static final Travel TO_A_HAIR_BELOW_ONE_AND_A_HALF =
+      new Travel(WHEEL, 0, 1.5 - HAIR, Travel.Taking.AS_A_HEADING, 4, 2, 8);
 
   private static final String OUTSIDE_NARROWED =
       ", at every turn of it, is outside wheel's limits, 0° to 57.3°";
@@ -96,6 +111,14 @@ class TravelEdgesTest {
         row("the next heading up is not", () -> whyUnreachable(NARROWED, Math.nextUp(1 + HAIR)), Optional.of("57.3°" + OUTSIDE_NARROWED)),
         row("a hair below a turret's lower limit is reachable", () -> whyUnreachable(NARROWED, -HAIR), Optional.empty()),
         row("the next heading down is not", () -> whyUnreachable(NARROWED, Math.nextDown(-HAIR)), Optional.of("0°" + OUTSIDE_NARROWED)),
+        row("a heading whose turn comes round to exactly a hair below the lower limit is reachable",
+            () -> whyUnreachable(FROM_A_HAIR_ABOVE_A_QUARTER, 0.25 - TURN), Optional.empty()),
+        row("...and the next heading down is not",
+            () -> whyUnreachable(FROM_A_HAIR_ABOVE_A_QUARTER, Math.nextDown(0.25 - TURN)).isPresent(), true),
+        row("a heading whose turn comes round to exactly a hair past the upper limit is reachable",
+            () -> whyUnreachable(TO_A_HAIR_BELOW_ONE_AND_A_HALF, 1.5 + TURN), Optional.empty()),
+        row("...and the next heading up is not",
+            () -> whyUnreachable(TO_A_HAIR_BELOW_ONE_AND_A_HALF, Math.nextUp(1.5 + TURN)).isPresent(), true),
         row("a heading with no turn inside is not", () -> whyUnreachable(NARROWED, 2), Optional.of("114.6°" + OUTSIDE_NARROWED)));
   }
 

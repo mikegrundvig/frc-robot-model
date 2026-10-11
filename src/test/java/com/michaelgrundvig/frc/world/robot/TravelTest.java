@@ -121,10 +121,10 @@ class TravelTest {
   /** A joint that turns freely takes a goal the short way round; one with stops, as it is. */
   @Test
   void aFreeJointsGoalIsTheShortWayRound() {
-    assertThat(travel(TURRET).wraps()).isTrue();
+    assertThat(travel(TURRET).taking()).isEqualTo(Travel.Taking.SHORT_WAY_ROUND);
     assertThat(travel(TURRET).goalNear(radians(-170), radians(170)))
         .isCloseTo(radians(190), within(1e-9));
-    assertThat(travel(PIVOT).wraps()).isFalse();
+    assertThat(travel(PIVOT).taking()).isEqualTo(Travel.Taking.AS_IT_IS);
     assertThat(travel(PIVOT).goalNear(radians(200), 0)).isCloseTo(radians(135), within(1e-12));
   }
 
@@ -133,7 +133,7 @@ class TravelTest {
   void aTurretTakesAHeadingAtItsNearestTurn() {
     Travel wide = travel(WIDE);
 
-    assertThat(wide.choosesTurn()).isTrue();
+    assertThat(wide.taking()).isEqualTo(Travel.Taking.AS_A_HEADING);
     assertThat(wide.turnNear(radians(-170), radians(170))).isCloseTo(radians(190), within(1e-9));
     assertThat(wide.turnNear(radians(-170), 0)).isCloseTo(radians(-170), within(1e-9));
     assertThat(wide.turnNear(radians(370), 0)).isCloseTo(radians(10), within(1e-9));
@@ -148,8 +148,24 @@ class TravelTest {
   void aRangeAHairShortOfATurnStillSpansOne() {
     double hairShortOfATurn = 2 * Math.PI - 1e-9;
 
-    assertThat(travel(turretSpanning(hairShortOfATurn)).choosesTurn()).isTrue();
-    assertThat(travel(turretSpanning(Math.nextDown(hairShortOfATurn))).choosesTurn()).isFalse();
+    assertThat(travel(turretSpanning(hairShortOfATurn)).taking())
+        .isEqualTo(Travel.Taking.AS_A_HEADING);
+    assertThat(travel(turretSpanning(Math.nextDown(hairShortOfATurn))).taking())
+        .isEqualTo(Travel.Taking.AS_IT_IS);
+  }
+
+  /**
+   * A joint that slides takes a position as it is however long its travel: 8 m is more than a
+   * turn's worth of radians, and is no turn of anything.
+   */
+  @Test
+  void aJointThatSlidesTakesAPositionAsItIs() {
+    Joint.Prismatic longSlide =
+        JointPrismaticBuilder.builder(ELEVATOR).range(Range.meters(0, 8)).build();
+
+    assertThat(travel(longSlide).taking()).isEqualTo(Travel.Taking.AS_IT_IS);
+    assertThat(travel(longSlide).turnNear(7, 0)).isEqualTo(7);
+    assertThat(travel(longSlide).goalNear(7, 0)).isEqualTo(7);
   }
 
   /** The turret with stops this far apart, in radians, from 0 up. */
@@ -179,7 +195,7 @@ class TravelTest {
   /** A joint narrower than a turn takes an angle as it is: one off by whole turns is a slip. */
   @Test
   void aJointNarrowerThanATurnTakesItsAngleAsItIs() {
-    assertThat(travel(PIVOT).choosesTurn()).isFalse();
+    assertThat(travel(PIVOT).taking()).isEqualTo(Travel.Taking.AS_IT_IS);
     assertThat(travel(PIVOT).turnNear(radians(370), 0)).isEqualTo(radians(370));
     assertThat(travel(PIVOT).whyUnreachable(radians(370), 0))
         .isEqualTo("370° is outside pivot's limits, 0° to 135°");
