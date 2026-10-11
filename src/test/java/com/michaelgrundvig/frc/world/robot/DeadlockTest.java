@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.Inches;
+import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.RPM;
 
+import com.michaelgrundvig.frc.world.physical.Vector3;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -37,6 +39,23 @@ class DeadlockTest {
   private static final Interlock RIGHT_ABOVE_WHILE_LEFT_ABOVE = Interlock.that(RIGHT).keepsOut(Range.degrees(-120, -60)).when(LEFT.atLeast(Degrees.of(-60)));
   // The right wheel let go once the left has come up to the band's edge, which it may still do.
   private static final Interlock RIGHT_BELOW_WHILE_LEFT_WELL_BELOW = Interlock.that(RIGHT).keepsOut(Range.degrees(60, 120)).when(LEFT.atMost(Degrees.of(59)));
+
+  // Two slides, 1 m long, each resting on its bottom stop and kept out of a region while the other is anywhere at all.
+  private static final Joint.Prismatic NEAR = lightSlide("near", new Vector3(1, 0, 0), Range.meters(0, 1));
+  private static final Joint.Prismatic FAR = lightSlide("far", new Vector3(1, 0, 0), Range.meters(0, 1));
+  private static final Condition NEAR_ANYWHERE = NEAR.between(Meters.of(0), Meters.of(1));
+  private static final Condition FAR_ANYWHERE = FAR.between(Meters.of(0), Meters.of(1));
+
+  private static Interlock keptOut(Joint joint, double lower, double upper, Condition whileThis) {
+    return Interlock.that(joint).keepsOut(Range.meters(lower, upper)).when(whileThis);
+  }
+
+  /** The stretch each slide is said to stay in, kept out of a region while the other is anywhere. */
+  private static String staysWhenKeptOutOf(double lower, double upper) {
+    InterlockRing both = ring(keptOut(NEAR, lower, upper, FAR_ANYWHERE), keptOut(FAR, lower, upper, NEAR_ANYWHERE));
+    String deadlock = Deadlock.of(both, AT_REST).orElseThrow();
+    return deadlock.substring(deadlock.lastIndexOf("so far stays "), deadlock.length() - 1);
+  }
 
   // A ring of three on the standard robot, and interlocks that are part of no ring.
   private static final Interlock PIVOT_BY_ELEVATOR = Interlock.that(PIVOT).runsOnlyWhen(ELEVATOR.atLeast(Inches.of(10)));
@@ -73,7 +92,7 @@ class DeadlockTest {
   }
 
   @ParameterizedTest
-  @MethodSource({"ringsFound", "readers", "placements", "deadlocks"})
+  @MethodSource({"ringsFound", "readers", "placements", "deadlocks", "stretches"})
   void itAnswers(Supplier<?> question, Object answer) {
     assertThat(question.get()).isEqualTo(answer);
   }
@@ -178,6 +197,27 @@ class DeadlockTest {
                 + " none can free another: a deadlock (pivot runs only when elevator at least 0.254"
                 + " m, so pivot stays at 1.5°; elevator runs only when arm at least 10°, so elevator"
                 + " stays at 0 m; arm runs only when pivot at least 10°, so arm stays at -20°)")));
+  }
+
+  /**
+   * A joint kept to one side of a region always has a stretch to stay in, never one place: the
+   * region is never all of its range, so the narrowest stretch is what the largest region leaves.
+   */
+  static Stream<Arguments> stretches() {
+    double hairBelowTheTop = Math.nextDown(1.0);
+    double hairAboveTheBottom = Double.MIN_VALUE;
+    return Stream.of(
+        answers("a region in the middle leaves the stretch below it to a slide resting on the bottom",
+            () -> staysWhenKeptOutOf(0.25, 0.75), "so far stays between 0 m and 0.25 m"),
+        answers("a region that reaches the bottom is left by its other edge, so the stretch runs to the top",
+            () -> staysWhenKeptOutOf(0, 0.5), "so far stays between 0 m and 1 m"),
+        answers("the largest region that reaches the bottom still leaves the same stretch",
+            () -> staysWhenKeptOutOf(0, hairBelowTheTop), "so far stays between 0 m and 1 m"),
+        answers("the largest region that reaches the top leaves a hair of a stretch below it, which shows as two places alike",
+            () -> staysWhenKeptOutOf(hairAboveTheBottom, 1), "so far stays between 0 m and 0 m"),
+        answers("a region as large as the range is no region at all",
+            () -> { try { return keptOut(NEAR, 0, 1, FAR_ANYWHERE); } catch (IllegalArgumentException e) { return e.getMessage(); } },
+            "0 m to 1 m is all of near's range, 0 m to 1 m: it would have nowhere to be"));
   }
 
   // spotless:on

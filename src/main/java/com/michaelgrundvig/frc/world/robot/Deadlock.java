@@ -185,14 +185,15 @@ final class Deadlock {
 
   /**
    * A stretch of a joint's travel as people read it: "between -30° and 40°", "at 0.3 m or above".
+   *
+   * <p>A stretch is never one place. A keep-out's region is never all of its joint's range, so on
+   * the side the joint is kept to there is always some of the range left, between the region's edge
+   * and the stop ({@link #keptToItsSide}).
    */
   private static String shownStretch(Held.ToItsSide stretch) {
     Joint joint = stretch.joint();
     double from = stretch.from();
     double to = stretch.to();
-    if (from == to) {
-      return "at " + joint.shown(from);
-    }
     if (!Double.isFinite(from)) {
       return "at " + joint.shown(to) + " or below";
     }
