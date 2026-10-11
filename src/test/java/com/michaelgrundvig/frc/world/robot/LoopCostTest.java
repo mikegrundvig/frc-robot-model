@@ -2,8 +2,12 @@ package com.michaelgrundvig.frc.world.robot;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.params.provider.Arguments.argumentSet;
+import static org.wpilib.units.Units.Degrees;
+import static org.wpilib.units.Units.Meters;
 
 import java.lang.management.ManagementFactory;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.IntSupplier;
 import java.util.stream.Stream;
@@ -21,6 +25,10 @@ class LoopCostTest {
   private static final int WARM_UP = 2000;
 
   private static final int MEASURED = 2000;
+
+  /** Where the answers go, so that asking for them is work the compiler cannot leave out. */
+  @SuppressWarnings("unused")
+  private static volatile int SINK;
 
   private static final com.sun.management.ThreadMXBean THREADS =
       (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
@@ -43,7 +51,7 @@ class LoopCostTest {
 
   /**
    * The bytes this thread allocates asking a question, a time asked, on average. What a question
-   * answers is added up and returned with the bytes, so that the asking cannot be optimized away.
+   * answers is added up and kept, so that the asking cannot be optimized away.
    */
   private static double bytesEachTime(IntSupplier question) {
     int answers = 0;
@@ -56,7 +64,7 @@ class LoopCostTest {
       answers += question.getAsInt();
     }
     long after = THREADS.getThreadAllocatedBytes(thread);
-    assertThat(answers).as("the questions were asked").isNotNegative();
+    SINK = answers;
     return (double) (after - before) / MEASURED;
   }
 
@@ -76,11 +84,33 @@ class LoopCostTest {
     return argumentSet(label, question);
   }
 
+  private static final Sensor.Rangefinder HOPPER =
+      Sensor.Rangefinder.of("hopper", Part.CHASSIS, Meters.of(1.3), Degrees.of(27));
+
+  private static final Sensor.Encoder PIVOT_ENCODER =
+      MechanismFixtures.encoder("pivot encoder", PIVOT, 1, true);
+
+  /** Hash maps, as the robot keeps them: one finds a key that is the very object it holds. */
+  private static final Map<Joint, Integer> BY_JOINT =
+      new HashMap<>(Map.of(PIVOT, 1, StandardRobot.ELEVATOR, 2, WHEEL, 3));
+
+  private static final Map<Sensor, Integer> BY_SENSOR =
+      new HashMap<>(Map.of(PIVOT_DOWN, 1, HOPPER, 2, PIVOT_ENCODER, 3));
+
   static Stream<Arguments> askedEveryLoop() {
     return Stream.of(
         asks(
             "whether a limit switch agrees with where its joint is",
             () -> doubted(PIVOT, PIVOT_DOWN)),
-        asks("...for a joint that turns freely", () -> doubted(WHEEL, WHEEL_DOWN)));
+        asks("...for a joint that turns freely", () -> doubted(WHEEL, WHEEL_DOWN)),
+        asks("the hash of a joint that turns", PIVOT::hashCode),
+        asks("the hash of a joint that slides", StandardRobot.ELEVATOR::hashCode),
+        asks("the hash of a switch", PIVOT_DOWN::hashCode),
+        asks("the hash of a rangefinder", HOPPER::hashCode),
+        asks("the hash of an encoder, which hashes its joint", PIVOT_ENCODER::hashCode),
+        asks("what a map holds for a joint", () -> BY_JOINT.getOrDefault(PIVOT, 0)),
+        asks(
+            "what a map holds for a sensor",
+            () -> BY_SENSOR.getOrDefault(HOPPER, 0) + BY_SENSOR.getOrDefault(PIVOT_DOWN, 0)));
   }
 }

@@ -10,7 +10,6 @@ import com.michaelgrundvig.frc.world.physical.Vector3;
 import io.soabase.recordbuilder.core.RecordBuilder;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
@@ -1150,16 +1149,13 @@ public sealed interface Joint extends Part permits Joint.Block {
         && JointNames.ofOutputs(joint.outputs()).equals(JointNames.ofOutputs(that.outputs()));
   }
 
-  /** A hash of what makes two joints the same ({@link #sameJoint}). */
+  /**
+   * A hash that two joints that are the same ({@link #sameJoint}) share: the hash of the label,
+   * which each of a robot's joints has its own. The robot's loop looks joints up in maps, so
+   * hashing one makes no objects: a text keeps its hash once it is worked out, where hashing the
+   * whole of a joint's definition made about a kilobyte of them each time.
+   */
   private static int identityHash(Joint joint) {
-    return Objects.hash(
-        joint.label(),
-        joint.parent(),
-        joint.origin(),
-        joint.axis(),
-        joint.range().isPresent(),
-        joint.link(),
-        JointNames.ofPositions(joint.positions()),
-        JointNames.ofOutputs(joint.outputs()));
+    return joint.label().hashCode();
   }
 }

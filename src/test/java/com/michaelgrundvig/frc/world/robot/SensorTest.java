@@ -125,6 +125,20 @@ class SensorTest {
         .withMessageContaining("Rangefinder[hopper].fieldOfView");
   }
 
+  /** A switch is the same one wired or not, and a different one under another name. */
+  @Test
+  void aSwitchIsEqualToItselfWhereverItsWired() {
+    Sensor.Switch beam = Sensor.Switch.beam("claw beam", Part.CHASSIS);
+
+    assertThat(beam.on(SensorWiring.port(1).normallyClosed()))
+        .isEqualTo(beam)
+        .hasSameHashCodeAs(beam);
+    assertThat(Sensor.Switch.beam("hopper beam", Part.CHASSIS))
+        .as("another name: another switch, with another hash")
+        .isNotEqualTo(beam)
+        .doesNotHaveSameHashCodeAs(beam);
+  }
+
   /**
    * A rangefinder is the same one wired or not, and a different one if its name, its part, its
    * place, its range or its cone differs.
@@ -140,6 +154,9 @@ class SensorTest {
     assertThat(hopper)
         .isNotEqualTo(
             Sensor.Rangefinder.of("feeder", Part.CHASSIS, Meters.of(1.3), Degrees.of(27)));
+    assertThat(Sensor.Rangefinder.of("feeder", Part.CHASSIS, Meters.of(1.3), Degrees.of(27)))
+        .as("another name: another hash, so a map keeps the two apart cheaply")
+        .doesNotHaveSameHashCodeAs(hopper);
     assertThat(hopper)
         .isNotEqualTo(Sensor.Rangefinder.of("hopper", PIVOT, Meters.of(1.3), Degrees.of(27)));
     assertThat(hopper)

@@ -11,7 +11,6 @@ import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
 import com.michaelgrundvig.frc.world.config.Rule;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Pose3d;
@@ -233,9 +232,13 @@ public sealed interface Sensor permits Sensor.Encoder, Sensor.Placed {
           && kind.equals(that.kind);
     }
 
+    /**
+     * The hash of its label, which each of a robot's sensors has its own. Hashing a switch makes no
+     * objects, for the robot's loop looks sensors up in maps.
+     */
     @Override
     public int hashCode() {
-      return Objects.hash(label, part, pose, kind);
+      return label.hashCode();
     }
 
     /** Tripped: pressed, its beam blocked. */
@@ -372,9 +375,10 @@ public sealed interface Sensor permits Sensor.Encoder, Sensor.Placed {
           && fieldOfView.equals(that.fieldOfView);
     }
 
+    /** The hash of its label, as a switch's is, and for the same reason. */
     @Override
     public int hashCode() {
-      return Objects.hash(label, part, pose, range, fieldOfView);
+      return label.hashCode();
     }
   }
 }

@@ -429,6 +429,10 @@ class JointBlockTest {
             .replaced(OUT, Degrees.of(128));
 
     assertThat(practice).isEqualTo(pivot).hasSameHashCodeAs(pivot);
+    assertThat(JointRevoluteBuilder.builder(pivot).label("wrist").build())
+        .as("another name: another joint, with another hash")
+        .isNotEqualTo(pivot)
+        .doesNotHaveSameHashCodeAs(pivot);
     assertThat(practice.position("out")).isEqualTo(Position.degrees("out", 128));
     assertThat(JointRevoluteBuilder.builder(pivot).positions(List.of(IN)).build())
         .as("a place it hasn't: another joint")
