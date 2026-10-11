@@ -1,32 +1,20 @@
 package com.michaelgrundvig.frc.world.robot;
 
-import static com.michaelgrundvig.frc.world.config.Rules.finite;
-import static com.michaelgrundvig.frc.world.config.Rules.given;
-import static com.michaelgrundvig.frc.world.config.Rules.notBlank;
 import static com.michaelgrundvig.frc.world.config.Rules.possessive;
-import static org.wpilib.units.Units.Meters;
-import static org.wpilib.units.Units.MetersPerSecond;
-import static org.wpilib.units.Units.Radians;
-import static org.wpilib.units.Units.RadiansPerSecond;
+import static com.michaelgrundvig.frc.world.robot.JointParts.inJointUnits;
+import static com.michaelgrundvig.frc.world.robot.JointParts.lowerOrUpper;
 import static org.wpilib.units.Units.Value;
 
-import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
-import com.michaelgrundvig.frc.world.config.Rules;
 import com.michaelgrundvig.frc.world.physical.Vector3;
 import io.soabase.recordbuilder.core.RecordBuilder;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
-import org.wpilib.math.geometry.Quaternion;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
@@ -40,25 +28,23 @@ import org.wpilib.units.measure.LinearVelocity;
 import org.wpilib.units.measure.Voltage;
 
 /**
- * A mechanism's joint: one way a link moves on what it hangs from, turning about an axis ({@link
- * Revolute}, in radians) or sliding along one ({@link Prismatic}, in meters). Joints hang from the
- * chassis or from each other, each written after its parent, so they form a tree, and an arm on an
- * elevator is a joint whose parent is the elevator's.
+ * A mechanism's joint: one way a link moves on what it hangs from. A joint either turns about an
+ * axis ({@link Revolute}, measured in radians) or slides along one ({@link Prismatic}, measured in
+ * meters). Joints hang from the chassis or from each other, and each is written after its parent,
+ * so they form a tree: an arm on an elevator is a joint whose parent is the elevator's joint.
  *
- * <p>Position 0 is the pose its {@link #origin} gives: an arm's zero is wherever CAD's frame put
- * it. Where its weight pulls hardest comes from its links' mass ({@code RobotMath.gravityOffset}),
- * or from its control, beside its tuned kG ({@code MechanismControl.withKg(kG, angle)}); with
- * neither, it's its zero, horizontal as WPILib takes an arm's. A joint has no state: where it is
- * now comes from its sensors, as a position the derived functions take.
+ * <p>Position 0 is the pose the joint's {@link #origin} gives, so an arm's zero is wherever CAD's
+ * frame put it. A joint has no state. Where it is at any moment comes from the robot's sensors, and
+ * the functions that work something out from a joint take that position as an argument.
  *
- * <p>It names its own places and outputs ({@link #positions}, {@link #outputs}), and from those,
- * what configurations and interlocks say about it: {@link #at}, {@link #atLeast(Position)}, {@link
+ * <p>A joint names its own positions and outputs ({@link #positions}, {@link #outputs}), and
+ * conditions on it are written from it: {@link #at}, {@link #atLeast(Position)}, {@link
  * #atMost(Position)} and {@link #between}.
  *
- * <p>Its block ({@link Block}) declares it one call at a time. A joint has one link, one set of
- * named positions and of outputs, one set of motors, one absolute encoder, one limit switch at each
- * end and one control: a block that says any of these twice is refused, with how to change it. It
- * may have several servos and interlocks, which add up.
+ * <p>A joint is declared by its block ({@link Block}), one call at a time. A joint has one link,
+ * one set of named positions and one of outputs, one set of motors, one absolute encoder, one limit
+ * switch at each end and one control. A block that says any of these twice is refused, with how to
+ * change it. It may have several servos and several interlocks, which add up.
  *
  * <p>The parts describe themselves. Motors, an absolute encoder and a limit switch are values that
  * carry their own options ({@link Driven.Motors}, {@link Driven.AbsoluteEncoder}, {@link
@@ -73,28 +59,33 @@ import org.wpilib.units.measure.Voltage;
  * {@code replaced(...)}, and its stops and where it rests with {@code range(...)} and {@code
  * rest(...)}, which a finished joint takes as its block does.
  *
- * <p>Its positions and outputs are names on it, and their values the robot's: code that names one,
- * a move, a configuration or an interlock, finds it where the robot running it puts it ({@link
- * #own(Position)}), so the same code drives a practice robot to its own places. A constant of one
- * of its names is its own at a value the joint has, or had before it was re-placed: the competition
- * robot's, which the team's constants hold. At any other value it's another joint's, or another
- * robot's, and refused, wherever it's given.
+ * <p>A position or an output is a name on the joint, and its value belongs to the robot. Code that
+ * names one, in a move, a configuration or an interlock, finds it where the robot running that code
+ * puts it ({@link #own(Position)}), so the same code drives a practice robot to the practice
+ * robot's own places. What makes a constant the joint's own, and what is refused, is in {@link
+ * #whyNotOwn(Position)}.
+ *
+ * <p>This file holds what a joint is and what its block can say. What a block makes for the robot
+ * is in {@link JointParts}, how a joint's names are looked up and judged is in {@link JointNames},
+ * and the checks a joint makes of its own values are in {@link JointChecks}.
  */
 public sealed interface Joint extends Part permits Joint.Block {
   /**
-   * An axis about which a link whose zero points forward swings up as its position grows: about the
-   * robot's y, the other way round.
+   * The axis of a pivot whose link points forward at zero and swings up as its position grows. It
+   * is the robot's y axis, reversed.
    */
   Vector3 PITCH_UP = new Vector3(0, -1, 0);
 
-  /** An axis about which a link whose zero points forward swings down as its position grows. */
+  /**
+   * The axis of a pivot whose link points forward at zero and swings down as its position grows.
+   */
   Vector3 PITCH_DOWN = new Vector3(0, 1, 0);
 
   /**
-   * A pivot: an arm, an intake's swing, a wrist, turning about an axis. Its block says the rest,
+   * A pivot: an arm, an intake's swing or a wrist, turning about an axis. Its block says the rest,
    * one call at a time: {@code Joint.pivot("pivot", Part.CHASSIS, at,
    * Joint.PITCH_DOWN).range(Range.degrees(0, 135)).rest(PIVOT_IN).carries(link).positions(PIVOT_IN,
-   * PIVOT_OUT).motor(Motor.KRAKEN_X60, Gearing.of(25)).control(...)}.
+   * PIVOT_OUT).motors(...).control(...)}.
    *
    * @param at where its axle is, in its parent's frame
    */
@@ -109,8 +100,8 @@ public sealed interface Joint extends Part permits Joint.Block {
   }
 
   /**
-   * A roller, a belt or a flywheel: a joint that turns freely, from 0, run at its outputs. {@code
-   * Joint.roller("intake", PIVOT, at).outputs(INTAKING).motor(Motor.KRAKEN_X60, Gearing.of(3))}.
+   * A roller, a belt or a flywheel: a joint that turns freely and is run at its outputs. {@code
+   * Joint.roller("intake", PIVOT, at).outputs(INTAKING).motors(...)}.
    *
    * @param at where its axle is, in its parent's frame
    */
@@ -119,7 +110,7 @@ public sealed interface Joint extends Part permits Joint.Block {
   }
 
   /**
-   * A roller turning about another axis: a spindexer about the vertical, {@code
+   * A roller that turns about some other axis: a spindexer about the vertical is {@code
    * Joint.roller("spindexer", Part.CHASSIS, at, Vector3.UP)}.
    */
   static Revolute roller(String label, Part parent, Translation3d at, Vector3 axis) {
@@ -128,8 +119,7 @@ public sealed interface Joint extends Part permits Joint.Block {
 
   /**
    * An elevator: a carriage sliding straight up. {@code Joint.elevator("elevator", Part.CHASSIS,
-   * at).range(Range.meters(0, 1.2)).rest(ELEVATOR_DOWN).motors(Motor.KRAKEN_X60, gearing, drum,
-   * 2)}.
+   * at).range(Range.meters(0, 1.2)).rest(ELEVATOR_DOWN).motors(...)}.
    *
    * @param at where the slide starts, in its parent's frame
    */
@@ -138,7 +128,7 @@ public sealed interface Joint extends Part permits Joint.Block {
   }
 
   /**
-   * A joint sliding along any axis: a hopper that extends forward, {@code Joint.slide("hopper",
+   * A joint sliding along any axis: a hopper that extends forward is {@code Joint.slide("hopper",
    * Part.CHASSIS, at, new Vector3(1, 0, 0))}.
    *
    * @param at where the slide starts, in its parent's frame
@@ -153,31 +143,38 @@ public sealed interface Joint extends Part permits Joint.Block {
         .build();
   }
 
-  /** What logs and writers call it: unique among the robot's joints. */
+  /** What logs and writers call it. It is unique among the robot's joints. */
   @Override
   String label();
 
   /** What it hangs from: the chassis, or another joint's link. */
   Part parent();
 
-  /** Where its frame is in its parent's frame at position 0: the pivot, or the slide's start. */
+  /**
+   * Where its frame is in its parent's frame when it is at position 0: where the pivot is, or where
+   * the slide starts.
+   */
   Transform3d origin();
 
-  /** The axis it turns about or slides along, in its own frame; any length but zero. */
+  /** The axis it turns about or slides along, in its own frame. Any length but zero will do. */
   Vector3 axis();
 
-  /** Its hard stops, unwrapped; empty for one that turns freely, a roller or a flywheel. */
+  /**
+   * Its hard stops. The range is not wrapped to one turn, so a turret may span more than a turn. A
+   * joint that turns freely, a roller or a flywheel, has none.
+   */
   Optional<Range> range();
 
   /**
-   * Where it rests as the robot starts, as its block says it ({@code rest(...)}); none for one
-   * whose block doesn't, which starts at its zero. A practice robot's moves it ({@code rest(...)}).
+   * Where it rests as the robot starts, if its block says ({@code rest(...)}). A practice robot may
+   * move it. A joint whose block does not say starts at its zero ({@link #restPosition}).
    */
   Optional<Double> rest();
 
   /**
-   * Where it starts: where the robot is weighed and modeled (stowed), and where a mechanism that
-   * zeroes itself at boot is taken to be. Where it rests ({@link #rest}), or 0. Inside its range.
+   * Where it is as the robot starts: where it rests ({@link #rest}), or 0. This is where the robot
+   * is weighed and modeled, stowed, and where a mechanism that zeroes itself at boot is taken to
+   * be.
    */
   default double restPosition() {
     return rest().orElse(0.0);
@@ -187,43 +184,48 @@ public sealed interface Joint extends Part permits Joint.Block {
   Link link();
 
   /**
-   * Its places by name, where code moves it to: an intake's "in", "run" and "out". Inside its
-   * range; a joint that follows another has none, since its leader's moves carry it. Code names
-   * each by its name, and each robot's joint puts it where that robot's is ({@code replaced}).
+   * Its named positions, where code moves it to: an intake's "in", "run" and "out". Code names each
+   * by its name, and each robot's joint puts it where that robot has it ({@code replaced}). A joint
+   * that follows another has none, because its leader's moves carry it.
    */
   List<Position> positions();
 
   /**
-   * What code runs it at, by name: a roller's "intaking" at a speed, its "outtaking" at a voltage,
-   * each within what its motors can do. Not {@link Output#STOPPED}, which every joint has.
+   * Its named outputs, what code runs it at: a roller's "intaking" at a speed, its "outtaking" at a
+   * voltage. {@link Output#STOPPED} is not among them, because every joint has it.
    */
   List<Output> outputs();
 
   /**
-   * Where its positions were before they were re-placed ({@code replaced}), each value one had: on
-   * a practice robot, the competition robot's, which the team's constants hold, so a constant at
-   * one is still this joint's own. None on a joint whose places are where its block put them.
+   * The values its positions had before they were re-placed ({@code replaced}). On a practice robot
+   * these are the competition robot's values, which the team's constants hold, so a constant at one
+   * of them still counts as this joint's own. A joint whose positions are where its block put them
+   * has none.
    */
   List<Position> formerPositions();
 
-  /** What its outputs were before they were re-valued ({@code replaced}), as its positions. */
+  /** The values its outputs had before they were re-valued: see {@link #formerPositions}. */
   List<Output> formerOutputs();
 
   /**
-   * Whether it's held at positions: it has a range or named positions. One without either, a
-   * roller, only runs at outputs, and stops when idle.
+   * Whether it is held at positions: it is if it has a range or any named position. A joint with
+   * neither, a roller, only runs at outputs, and stops when nothing asks it to run.
    */
   default boolean holdsPositions() {
     return range().isPresent() || !positions().isEmpty();
   }
 
   /**
-   * How it's driven and wired: its motors or servos, its own sensors, their wiring, and its
-   * control. Not part of its identity: joints that differ only here are equal.
+   * How it is driven and wired: its motors or servos, its own sensors, their wiring, and its
+   * control. This is not part of what makes a joint the same joint: two joints that differ only
+   * here are equal.
    */
   Driven driven();
 
-  /** How its frame moves from its origin's at a position: turned about, or slid along, its axis. */
+  /**
+   * How far its frame has moved from its origin when it is at a position: turned about its axis, or
+   * slid along it.
+   */
   Transform3d motion(double position);
 
   /**
@@ -235,7 +237,7 @@ public sealed interface Joint extends Part permits Joint.Block {
   Joint control(MechanismControl control);
 
   /**
-   * The same joint with its control changed: a practice robot's lighter arm, {@code
+   * The same joint with its control changed: a practice robot's lighter arm is {@code
    * ARM.retuned(control -> control.withKg(0.3))}.
    *
    * @throws IllegalArgumentException if it has no control to change
@@ -243,11 +245,12 @@ public sealed interface Joint extends Part permits Joint.Block {
   Joint retuned(UnaryOperator<MechanismControl> change);
 
   /**
-   * The same joint with its motors changed: a practice robot's on another controller, {@code
-   * PIVOT.motors(motors -> motors.on(TALON_FX.can(33).pdh(4, Amps.of(40))))}, or geared otherwise,
-   * {@code PIVOT.motors(motors -> motors.gearing(Gearing.of(20)))}.
+   * The same joint with its motors changed: on another controller, {@code PIVOT.motors(motors ->
+   * motors.on(TALON_FX.can(33).pdh(4, Amps.of(40))))}, or geared differently, {@code
+   * PIVOT.motors(motors -> motors.gearing(Gearing.of(20)))}.
    *
-   * @throws IllegalArgumentException if it has no motors, or the change leaves another number
+   * @throws IllegalArgumentException if it has no motors, or the change leaves a different number
+   *     of them
    */
   Joint motors(UnaryOperator<Driven.Motors> change);
 
@@ -262,9 +265,8 @@ public sealed interface Joint extends Part permits Joint.Block {
   Joint absoluteEncoder(UnaryOperator<Driven.AbsoluteEncoder> change);
 
   /**
-   * The same joint with its limit switch at an end changed: a practice robot's on another input,
-   * {@code ELEVATOR.limitSwitch(End.LOWER, limit ->
-   * limit.on(SensorWiring.port(5).normallyClosed()))}.
+   * The same joint with its limit switch at one end changed: on another input, {@code
+   * ELEVATOR.limitSwitch(End.LOWER, limit -> limit.on(SensorWiring.port(5).normallyClosed()))}.
    *
    * @throws IllegalArgumentException if it has no limit switch at that end
    */
@@ -292,133 +294,28 @@ public sealed interface Joint extends Part permits Joint.Block {
   }
 
   /**
-   * Its own drives, as its block says them: its motors, under its label, and each servo, under its
-   * own. A drive between joints, a differential's, is the robot's ({@code RobotDefinition.drives}).
+   * Its own drives, as its block says them: its motors, labeled as the joint is, and each servo
+   * under the servo's own label. A drive between two joints, such as a differential's, belongs to
+   * the robot instead ({@code RobotDefinition.drives}).
    */
   default List<Drive> ownDrives() {
-    List<Drive> drives = new ArrayList<>();
-    driven()
-        .motors()
-        .ifPresent(
-            motors ->
-                drives.add(
-                    Drive.builder()
-                        .label(label())
-                        .actuator(
-                            Actuator.Motors.builder()
-                                .motor(motors.motor())
-                                .count(motors.count())
-                                .build())
-                        .transmission(through(motors))
-                        .build()));
-    for (Driven.Servo servo : driven().servos()) {
-      drives.add(
-          Drive.builder()
-              .label(servo.label())
-              .actuator(servo.servo())
-              .transmission(
-                  Transmission.Between.builder()
-                      .a(parent())
-                      .onA(
-                          origin()
-                              .getTranslation()
-                              .plus(servo.onParent().rotateBy(origin().getRotation())))
-                      .b(this)
-                      .onB(servo.onLink())
-                      .build())
-              .build());
-    }
-    return drives;
+    return JointParts.drives(this);
   }
 
   /**
-   * What carries its motors' turning to it: a gearing alone for a joint that turns, and a gearing
-   * onto a drum for one that slides.
-   */
-  private Transmission through(Driven.Motors motors) {
-    return switch (this) {
-      case Revolute turning ->
-          Transmission.Geared.builder().joint(turning).gearing(motors.gearing()).build();
-      case Prismatic sliding ->
-          Transmission.Drum.builder()
-              .joint(sliding)
-              .gearing(motors.gearing())
-              .pitchRadius(motors.pitchRadius().orElseThrow())
-              .build();
-    };
-  }
-
-  /**
-   * Its own sensors, as its block says them: its absolute encoder ("arm absolute encoder"), and its
-   * limit switches ("arm lower limit", "arm upper limit"), each carrying its wiring. A sliding
-   * joint's absolute encoder turns with its drum, so it's one of its sensors once its motors say
-   * the drum's pitch radius; without them, the robot's definition refuses it ({@code Blocks}).
+   * Its own sensors, as its block says them: its absolute encoder ("arm absolute encoder") and its
+   * limit switches ("arm lower limit", "arm upper limit"), each with its wiring.
    */
   default List<Sensor> ownSensors() {
-    List<Sensor> sensors = new ArrayList<>();
-    Optional<Distance> drum =
-        this instanceof Prismatic
-            ? driven().motors().flatMap(Driven.Motors::pitchRadius)
-            : Optional.empty();
-    driven()
-        .absoluteEncoder()
-        .filter(encoder -> this instanceof Revolute || drum.isPresent())
-        .ifPresent(
-            encoder ->
-                sensors.add(
-                    Sensor.Encoder.builder()
-                        .label(label() + " absolute encoder")
-                        .terms(
-                            List.of(
-                                Transmission.Term.builder()
-                                    .joint(this)
-                                    .ratio(encoder.ratio() / encoder.turnsPerSignal())
-                                    .pitchRadius(drum)
-                                    .build()))
-                        .absolute(true)
-                        .build()));
-    for (Driven.LimitSwitch each : driven().limitSwitches()) {
-      String label = limitLabel(each.end());
-      Sensor.Switch made =
-          each.position()
-              .map(at -> Sensor.Switch.limit(label, this, each.end(), inJointUnits(at)))
-              .orElseGet(() -> Sensor.Switch.limit(label, this, each.end()));
-      sensors.add(each.wiring().map(wiring -> made.on(wiring.of(this))).orElse(made));
-    }
-    return sensors;
+    return JointParts.sensors(this);
   }
 
   /**
    * Its devices on the CAN bus, as its block wires them: its motor controllers, the leader first,
-   * each "pivot motor 32" with the PDH channel that feeds it where its block says ({@code
-   * TALON_FX.can(32).pdh(4, Amps.of(40))}); then its CANcoder, "pivot CANcoder", on its motors'
-   * bus. None for a joint that runs in the simulator alone.
+   * and then its CANcoder. A joint that runs in the simulator alone has none.
    */
   default List<CanDevice> devices() {
-    List<CanDevice> devices = new ArrayList<>();
-    List<MechanismWiring.Device> controllers =
-        driven().motors().map(Driven.Motors::controllers).orElse(List.of());
-    for (MechanismWiring.Device device : controllers) {
-      devices.add(
-          new CanDevice(
-              label() + " motor " + device.id(),
-              device.controller().kind(),
-              device.bus(),
-              device.id(),
-              device.feed()));
-    }
-    Optional<MechanismWiring.Cancoder> cancoder =
-        driven().absoluteEncoder().flatMap(Driven.AbsoluteEncoder::cancoder);
-    if (cancoder.isPresent() && !controllers.isEmpty()) {
-      devices.add(
-          new CanDevice(
-              label() + " CANcoder",
-              CanDevice.Kind.CANCODER,
-              cancoder.get().bus(),
-              cancoder.get().id(),
-              Optional.empty()));
-    }
-    return devices;
+    return JointParts.devices(this);
   }
 
   /**
@@ -426,317 +323,190 @@ public sealed interface Joint extends Part permits Joint.Block {
    * .runsOnlyWhen(...)}), each about this joint as the robot has it.
    */
   default List<Interlock> ownInterlocks() {
-    List<Interlock> own = new ArrayList<>();
-    for (Interlock interlock : driven().interlocks()) {
-      own.add(
-          switch (interlock) {
-            case Interlock.RunsOnlyWhen runs -> Interlock.that(this).runsOnlyWhen(runs.condition());
-            case Interlock.KeepsOut keeps ->
-                Interlock.that(this).keepsOut(keeps.region()).when(keeps.condition());
-          });
-    }
-    return own;
+    return JointParts.interlocks(this);
   }
 
   /**
-   * A stretch of a joint's travel being kept out, in its block: say while what. Not an interlock
-   * until it's said.
+   * The second step of writing a keep-out in a joint's block: the joint and the region. It is not
+   * an interlock until {@link #when} says while what.
    *
    * @param joint the joint
    * @param region where it may not be
-   * @param adding the joint with the interlock added
+   * @param adding what gives back the joint with the finished interlock added to its block
+   * @param <J> the kind of joint the block declares
    */
   record KeepingOut<J extends Joint>(Joint joint, Range region, Function<Interlock, J> adding) {
-    /** While the condition holds: the joint, kept out meanwhile. */
+    /** The region is closed while the condition holds. This gives back the joint, kept out. */
     public J when(Condition condition) {
       return adding.apply(Interlock.that(joint).keepsOut(region).when(condition));
     }
   }
 
   /**
-   * Its limit switch at an end, from its block: what a condition on it is made from, {@code
-   * PIVOT.switchAt(End.LOWER).tripped()}.
+   * Its limit switch at one end, as its block says it. A condition on the switch is made from it:
+   * {@code PIVOT.switchAt(End.LOWER).tripped()}.
    *
-   * @throws IllegalArgumentException if it has none there
+   * @throws IllegalArgumentException if it has none at that end
    */
   default Sensor.Switch switchAt(Sensor.Switch.Limit.End end) {
-    for (Sensor sensor : ownSensors()) {
-      if (sensor instanceof Sensor.Switch onSwitch
-          && onSwitch.kind() instanceof Sensor.Switch.Limit limit
-          && limit.end() == end) {
-        return onSwitch;
-      }
-    }
-    throw new IllegalArgumentException(
-        label() + " has no limit switch at its " + lowerOrUpper(end) + " end");
-  }
-
-  /** A limit switch's label, after its joint and its end: "arm lower limit". */
-  private String limitLabel(Sensor.Switch.Limit.End end) {
-    return label() + " " + lowerOrUpper(end) + " limit";
-  }
-
-  /** An end of a joint's travel as a sentence names it: "lower" or "upper". */
-  private static String lowerOrUpper(Sensor.Switch.Limit.End end) {
-    return end.name().toLowerCase(Locale.ROOT);
+    return JointParts.switchAt(this, end);
   }
 
   /**
    * Its position by a name.
    *
-   * @throws IllegalArgumentException if it has none by the name, naming those it has
+   * @throws IllegalArgumentException if it has none by that name, naming those it has
    */
   default Position position(String name) {
-    for (Position position : positions()) {
-      if (position.name().equals(name)) {
-        return position;
-      }
-    }
-    throw new IllegalArgumentException(
-        label() + " has no position named \"" + name + "\": " + has(names(positions(), List.of())));
+    return JointNames.position(this, name);
   }
 
   /**
    * Its output by a name: one of its own, or {@link Output#STOPPED}, which every joint has.
    *
-   * @throws IllegalArgumentException if it has none by the name, naming those it has
+   * @throws IllegalArgumentException if it has none by that name, naming those it has
    */
   default Output output(String name) {
-    for (Output output : outputs()) {
-      if (output.name().equals(name)) {
-        return output;
-      }
-    }
-    if (name.equals(Output.STOPPED_NAME)) {
-      return Output.STOPPED;
-    }
-    throw new IllegalArgumentException(
-        label()
-            + " has no output named \""
-            + name
-            + "\": "
-            + has(names(List.of(), outputs()))
-            + ", and "
-            + Output.STOPPED_NAME);
+    return JointNames.output(this, name);
   }
 
   /**
-   * It at one of its positions: what a configuration is made of ({@code Configuration.of("amp",
-   * ELEVATOR.at(ELEVATOR_CLEAR), ARM.at(ARM_SCORING))}). It's exact, and a measured position never
-   * is, so an interlock refuses it: its edge is {@code atLeast}, {@code atMost} or {@code between}.
-   * A position not its own is refused where the condition is used ({@link Condition}).
+   * It at one of its positions, which is what a configuration is made of: {@code
+   * Configuration.of("amp", ELEVATOR.at(ELEVATOR_CLEAR), ARM.at(ARM_SCORING))}. An interlock
+   * refuses this condition, because it holds only with the joint exactly there and a measured
+   * position never is. An interlock's edge is {@code atLeast}, {@code atMost} or {@code between}.
+   *
+   * <p>A position that is not this joint's own is still taken here. It is refused where the
+   * condition is used ({@link Condition}).
    */
   default Condition.At at(Position position) {
     return ConditionAtBuilder.builder().joint(this).position(position).build();
   }
 
   /**
-   * It at one of its outputs, or {@link Output#STOPPED}: what a configuration is made of ({@code
-   * Configuration.of("feeding", FEEDER.at(FEEDER_FEEDING), INDEXER.at(INDEXER_FEEDING))}). An
-   * output not its own is refused where the condition is used ({@link Condition}).
+   * It at one of its outputs, or {@link Output#STOPPED}, which is what a configuration is made of:
+   * {@code Configuration.of("feeding", FEEDER.at(FEEDER_FEEDING), INDEXER.at(INDEXER_FEEDING))}. An
+   * output that is not this joint's own is refused where the condition is used ({@link Condition}).
    */
   default Condition.At at(Output output) {
     return ConditionAtBuilder.builder().joint(this).output(output).build();
   }
 
   /**
-   * It at one of its positions or beyond it, toward its range's upper end: {@code
-   * PIVOT.atLeast(PIVOT_OUT)}, from "out" on. An edge that's a clearance rather than a place it
-   * goes is written as a number ({@link Block#atLeast(Measure)}). A position not its own is refused
-   * where the condition is used ({@link Condition}).
+   * It at one of its positions or beyond it, toward the upper end of its range: {@code
+   * PIVOT.atLeast(PIVOT_OUT)} holds from "out" on. An edge that is a clearance, and not a place the
+   * joint goes, is written as a number instead ({@link Block#atLeast(Measure)}). A position that is
+   * not this joint's own is refused where the condition is used ({@link Condition}).
    *
-   * @throws IllegalArgumentException for its lower end
+   * @throws IllegalArgumentException for the lower end of its range, where it would always hold
    */
   default Condition.AtLeast atLeast(Position position) {
     return ConditionAtLeastBuilder.builder()
         .joint(this)
-        .position(where(position))
+        .position(whereItPuts(position))
         .place(position)
         .build();
   }
 
   /**
-   * It at one of its positions or short of it, toward its range's lower end: {@code
-   * ELEVATOR.atMost(ELEVATOR_CLEAR)}, up to "clear". A position not its own is refused where the
-   * condition is used ({@link Condition}).
+   * It at one of its positions or short of it, toward the lower end of its range: {@code
+   * ELEVATOR.atMost(ELEVATOR_CLEAR)} holds up to "clear". A position that is not this joint's own
+   * is refused where the condition is used ({@link Condition}).
    *
-   * @throws IllegalArgumentException for its upper end
+   * @throws IllegalArgumentException for the upper end of its range, where it would always hold
    */
   default Condition.AtMost atMost(Position position) {
     return ConditionAtMostBuilder.builder()
         .joint(this)
-        .position(where(position))
+        .position(whereItPuts(position))
         .place(position)
         .build();
   }
 
   /**
-   * It between two of its positions, both included, whichever way round they're given. A position
-   * not its own is refused where the condition is used ({@link Condition}).
+   * It between two of its positions, both included, given in either order. A position that is not
+   * this joint's own is refused where the condition is used ({@link Condition}).
    *
-   * @throws IllegalArgumentException if they're one
+   * @throws IllegalArgumentException if the two are the same place
    */
   default Condition.Between between(Position from, Position to) {
     return ConditionBetweenBuilder.builder()
         .joint(this)
-        .from(where(from))
-        .to(where(to))
+        .from(whereItPuts(from))
+        .to(whereItPuts(to))
         .fromPlace(from)
         .toPlace(to)
         .build();
   }
 
   /**
-   * Where it puts a position of its own; one not its own, where that says, for what uses the
-   * condition naming it to refuse.
+   * Where this joint puts a position: its own value for a position that is its own. A position that
+   * is not its own keeps the value it was given with, and whatever uses the condition that names it
+   * refuses it.
    */
-  private double where(Position position) {
-    return whyNotOwn(position) == null ? own(position).value() : position.value();
+  private double whereItPuts(Position position) {
+    if (whyNotOwn(position).isPresent()) {
+      return position.value();
+    }
+    return own(position).value();
   }
 
   /**
-   * Its own position of a position's name, where this joint puts it: the constant a team's code
-   * names, as the robot running it places it. A practice robot's joint, its position re-placed
-   * ({@code replaced}), gives its own.
+   * This joint's own position of the name a position has, where this joint puts it. Code passes the
+   * team's constant, and gets the position as the robot running the code has it: a practice robot
+   * whose position was re-placed ({@code replaced}) gives its own.
    *
-   * @throws IllegalArgumentException if it isn't its own ({@link #whyNotOwn(Position)})
+   * @throws IllegalArgumentException if the position is not this joint's own ({@link
+   *     #whyNotOwn(Position)})
    */
   default Position own(Position position) {
-    String why = whyNotOwn(position);
-    if (why != null) {
-      throw new IllegalArgumentException(why);
+    Optional<String> whyNotOwn = whyNotOwn(position);
+    if (whyNotOwn.isPresent()) {
+      throw new IllegalArgumentException(whyNotOwn.get());
     }
     return position(position.name());
   }
 
   /**
-   * Its own output of an output's name, at this joint's value, or {@link Output#STOPPED}: a
-   * practice robot's joint, its output re-valued ({@code replaced}), gives its own.
+   * This joint's own output of the name an output has, at this joint's value, or {@link
+   * Output#STOPPED}. A practice robot whose output was re-valued ({@code replaced}) gives its own.
    *
-   * @throws IllegalArgumentException if it isn't its own ({@link #whyNotOwn(Output)})
+   * @throws IllegalArgumentException if the output is not this joint's own ({@link
+   *     #whyNotOwn(Output)})
    */
   default Output own(Output output) {
-    String why = whyNotOwn(output);
-    if (why != null) {
-      throw new IllegalArgumentException(why);
+    Optional<String> whyNotOwn = whyNotOwn(output);
+    if (whyNotOwn.isPresent()) {
+      throw new IllegalArgumentException(whyNotOwn.get());
     }
     return output(output.name());
   }
 
   /**
-   * Why a position isn't one of this joint's own, or null when it is. It's its own when the joint
-   * has a position of its name and kind, and it's where that one is, or was before it was re-placed
-   * ({@link #formerPositions}): the competition robot's constant, on its practice robot. Another
-   * joint's of the same name, elsewhere, is refused, saying where this joint's is, and so is one of
-   * a name the joint hasn't, naming those it has. Two joints' places of one name and value are each
-   * one's: nothing tells them apart, and either drives each to its own.
-   */
-  default @Nullable String whyNotOwn(Position position) {
-    boolean revolute = position.kind() == Position.Kind.ANGLE;
-    for (Position own : positions()) {
-      if (!own.name().equals(position.name())) {
-        continue;
-      }
-      if (own.kind() != position.kind()) {
-        return possessive(label())
-            + " "
-            + own.name()
-            + " is "
-            + (revolute ? "a length" : "an angle")
-            + ", and this "
-            + own.name()
-            + " "
-            + (revolute ? "an angle" : "a length")
-            + ": another joint's";
-      }
-      if (had(own, position) || formerPositions().stream().anyMatch(was -> had(was, position))) {
-        return null;
-      }
-      return notHad(own.name(), "is at " + shown(own.value()), shown(position.value()));
-    }
-    return label()
-        + " has no position "
-        + position.name()
-        + " at "
-        + position.kind().shown(position.value())
-        + ": "
-        + has(names(positions(), List.of()));
-  }
-
-  /**
-   * Why an output isn't one of this joint's own, or null when it is: {@link Output#STOPPED}, which
-   * every joint has, or one of its name at what it runs at, or ran at before it was re-valued
-   * ({@link #formerOutputs}), as for a position ({@link #whyNotOwn(Position)}).
-   */
-  default @Nullable String whyNotOwn(Output output) {
-    if (output.name().equals(Output.STOPPED_NAME)) {
-      return null;
-    }
-    for (Output own : outputs()) {
-      if (!own.name().equals(output.name())) {
-        continue;
-      }
-      if (had(own, output) || formerOutputs().stream().anyMatch(was -> had(was, output))) {
-        return null;
-      }
-      return notHad(own.name(), "runs at " + shownOutput(own), shownOutput(output));
-    }
-    return label()
-        + " has no output "
-        + output.name()
-        + ": "
-        + has(names(List.of(), outputs()))
-        + ", and "
-        + Output.STOPPED_NAME;
-  }
-
-  /** What an output runs it at, as people read it: "1000 rpm", "-4 V", "60% of the battery". */
-  private String shownOutput(Output output) {
-    return switch (output.kind()) {
-      case VELOCITY -> shownSpeed(output.value());
-      case VOLTAGE -> Rules.shown(output.value()) + " V";
-      case DUTY_CYCLE -> Rules.shown(output.value() * 100) + "% of the battery";
-    };
-  }
-
-  /**
-   * A place of one of its names, at a value it hasn't had: "elevator's L1 is at 0.5 m, and this L1,
-   * at 0.25 m, isn't one it has had: another joint's or another robot's; give elevator's own".
+   * Why a position is not this joint's own, if it is not.
    *
-   * @param own how its own is: "is at 0.5 m"
-   * @param given where the one given is: "0.25 m"
+   * <p>A position is the joint's own when the joint has a position of that name and kind, and the
+   * one given is where the joint's is now, or where it was before it was re-placed ({@link
+   * #formerPositions}). That second case is the competition robot's constant, used on its practice
+   * robot. Anything else is refused: another joint's position of the same name somewhere else,
+   * saying where this joint's is, or a name this joint does not have, saying which it has.
+   *
+   * @return the refusal, in plain words, or empty when the position is this joint's own
    */
-  private String notHad(String name, String own, String given) {
-    return possessive(label())
-        + " "
-        + name
-        + " "
-        + own
-        + ", and this "
-        + name
-        + ", at "
-        + given
-        + ", isn't one it has had: another joint's or another robot's; give "
-        + possessive(label())
-        + " own";
+  default Optional<String> whyNotOwn(Position position) {
+    return JointNames.whyNotOwn(this, position);
   }
 
   /**
-   * Whether a position is one a joint had, of its name and kind, there: to a nanometer, or a
-   * nanoradian, so a place written in degrees and one in radians, a bit apart, are one.
+   * Why an output is not this joint's own, if it is not. {@link Output#STOPPED} is every joint's
+   * own. Any other is judged as a position is ({@link #whyNotOwn(Position)}), against what the
+   * joint's output of that name runs at now and what it ran at before it was re-valued ({@link
+   * #formerOutputs}).
+   *
+   * @return the refusal, in plain words, or empty when the output is this joint's own
    */
-  private static boolean had(Position had, Position position) {
-    return had.name().equals(position.name())
-        && had.kind() == position.kind()
-        && Math.abs(had.value() - position.value()) <= Range.EDGE;
-  }
-
-  /** Whether an output is one a joint had, of its name and kind, at its value, as a position. */
-  private static boolean had(Output had, Output output) {
-    return had.name().equals(output.name())
-        && had.kind() == output.kind()
-        && had.motion().equals(output.motion())
-        && Math.abs(had.value() - output.value()) <= Range.EDGE;
+  default Optional<String> whyNotOwn(Output output) {
+    return JointNames.whyNotOwn(this, output);
   }
 
   /**
@@ -795,7 +565,7 @@ public sealed interface Joint extends Part permits Joint.Block {
      * @throws IllegalArgumentException if the position is another joint's, or of the other kind
      */
     default J rest(Position rest) {
-      return withRest(restAt(this, rest));
+      return withRest(JointNames.whereToRestAt(this, rest));
     }
 
     /**
@@ -854,7 +624,7 @@ public sealed interface Joint extends Part permits Joint.Block {
     default J positions(Position... positions) {
       saidOnce(
           !positions().isEmpty(),
-          "has its positions, " + String.join(", ", names(positions(), List.of())),
+          "has its positions, " + String.join(", ", JointNames.ofPositions(positions())),
           "name them all in one positions(...); to put one elsewhere, replaced(...)");
       return withPositions(List.of(positions), formerPositions());
     }
@@ -863,7 +633,7 @@ public sealed interface Joint extends Part permits Joint.Block {
     default J outputs(Output... outputs) {
       saidOnce(
           !outputs().isEmpty(),
-          "has its outputs, " + String.join(", ", names(List.of(), outputs())),
+          "has its outputs, " + String.join(", ", JointNames.ofOutputs(outputs())),
           "name them all in one outputs(...); to run one otherwise, replaced(...)");
       return withOutputs(List.of(outputs), formerOutputs());
     }
@@ -883,7 +653,8 @@ public sealed interface Joint extends Part permits Joint.Block {
               .value(inJointUnits(at))
               .build();
       return withPositions(
-          replacedPosition(this, replacing), former(formerPositions(), own(position), replacing));
+          JointNames.withReplaced(this, replacing),
+          JointNames.formerWith(formerPositions(), own(position), replacing));
     }
 
     /**
@@ -919,7 +690,8 @@ public sealed interface Joint extends Part permits Joint.Block {
 
     private J revalued(Output output, Output replacing) {
       return withOutputs(
-          replacedOutput(this, replacing), former(formerOutputs(), own(output), replacing));
+          JointNames.withReplaced(this, replacing),
+          JointNames.formerWith(formerOutputs(), own(output), replacing));
     }
 
     /**
@@ -1136,25 +908,27 @@ public sealed interface Joint extends Part permits Joint.Block {
   }
 
   /**
-   * A joint that turns about its axis, in radians: an arm, a wrist, a turret, a roller.
+   * A joint that turns about its axis, measured in radians: an arm, a wrist, a turret, a roller.
    *
-   * @param label what logs and writers call it: unique among the robot's joints
+   * @param label what logs and writers call it, unique among the robot's joints
    * @param parent what it hangs from: the chassis, or another joint's link
-   * @param origin where its frame is in its parent's frame at position 0: the pivot
-   * @param axis what it turns about, in its own frame, positive by the right-hand rule
-   * @param range its hard stops, in radians, unwrapped; empty for one that turns freely
-   * @param rest where it rests as the robot starts, in radians, if its block says: stowed, inside
-   *     its range; none starts it at 0
+   * @param origin where its frame is in its parent's frame at position 0: where it pivots
+   * @param axis what it turns about, in its own frame. A positive position turns it by the
+   *     right-hand rule.
+   * @param range its hard stops, in radians and not wrapped to one turn. A joint that turns freely
+   *     has none.
+   * @param rest where it rests as the robot starts, stowed, in radians, if its block says. Without
+   *     one it starts at 0.
    * @param link what it moves
-   * @param positions its places by name, in radians, inside its range: {@code
-   *     Position.degrees("out", 130)}
-   * @param outputs what code runs it at, by name: {@code Output.rpm("intaking", 2000)}, {@code
+   * @param positions its named positions, in radians: {@code Position.degrees("out", 130)}
+   * @param outputs its named outputs: {@code Output.rpm("intaking", 2000)}, {@code
    *     Output.volts("push", 6)}
-   * @param formerPositions where its positions were before they were re-placed ({@code replaced}):
-   *     the competition robot's, on a practice robot, still its own
-   * @param formerOutputs what its outputs were before they were re-valued, still its own
-   * @param driven how it's driven and wired, its own sensors, and its control: its block's {@code
-   *     .motor(...)} and the rest; not part of its identity
+   * @param formerPositions the values its positions had before they were re-placed ({@code
+   *     replaced}), which still count as its own: on a practice robot, the competition robot's
+   * @param formerOutputs the values its outputs had before they were re-valued, which still count
+   *     as its own
+   * @param driven how it is driven and wired, its own sensors, and its control, as its block says
+   *     them. This is not part of what makes it the same joint.
    */
   @ConfigRecord
   record Revolute(
@@ -1176,20 +950,17 @@ public sealed interface Joint extends Part permits Joint.Block {
       outputs = List.copyOf(outputs);
       formerPositions = List.copyOf(formerPositions);
       formerOutputs = List.copyOf(formerOutputs);
-      check(Revolute.class, label, origin, axis, range, rest, positions, outputs);
-      Optional<Driven.Motors> motors = driven.motors();
-      Optional<MechanismControl> control = driven.control();
-      Checks.on(Revolute.class, label)
-          .check(
-              "driven.motors",
-              () ->
-                  motors.isPresent() && motors.get().pitchRadius().isPresent()
-                      ? "a joint that turns has no drum: give its motors a gearing alone"
-                      : null)
-          .check(
-              "driven.control",
-              () -> control.map(c -> c.ofTheOtherKind(Position.Kind.ANGLE)).orElse(null))
-          .orThrow();
+      JointChecks.shared(
+          Revolute.class,
+          Position.Kind.ANGLE,
+          label,
+          origin,
+          axis,
+          range,
+          rest,
+          positions,
+          outputs);
+      JointChecks.turning(label, driven);
     }
 
     /** Starts describing a revolute joint, one named value at a time. */
@@ -1250,26 +1021,25 @@ public sealed interface Joint extends Part permits Joint.Block {
   }
 
   /**
-   * A joint that slides along its axis, in meters: an elevator's carriage or stage, a telescoping
-   * arm, a linear deploy.
+   * A joint that slides along its axis, measured in meters: an elevator's carriage or stage, a
+   * telescoping arm, a linear deploy.
    *
-   * @param label what logs and writers call it: unique among the robot's joints
+   * @param label what logs and writers call it, unique among the robot's joints
    * @param parent what it hangs from: the chassis, or another joint's link
-   * @param origin where its frame is in its parent's frame at position 0: the slide's start
+   * @param origin where its frame is in its parent's frame at position 0: where the slide starts
    * @param axis what it slides along, in its own frame
    * @param range its hard stops, in meters
-   * @param rest where it rests as the robot starts, in meters, if its block says: stowed, inside
-   *     its range; none starts it at 0
+   * @param rest where it rests as the robot starts, stowed, in meters, if its block says. Without
+   *     one it starts at 0.
    * @param link what it moves
-   * @param positions its places by name, in meters, inside its range: {@code Position.of("clear",
-   *     Inches.of(20))}
-   * @param outputs what code runs it at, by name: a speed in meters per second, a voltage, or a
-   *     duty cycle
-   * @param formerPositions where its positions were before they were re-placed ({@code replaced}):
-   *     the competition robot's, on a practice robot, still its own
-   * @param formerOutputs what its outputs were before they were re-valued, still its own
-   * @param driven how it's driven and wired, its own sensors, and its control: its block's {@code
-   *     .motors(...)} and the rest; not part of its identity
+   * @param positions its named positions, in meters: {@code Position.of("clear", Inches.of(20))}
+   * @param outputs its named outputs: a speed in meters a second, a voltage, or a duty cycle
+   * @param formerPositions the values its positions had before they were re-placed ({@code
+   *     replaced}), which still count as its own: on a practice robot, the competition robot's
+   * @param formerOutputs the values its outputs had before they were re-valued, which still count
+   *     as its own
+   * @param driven how it is driven and wired, its own sensors, and its control, as its block says
+   *     them. This is not part of what makes it the same joint.
    */
   @ConfigRecord
   record Prismatic(
@@ -1291,27 +1061,17 @@ public sealed interface Joint extends Part permits Joint.Block {
       outputs = List.copyOf(outputs);
       formerPositions = List.copyOf(formerPositions);
       formerOutputs = List.copyOf(formerOutputs);
-      check(Prismatic.class, label, origin, axis, range, rest, positions, outputs);
-      Optional<Driven.Motors> motors = driven.motors();
-      Optional<MechanismControl> control = driven.control();
-      Checks.on(Prismatic.class, label)
-          .check(
-              "driven.motors",
-              () ->
-                  motors.isPresent() && motors.get().pitchRadius().isEmpty()
-                      ? "a joint that slides needs its drum: give its motors the pitch radius"
-                      : null)
-          .check(
-              "driven.control",
-              () ->
-                  control.isPresent() && control.get().gains().gravityAngle().isPresent()
-                      ? "a joint that slides is held against gravity the same all along it, so"
-                          + " its kG has no angle: give kG alone, withKg(kG)"
-                      : null)
-          .check(
-              "driven.control",
-              () -> control.map(c -> c.ofTheOtherKind(Position.Kind.LENGTH)).orElse(null))
-          .orThrow();
+      JointChecks.shared(
+          Prismatic.class,
+          Position.Kind.LENGTH,
+          label,
+          origin,
+          axis,
+          range,
+          rest,
+          positions,
+          outputs);
+      JointChecks.sliding(label, driven);
     }
 
     /** Starts describing a prismatic joint, one named value at a time. */
@@ -1385,8 +1145,9 @@ public sealed interface Joint extends Part permits Joint.Block {
         && joint.axis().equals(that.axis())
         && joint.range().isPresent() == that.range().isPresent()
         && joint.link().equals(that.link())
-        && names(joint.positions(), List.of()).equals(names(that.positions(), List.of()))
-        && names(List.of(), joint.outputs()).equals(names(List.of(), that.outputs()));
+        && JointNames.ofPositions(joint.positions())
+            .equals(JointNames.ofPositions(that.positions()))
+        && JointNames.ofOutputs(joint.outputs()).equals(JointNames.ofOutputs(that.outputs()));
   }
 
   /** A hash of what makes two joints the same ({@link #sameJoint}). */
@@ -1398,252 +1159,7 @@ public sealed interface Joint extends Part permits Joint.Block {
         joint.axis(),
         joint.range().isPresent(),
         joint.link(),
-        names(joint.positions(), List.of()),
-        names(List.of(), joint.outputs()));
-  }
-
-  /**
-   * A measure of a joint's position or speed as the model keeps it: radians, meters, radians per
-   * second or meters per second. A block's type parameters let nothing else reach this.
-   */
-  private static double inJointUnits(Measure<?> measure) {
-    return switch (measure) {
-      case Angle angle -> angle.in(Radians);
-      case Distance distance -> distance.in(Meters);
-      case AngularVelocity turning -> turning.in(RadiansPerSecond);
-      case LinearVelocity sliding -> sliding.in(MetersPerSecond);
-      default -> throw new IllegalArgumentException(measure + " is not a position or a speed");
-    };
-  }
-
-  /**
-   * Where a joint rests at one of its positions: its own of the position's name, where this joint
-   * puts it; or, a name it hasn't (in its block, before its positions are named), where the
-   * position is. Whether that's inside its stops is the robot's definition's to judge.
-   */
-  private static double restAt(Joint joint, Position rest) {
-    boolean named = joint.positions().stream().anyMatch(each -> each.name().equals(rest.name()));
-    if (named) {
-      return joint.own(rest).value();
-    }
-    boolean revolute = joint instanceof Revolute;
-    if (rest.kind() != Position.Kind.of(revolute)) {
-      throw new IllegalArgumentException(
-          joint.label()
-              + " can't rest at "
-              + rest.name()
-              + ", "
-              + (revolute
-                  ? "a length, since it turns: give it an angle, rest(Degrees.of(...))"
-                  : "an angle, since it slides: give it a length, rest(Inches.of(...))"));
-    }
-    return rest.value();
-  }
-
-  /** A joint's positions, the one of a position's name in its place, there instead. */
-  private static List<Position> replacedPosition(Joint joint, Position replacing) {
-    List<Position> positions = new ArrayList<>();
-    for (Position each : joint.positions()) {
-      positions.add(each.name().equals(replacing.name()) ? replacing : each);
-    }
-    if (!positions.contains(replacing)) {
-      throw new IllegalArgumentException(
-          joint.label()
-              + " has no position "
-              + replacing.name()
-              + " to re-place: "
-              + has(names(joint.positions(), List.of()))
-              + ". Its positions are what its code names, the same on every robot of the design");
-    }
-    return positions;
-  }
-
-  /** A joint's outputs, the one of an output's name in its place, at its value instead. */
-  private static List<Output> replacedOutput(Joint joint, Output replacing) {
-    List<Output> outputs = new ArrayList<>();
-    for (Output each : joint.outputs()) {
-      outputs.add(each.name().equals(replacing.name()) ? replacing : each);
-    }
-    if (!outputs.contains(replacing)) {
-      throw new IllegalArgumentException(
-          joint.label()
-              + " has no output "
-              + replacing.name()
-              + " to re-value: "
-              + has(names(List.of(), joint.outputs()))
-              + ". Its outputs are what its code names, the same on every robot of the design");
-    }
-    return outputs;
-  }
-
-  /**
-   * A place's former values with the one it has now, as it's re-placed elsewhere: each once, so a
-   * constant at any is still the joint's own.
-   */
-  private static <P> List<P> former(List<P> former, P now, P replacing) {
-    List<P> had = new ArrayList<>(former);
-    if (!now.equals(replacing) && !had.contains(now)) {
-      had.add(now);
-    }
-    return had;
-  }
-
-  /**
-   * A joint's own checks, the same for both kinds. Whether where it rests and its places are inside
-   * its stops is its robot's definition's to judge, on the finished joint ({@code Blocks}), so a
-   * practice robot changes them in either order.
-   */
-  private static void check(
-      Class<? extends Record> kind,
-      String label,
-      Transform3d origin,
-      Vector3 axis,
-      Optional<Range> range,
-      Optional<Double> rest,
-      List<Position> positions,
-      List<Output> outputs) {
-    boolean revolute = kind == Revolute.class;
-    Checks.on(kind, label)
-        .field("label", label, notBlank())
-        .field("origin", origin, Joint::notATransform)
-        .field(
-            "axis",
-            axis,
-            a ->
-                Double.isFinite(a.length()) && a.length() > 0
-                    ? null
-                    : a + " must point some way: an axis can't be zero")
-        .field("rest", rest, given(finite()))
-        .check(
-            "range",
-            () ->
-                range.isPresent() && range.get().kind() != Position.Kind.of(revolute)
-                    ? wrongKind("its range is", revolute)
-                    : null)
-        .check("positions", () -> ofTheOtherKind(revolute, positions))
-        .check("outputs", () -> twice(positions, outputs))
-        .check("outputs", () -> speedsOfTheOtherKind(label, revolute, outputs))
-        .orThrow();
-  }
-
-  /**
-   * A stretch of a joint's travel given as the other kind, lengths for a joint that turns or angles
-   * for one that slides, and how to give it: {@code "its range is lengths, and the joint turns:
-   * give it in angles, Range.degrees(...)"}.
-   *
-   * @param what what it is, and the verb: {@code "its range is"}
-   */
-  static String wrongKind(String what, boolean revolute) {
-    return what
-        + (revolute
-            ? " lengths, and the joint turns: give it in angles, Range.degrees(...)"
-            : " angles, and the joint slides: give it in lengths, Range.meters(...) or"
-                + " Range.of(Inches.of(...), Inches.of(...))");
-  }
-
-  /**
-   * The named positions of the wrong kind, a length for a joint that turns or an angle for one that
-   * slides, or null when they're all of its kind. Whether they're inside its stops is the
-   * definition's to judge, on the finished joint, so a practice robot's stops and places change in
-   * either order.
-   */
-  private static @Nullable String ofTheOtherKind(boolean revolute, List<Position> positions) {
-    Position.Kind kind = revolute ? Position.Kind.ANGLE : Position.Kind.LENGTH;
-    List<String> wrong = new ArrayList<>();
-    for (Position position : positions) {
-      if (position.kind() != kind) {
-        wrong.add(
-            position.name()
-                + " is "
-                + (revolute
-                    ? "a length, and the joint turns: give it an angle, Position.degrees(...)"
-                    : "an angle, and the joint slides: give it a length, Position.of(name,"
-                        + " Inches.of(...))"));
-      }
-    }
-    return wrong.isEmpty() ? null : String.join("; ", wrong);
-  }
-
-  /**
-   * The named speeds of the wrong kind, of turning for a joint that slides or of sliding for one
-   * that turns, or null when they're all of its kind: an rpm on an elevator would run in meters a
-   * second.
-   */
-  private static @Nullable String speedsOfTheOtherKind(
-      String label, boolean revolute, List<Output> outputs) {
-    Position.Kind kind = Position.Kind.of(revolute);
-    List<String> wrong = new ArrayList<>();
-    for (Output output : outputs) {
-      if (output.motion().isPresent() && output.motion().get() != kind) {
-        wrong.add(
-            output.name()
-                + ", "
-                + Position.Kind.of(!revolute).shownSpeed(output.value())
-                + ", is "
-                + (revolute
-                    ? "a speed along a slide, and "
-                        + label
-                        + " turns: give it a speed of turning, Output.rpm(\""
-                        + output.name()
-                        + "\", ...)"
-                    : "a speed of turning, and "
-                        + label
-                        + " slides: give it a speed along it, Output.of(\""
-                        + output.name()
-                        + "\", InchesPerSecond.of(...))"));
-      }
-    }
-    return wrong.isEmpty() ? null : String.join("; ", wrong);
-  }
-
-  /**
-   * The names used twice among its positions and outputs, or the built-in output's, or null when
-   * none are.
-   */
-  private static @Nullable String twice(List<Position> positions, List<Output> outputs) {
-    Set<String> seen = new HashSet<>();
-    Set<String> twice = new LinkedHashSet<>();
-    for (String name : names(positions, outputs)) {
-      if (!seen.add(name)) {
-        twice.add(name);
-      }
-    }
-    if (seen.contains(Output.STOPPED_NAME)) {
-      return "it names "
-          + Output.STOPPED_NAME
-          + ", which every joint has built in (its motors at neutral): name it something else";
-    }
-    return twice.isEmpty()
-        ? null
-        : "it names "
-            + String.join(", ", twice)
-            + " twice: each name is one position or output of the joint";
-  }
-
-  /** What a joint has by name, for a message: "it has in, run, out", or "it has none". */
-  private static String has(List<String> names) {
-    return "it has " + (names.isEmpty() ? "none" : String.join(", ", names));
-  }
-
-  /** Its positions' names, then its outputs'. */
-  private static List<String> names(List<Position> positions, List<Output> outputs) {
-    List<String> names = new ArrayList<>();
-    positions.forEach(position -> names.add(position.name()));
-    outputs.forEach(output -> names.add(output.name()));
-    return names;
-  }
-
-  private static @Nullable String notATransform(Transform3d transform) {
-    Quaternion turn = transform.getRotation().getQuaternion();
-    return Double.isFinite(
-            transform.getX()
-                + transform.getY()
-                + transform.getZ()
-                + turn.getW()
-                + turn.getX()
-                + turn.getY()
-                + turn.getZ())
-        ? null
-        : transform + " must be a transform, numbers all";
+        JointNames.ofPositions(joint.positions()),
+        JointNames.ofOutputs(joint.outputs()));
   }
 }

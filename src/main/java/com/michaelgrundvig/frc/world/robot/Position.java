@@ -40,11 +40,6 @@ public record Position(String name, Kind kind, double value) {
       };
     }
 
-    /** An angle for a joint that turns, a length for one that slides. */
-    static Kind of(boolean revolute) {
-      return revolute ? ANGLE : LENGTH;
-    }
-
     /**
      * A position of this kind, or a distance along a joint, as every message shows one: an angle in
      * degrees ("130°") and a length in meters ("0.4 m"). It is shown to four significant figures,

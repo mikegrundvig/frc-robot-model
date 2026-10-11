@@ -373,7 +373,7 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
   private static Optional<String> whyNotPartOfRange(Joint joint, Range region) {
     Position.Kind jointsKind = Position.Kind.of(joint);
     if (region.kind() != jointsKind) {
-      return Optional.of(Joint.wrongKind("the region is", jointsKind == Position.Kind.ANGLE));
+      return Optional.of(JointChecks.wrongKind("the region is", jointsKind));
     }
     if (joint.range().isEmpty()) {
       return Optional.empty();

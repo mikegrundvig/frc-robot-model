@@ -342,7 +342,7 @@ public sealed interface Condition
    * uses the condition, which can say whose place it is.
    */
   private static boolean isOwn(Joint joint, Optional<Position> place) {
-    return place.isEmpty() || joint.whyNotOwn(place.get()) == null;
+    return place.isEmpty() || joint.whyNotOwn(place.get()).isEmpty();
   }
 
   /**

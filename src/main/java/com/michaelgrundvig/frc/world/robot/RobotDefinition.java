@@ -843,7 +843,7 @@ public record RobotDefinition(
    */
   private static double placed(Joint joint, Optional<Position> place, double position) {
     return place
-        .filter(written -> joint.whyNotOwn(written) == null)
+        .filter(written -> joint.whyNotOwn(written).isEmpty())
         .map(written -> joint.own(written).value())
         .orElse(position);
   }

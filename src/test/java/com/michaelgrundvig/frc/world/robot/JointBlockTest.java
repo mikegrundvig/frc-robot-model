@@ -1162,7 +1162,7 @@ class JointBlockTest {
     Joint.Prismatic practice = climber.replaced(climb, Meters.of(0.075));
     Position practices = Position.of("climb", Meters.of(0.075));
 
-    assertThat(practice.whyNotOwn(climb)).isNull();
+    assertThat(practice.whyNotOwn(climb)).isEmpty();
     assertThat(practice.own(climb)).isEqualTo(practices);
     assertThat(practice.formerPositions()).containsExactly(climb);
     assertThat(practice).isEqualTo(climber).hasSameHashCodeAs(climber);
@@ -1174,15 +1174,15 @@ class JointBlockTest {
         .containsExactly(climb);
     assertThat(climber.whyNotOwn(Position.of("climb", Inches.of(0.05 / 0.0254))))
         .as("the same height, written another way")
-        .isNull();
+        .isEmpty();
     assertThat(climber.whyNotOwn(practices))
-        .isEqualTo(
+        .contains(
             "climber's climb is at 0.05 m, and this climb, at 0.075 m, isn't one it has had:"
                 + " another joint's or another robot's; give climber's own");
     assertThat(climber.whyNotOwn(Position.of("stow", Meters.of(0))))
-        .isEqualTo("climber has no position stow at 0 m: it has climb");
+        .contains("climber has no position stow at 0 m: it has climb");
     assertThat(climber.whyNotOwn(Position.degrees("climb", 30)))
-        .isEqualTo("climber's climb is a length, and this climb an angle: another joint's");
+        .contains("climber's climb is a length, and this climb an angle: another joint's");
   }
 
   /**
@@ -1199,10 +1199,10 @@ class JointBlockTest {
     Joint.Revolute roller =
         Joint.roller("roller", Part.CHASSIS, AXLE).outputs(Output.volts("idle", 0));
 
-    assertThat(climber.whyNotOwn(Position.of("stow", Meters.of(1e-9)))).isNull();
-    assertThat(climber.whyNotOwn(Position.of("stow", Meters.of(2e-9)))).isNotNull();
-    assertThat(roller.whyNotOwn(Output.volts("idle", 1e-9))).isNull();
-    assertThat(roller.whyNotOwn(Output.volts("idle", 2e-9))).isNotNull();
+    assertThat(climber.whyNotOwn(Position.of("stow", Meters.of(1e-9)))).isEmpty();
+    assertThat(climber.whyNotOwn(Position.of("stow", Meters.of(2e-9)))).isPresent();
+    assertThat(roller.whyNotOwn(Output.volts("idle", 1e-9))).isEmpty();
+    assertThat(roller.whyNotOwn(Output.volts("idle", 2e-9))).isPresent();
   }
 
   /**

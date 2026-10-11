@@ -63,9 +63,9 @@ final class Places {
 
   private static Optional<String> whyPlaceIsNotOwn(Condition.At at) {
     if (at.position().isPresent()) {
-      return Optional.ofNullable(at.joint().whyNotOwn(at.position().get()));
+      return at.joint().whyNotOwn(at.position().get());
     }
-    return Optional.ofNullable(at.joint().whyNotOwn(at.output().orElseThrow()));
+    return at.joint().whyNotOwn(at.output().orElseThrow());
   }
 
   /** An edge written as a number names no place, so there is nothing that could be another's. */
@@ -73,7 +73,7 @@ final class Places {
     if (place.isEmpty()) {
       return Optional.empty();
     }
-    return Optional.ofNullable(joint.whyNotOwn(place.get()));
+    return joint.whyNotOwn(place.get());
   }
 
   /**

@@ -217,6 +217,8 @@ class PlacesTest {
             "pivot has no position named \"deployed\": it has in, run, out"),
         refuses("a position it hasn't, on a slide", () -> ELEVATOR.position("x"),
             "elevator has no position named \"x\": it has down, clear, top"),
+        refuses("a position of a joint that names none", () -> ROLLER.position("in"),
+            "roller has no position named \"in\": it has none"),
         refuses("an output it hasn't", () -> ROLLER.output("feeding"),
             "roller has no output named \"feeding\": it has intaking, outtaking, and stopped"),
         refuses("a position past the hard stops",
@@ -288,6 +290,15 @@ class PlacesTest {
             "135° is pivot's highest: it's at most that everywhere"),
         refuses("at least past the range", () -> ELEVATOR.atLeast(Meters.of(2)),
             "2 m is outside elevator's range, 0 m to 1.2 m"),
+        refuses("at least a hair above the lowest, which counts as the lowest",
+            () -> Condition.AtLeast.builder().joint(ELEVATOR).position(Range.EDGE).build(),
+            "0 m is elevator's lowest: it's at least that everywhere"),
+        refuses("at most a hair below the highest, which counts as the highest",
+            () -> Condition.AtMost.builder().joint(ELEVATOR).position(1.2 - Range.EDGE / 2).build(),
+            "1.2 m is elevator's highest: it's at most that everywhere"),
+        refuses("between two positions a hair apart, which count as one",
+            () -> Condition.Between.builder().joint(ELEVATOR).from(0).to(Range.EDGE).build(),
+            "a joint between 0 m and itself is at it"),
         refuses("between a place and itself", () -> PIVOT.between(PIVOT_RUN, PIVOT_RUN),
             "a joint between run and itself is at it"),
         refuses("a condition described by hand with no position",
@@ -553,6 +564,10 @@ class PlacesTest {
   /** Each of these is taken, though its neighbor in a table above is refused. */
   static Stream<Arguments> accepted() {
     return Stream.of(
+        accepts("at least two hairs above the lowest: an edge of its own",
+            () -> Condition.AtLeast.builder().joint(ELEVATOR).position(2 * Range.EDGE).build()),
+        accepts("between two positions two hairs apart",
+            () -> Condition.Between.builder().joint(ELEVATOR).from(0).to(2 * Range.EDGE).build()),
         accepts("a speed along a slide for a slide",
             () -> named(ELEVATOR, List.of(), List.of(Output.of("creeping", MetersPerSecond.of(0.1))))),
         accepts("a configuration that stops the roller, the pivot staying in",
@@ -700,13 +715,13 @@ class PlacesTest {
             "roller's intaking runs at 2000 rpm, and this intaking, at 1000 rpm, isn't one it has"
                 + " had: another joint's or another robot's; give roller's own"),
         asks("an output re-valued, by its old value", () -> reValuedRoller().whyNotOwn(Output.volts("outtaking", -2)),
-            "roller's outtaking runs at -1 V, and this outtaking, at -2 V, isn't one it has had:"
-                + " another joint's or another robot's; give roller's own"),
+            Optional.of("roller's outtaking runs at -1 V, and this outtaking, at -2 V, isn't one it has had:"
+                + " another joint's or another robot's; give roller's own")),
         asks("an output re-valued to a share, by another share",
             () -> ROLLER.replaced(ROLLER_INTAKING, Percent.of(60)).whyNotOwn(Output.dutyCycle("intaking", 0.5)),
-            "roller's intaking runs at 60% of the battery, and this intaking, at 50% of the"
+            Optional.of("roller's intaking runs at 60% of the battery, and this intaking, at 50% of the"
                 + " battery, isn't one it has had: another joint's or another robot's; give"
-                + " roller's own"));
+                + " roller's own")));
   }
 
   /** A practice robot keeps the design's names at its own values. */
