@@ -492,12 +492,12 @@ class MechanismControlTest {
     assertThat(arm.encoderGap().orElseThrow().kind()).isEqualTo(Position.Kind.ANGLE);
     assertThat(elevator.encoderGap().orElseThrow().margin()).isCloseTo(0.0254, within(1e-12));
     assertThat(MechanismControl.position(30).encoderGap()).as("the template's").isEmpty();
-    assertThat(elevator.ofTheOtherKind(Position.Kind.ANGLE))
-        .isEqualTo(
+    assertThat(ControlKindChecks.whyOfTheOtherKind(elevator, Position.Kind.ANGLE))
+        .contains(
             "its encoder gap is a length, and the joint turns: give it in an angle,"
                 + " withEncoderGap(Degrees.of(...))");
-    assertThat(arm.ofTheOtherKind(Position.Kind.LENGTH))
-        .isEqualTo(
+    assertThat(ControlKindChecks.whyOfTheOtherKind(arm, Position.Kind.LENGTH))
+        .contains(
             "its encoder gap is an angle, and the joint slides: give it in a length,"
                 + " withEncoderGap(Inches.of(...))");
     assertThatIllegalArgumentException()

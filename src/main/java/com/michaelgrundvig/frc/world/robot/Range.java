@@ -21,8 +21,7 @@ import org.wpilib.units.measure.Distance;
 @ConfigRecord
 public record Range(Position.Kind kind, double lower, double upper) {
   public Range {
-    boolean angles = kind == Position.Kind.ANGLE;
-    String stops = stop(kind, lower) + " to " + stop(kind, upper);
+    String stops = shownStop(kind, lower) + " to " + shownStop(kind, upper);
     if (!Double.isFinite(lower) || !Double.isFinite(upper)) {
       throw new IllegalArgumentException("a range's stops are numbers, not " + stops);
     }
@@ -35,22 +34,32 @@ public record Range(Position.Kind kind, double lower, double upper) {
           "a range goes from its lower stop to its upper, and "
               + stops
               + " is the other way round: give the lower first, "
-              + (angles
-                  ? "Range.degrees("
-                      + shown(Math.toDegrees(upper))
-                      + ", "
-                      + shown(Math.toDegrees(lower))
-                  : "Range.meters(" + shown(upper) + ", " + shown(lower))
-              + ")");
+              + asWritten(kind, upper, lower));
     }
   }
 
-  /** A stop as a message shows it: in degrees or meters, or as it is when it isn't a number. */
-  private static String stop(Position.Kind kind, double value) {
+  /** A stop as a message shows it: in degrees or meters, or as it is when it is not a number. */
+  private static String shownStop(Position.Kind kind, double value) {
     if (Double.isFinite(value)) {
       return kind.shown(value);
     }
-    return value + (kind == Position.Kind.ANGLE ? "°" : " m");
+    return switch (kind) {
+      case ANGLE -> value + "°";
+      case LENGTH -> value + " m";
+    };
+  }
+
+  /** The call that makes a range with these stops, as a team would write it. */
+  private static String asWritten(Position.Kind kind, double lower, double upper) {
+    return switch (kind) {
+      case ANGLE ->
+          "Range.degrees("
+              + shown(Math.toDegrees(lower))
+              + ", "
+              + shown(Math.toDegrees(upper))
+              + ")";
+      case LENGTH -> "Range.meters(" + shown(lower) + ", " + shown(upper) + ")";
+    };
   }
 
   /** Starts describing a range, one named value at a time. */

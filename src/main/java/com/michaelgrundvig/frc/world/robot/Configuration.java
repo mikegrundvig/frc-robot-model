@@ -4,12 +4,13 @@ import static com.michaelgrundvig.frc.world.config.Rules.notBlank;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rule;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Several joints, each at one of its named positions or outputs, by a name of their own: a pose the
@@ -34,7 +35,7 @@ public record Configuration(String name, List<Condition.At> targets) {
     List<Condition.At> set = targets;
     Checks.on(Configuration.class, name)
         .field("name", name, notBlank())
-        .field("targets", set, Configuration::notOnceEach)
+        .field("targets", set, Rule.of(Configuration::whyNotOnceEach))
         .orThrow();
   }
 
@@ -64,18 +65,26 @@ public record Configuration(String name, List<Condition.At> targets) {
         + ")";
   }
 
-  /** Why targets aren't joints each set once, or null when they are. */
-  private static @Nullable String notOnceEach(List<Condition.At> targets) {
+  /**
+   * Why a configuration's targets cannot be what it sets, if they cannot: it has to set at least
+   * one joint, and no joint twice.
+   */
+  private static Optional<String> whyNotOnceEach(List<Condition.At> targets) {
     if (targets.isEmpty()) {
-      return "sets no joint: name one at least";
+      return Optional.of("sets no joint: name one at least");
     }
     Set<String> seen = new HashSet<>();
-    List<String> twice = new ArrayList<>();
+    List<String> setTwice = new ArrayList<>();
     for (Condition.At target : targets) {
-      if (!seen.add(target.joint().label())) {
-        twice.add(target.joint().label());
+      String label = target.joint().label();
+      boolean alreadySet = !seen.add(label);
+      if (alreadySet) {
+        setTwice.add(label);
       }
     }
-    return twice.isEmpty() ? null : "set each joint once, not " + String.join(", ", twice);
+    if (setTwice.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of("set each joint once, not " + String.join(", ", setTwice));
   }
 }

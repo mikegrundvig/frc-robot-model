@@ -3,6 +3,7 @@ package com.michaelgrundvig.frc.world.config;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -78,6 +79,17 @@ public final class Checks {
               return problem == null ? List.of() : List.of(Finding.refused(where, problem));
             }));
     return this;
+  }
+
+  /**
+   * A check across values, reported under {@code name}, that gives the reason the values are wrong
+   * if there is one. It is {@link #check} for a check written to return an {@link Optional} rather
+   * than null, and runs at the same point.
+   *
+   * @param whyNot the reason, written to follow the name, or empty when the values are fine
+   */
+  public Checks whyNot(String name, Supplier<Optional<String>> whyNot) {
+    return check(name, () -> whyNot.get().orElse(null));
   }
 
   /**

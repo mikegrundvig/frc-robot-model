@@ -60,29 +60,55 @@ public record Output(String name, Kind kind, double value, Optional<Position.Kin
       builder().name(STOPPED_NAME).kind(Kind.DUTY_CYCLE).value(0).build();
 
   public Output {
-    double share = value;
-    Optional<Position.Kind> of = motion;
+    double given = value;
+    Optional<Position.Kind> givenMotion = motion;
     Checks.on(Output.class, name)
         .field("name", name, notBlank())
         .field("value", value, finite())
-        .check(
-            "value",
-            () ->
-                kind == Kind.DUTY_CYCLE && !(Math.abs(share) <= 1)
-                    ? shown(share) + " must be a share of the battery's voltage, from -1 to 1"
-                    : null)
-        .check(
-            "motion",
-            () ->
-                kind == Kind.VELOCITY && of.isEmpty()
-                    ? "a speed is of turning or of sliding: give it with its unit, Output.rpm(name,"
-                        + " rpm) for a joint that turns, Output.of(name, InchesPerSecond.of(...))"
-                        + " for one that slides"
-                    : kind != Kind.VELOCITY && of.isPresent()
-                        ? "only a speed is of turning or of sliding, and this is a "
-                            + (kind == Kind.VOLTAGE ? "voltage" : "duty cycle")
-                        : null)
+        .whyNot("value", () -> whyNotAShare(kind, given))
+        .whyNot("motion", () -> whyMotionDoesNotFit(kind, givenMotion))
         .orThrow();
+  }
+
+  /** Why a duty cycle is not a share of the battery's voltage, if it is not. NaN is not one. */
+  private static Optional<String> whyNotAShare(Kind kind, double value) {
+    boolean isAShare = Math.abs(value) <= 1;
+    if (kind != Kind.DUTY_CYCLE || isAShare) {
+      return Optional.empty();
+    }
+    return Optional.of(shown(value) + " must be a share of the battery's voltage, from -1 to 1");
+  }
+
+  /**
+   * Why an output's motion does not fit its kind, if it does not. A speed has to say whether it is
+   * a speed of turning or of sliding, and nothing else may say either.
+   */
+  private static Optional<String> whyMotionDoesNotFit(Kind kind, Optional<Position.Kind> motion) {
+    return switch (kind) {
+      case VELOCITY -> whySpeedHasNoMotion(motion);
+      case VOLTAGE -> whyHasAMotion("voltage", motion);
+      case DUTY_CYCLE -> whyHasAMotion("duty cycle", motion);
+    };
+  }
+
+  private static Optional<String> whySpeedHasNoMotion(Optional<Position.Kind> motion) {
+    if (motion.isPresent()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "a speed is of turning or of sliding: give it with its unit, Output.rpm(name,"
+            + " rpm) for a joint that turns, Output.of(name, InchesPerSecond.of(...))"
+            + " for one that slides");
+  }
+
+  /**
+   * @param kind what the output is, as the message names it: "voltage" or "duty cycle"
+   */
+  private static Optional<String> whyHasAMotion(String kind, Optional<Position.Kind> motion) {
+    if (motion.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of("only a speed is of turning or of sliding, and this is a " + kind);
   }
 
   /** Starts describing an output, one named value at a time. */

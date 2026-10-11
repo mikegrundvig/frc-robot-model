@@ -18,7 +18,6 @@ import static org.wpilib.units.Units.Value;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -376,56 +375,6 @@ public record MechanismControl(
     return MechanismControlBuilder.builder(this)
         .encoderGap(EncoderGap.builder().margin(margin).kind(kind).build())
         .build();
-  }
-
-  /**
-   * Why its values given with their units don't fit a joint of this kind, one reason for each, or
-   * null when they do: an elevator's soft limits in degrees, an arm's kP per inch.
-   */
-  @Nullable String ofTheOtherKind(Position.Kind joint) {
-    boolean turns = joint == Position.Kind.ANGLE;
-    List<String> wrong = new ArrayList<>();
-    if (gains.kind().isPresent() && gains.kind().get() != joint) {
-      wrong.add(
-          turns
-              ? "its gains are per length, and the joint turns: give them per angle,"
-                  + " Volts.per(Rotation)"
-              : "its gains are per angle, and the joint slides: give them per length,"
-                  + " Volts.per(Meter) or Volts.per(Inch); a gain per turn of its drum is that per"
-                  + " the drum's circumference");
-    }
-    if (softLimits.flatMap(SoftLimits::kind).filter(kind -> kind != joint).isPresent()) {
-      wrong.add(
-          turns
-              ? "its soft limits are lengths, and the joint turns: give them in angles,"
-                  + " Range.degrees(...)"
-              : "its soft limits are angles, and the joint slides: give them in lengths,"
-                  + " Range.meters(...) or Range.of(Inches.of(...), Inches.of(...))");
-    }
-    if (profile.flatMap(Profile::kind).filter(kind -> kind != joint).isPresent()) {
-      wrong.add(
-          turns
-              ? "its profile is in lengths, and the joint turns: give it in angles,"
-                  + " DegreesPerSecond.of(...) and DegreesPerSecondPerSecond.of(...)"
-              : "its profile is in angles, and the joint slides: give it in lengths,"
-                  + " InchesPerSecond.of(...) and InchesPerSecondPerSecond.of(...)");
-    }
-    if (bands.flatMap(Bands::kind).filter(kind -> kind != joint).isPresent()) {
-      wrong.add(
-          turns
-              ? "its bands are lengths, and the joint turns: give them in angles, Degrees.of(...)"
-              : "its bands are angles, and the joint slides: give them in lengths,"
-                  + " Inches.of(...)");
-    }
-    if (encoderGap.filter(gap -> gap.kind() != joint).isPresent()) {
-      wrong.add(
-          turns
-              ? "its encoder gap is a length, and the joint turns: give it in an angle,"
-                  + " withEncoderGap(Degrees.of(...))"
-              : "its encoder gap is an angle, and the joint slides: give it in a length,"
-                  + " withEncoderGap(Inches.of(...))");
-    }
-    return wrong.isEmpty() ? null : String.join("; ", wrong);
   }
 
   private static MechanismControl defaults(Loop loop, double kP, Optional<Position.Kind> per) {

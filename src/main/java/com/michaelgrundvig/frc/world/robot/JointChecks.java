@@ -54,10 +54,10 @@ final class JointChecks {
         .field("origin", origin, numbersAll())
         .field("axis", axis, pointingSomeWay())
         .field("rest", rest, given(finite()))
-        .check("range", () -> whyRangeIsOfTheOtherKind(kind, range).orElse(null))
-        .check("positions", () -> whyPositionsAreOfTheOtherKind(kind, positions).orElse(null))
-        .check("outputs", () -> whyNamesAreNotOneEach(positions, outputs).orElse(null))
-        .check("outputs", () -> whySpeedsAreOfTheOtherKind(label, kind, outputs).orElse(null))
+        .whyNot("range", () -> whyRangeIsOfTheOtherKind(kind, range))
+        .whyNot("positions", () -> whyPositionsAreOfTheOtherKind(kind, positions))
+        .whyNot("outputs", () -> whyNamesAreNotOneEach(positions, outputs))
+        .whyNot("outputs", () -> whySpeedsAreOfTheOtherKind(label, kind, outputs))
         .orThrow();
   }
 
@@ -66,10 +66,8 @@ final class JointChecks {
    */
   static void turning(String label, Driven driven) {
     Checks.on(Joint.Revolute.class, label)
-        .check("driven.motors", () -> whyTurningHasADrum(driven).orElse(null))
-        .check(
-            "driven.control",
-            () -> whyControlIsOfTheOtherKind(Position.Kind.ANGLE, driven).orElse(null))
+        .whyNot("driven.motors", () -> whyTurningHasADrum(driven))
+        .whyNot("driven.control", () -> whyControlIsOfTheOtherKind(Position.Kind.ANGLE, driven))
         .orThrow();
   }
 
@@ -79,11 +77,9 @@ final class JointChecks {
    */
   static void sliding(String label, Driven driven) {
     Checks.on(Joint.Prismatic.class, label)
-        .check("driven.motors", () -> whySlidingHasNoDrum(driven).orElse(null))
-        .check("driven.control", () -> whySlidingHasAGravityAngle(driven).orElse(null))
-        .check(
-            "driven.control",
-            () -> whyControlIsOfTheOtherKind(Position.Kind.LENGTH, driven).orElse(null))
+        .whyNot("driven.motors", () -> whySlidingHasNoDrum(driven))
+        .whyNot("driven.control", () -> whySlidingHasAGravityAngle(driven))
+        .whyNot("driven.control", () -> whyControlIsOfTheOtherKind(Position.Kind.LENGTH, driven))
         .orThrow();
   }
 
@@ -269,9 +265,9 @@ final class JointChecks {
             + " angle: give kG alone, withKg(kG)");
   }
 
-  /** Why a joint's control is given in the other kind's units, if it is. The control says. */
+  /** Why a joint's control is given in the other kind's units, if it is. */
   private static Optional<String> whyControlIsOfTheOtherKind(Position.Kind kind, Driven driven) {
-    return driven.control().map(control -> control.ofTheOtherKind(kind));
+    return driven.control().flatMap(control -> ControlKindChecks.whyOfTheOtherKind(control, kind));
   }
 
   /** Several reasons as one, or none when there are none. */

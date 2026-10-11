@@ -1,5 +1,7 @@
 package com.michaelgrundvig.frc.world.config;
 
+import java.util.Optional;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,4 +22,15 @@ public interface Rule<V> {
    * @return what's wrong, written to follow the value's name: {@code "-3 A must be positive"}
    */
   @Nullable String whyNot(V value);
+
+  /**
+   * A rule from a check that gives the reason a value is wrong, if there is one, as an {@link
+   * Optional} rather than as a string that may be null: {@code
+   * Rule.of(Configuration::whyNotOnceEach)}.
+   *
+   * @param whyNot the reason the value is wrong, or empty when it is fine
+   */
+  static <V> Rule<V> of(Function<? super V, Optional<String>> whyNot) {
+    return value -> whyNot.apply(value).orElse(null);
+  }
 }

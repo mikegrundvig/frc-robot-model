@@ -11,7 +11,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Translation3d;
 import org.wpilib.units.Measure;
 import org.wpilib.units.measure.Angle;
@@ -59,7 +58,7 @@ public record Driven(
     limitSwitches = List.copyOf(limitSwitches);
     interlocks = List.copyOf(interlocks);
     List<LimitSwitch> switches = limitSwitches;
-    Checks.on(Driven.class).check("limitSwitches", () -> twice(switches)).orThrow();
+    Checks.on(Driven.class).whyNot("limitSwitches", () -> whyAnEndHasTwo(switches)).orThrow();
   }
 
   /** Starts describing how a joint is driven, one named value at a time. */
@@ -90,17 +89,9 @@ public record Driven(
       List<MechanismWiring.Device> each = controllers;
       Checks.on(Motors.class)
           .field("count", count, positive())
-          .check(
-              "controllers",
-              () ->
-                  each.isEmpty() || each.size() == count
-                      ? null
-                      : "names "
-                          + each.size()
-                          + " controllers for "
-                          + count
-                          + " motors: one each, or none for the simulator")
-          .check("controllers", () -> mixed(motor, each))
+          .whyNot("controllers", () -> whyNotOneEach(count, each))
+          .whyNot("controllers", () -> whyNotOneKind(each))
+          .whyNot("controllers", () -> whyControllerCannotDrive(motor, each))
           .orThrow();
     }
 
@@ -144,37 +135,75 @@ public record Driven(
           .build();
     }
 
-    /** Why a joint's controllers can't be its motors', or null when they can be. */
-    private static @Nullable String mixed(Motor motor, List<MechanismWiring.Device> controllers) {
+    /**
+     * Why there is not a controller for each motor, if there is not. Motors with no controllers at
+     * all are fine: they run in the simulator alone.
+     */
+    private static Optional<String> whyNotOneEach(
+        int count, List<MechanismWiring.Device> controllers) {
+      if (controllers.isEmpty() || controllers.size() == count) {
+        return Optional.empty();
+      }
+      return Optional.of(
+          "names "
+              + controllers.size()
+              + " controllers for "
+              + count
+              + " motors: one each, or none for the simulator");
+    }
+
+    /**
+     * Why a joint's controllers are not all of one kind on one bus, if they are not. The first is
+     * the leader, and every other is compared with it.
+     */
+    private static Optional<String> whyNotOneKind(List<MechanismWiring.Device> controllers) {
       if (controllers.isEmpty()) {
-        return null;
+        return Optional.empty();
       }
       MechanismWiring.Device leader = controllers.get(0);
       for (MechanismWiring.Device device : controllers) {
-        if (device.controller() != leader.controller() || !device.bus().equals(leader.bus())) {
-          return "a joint's motors are on one kind of controller, on one bus: its leader is "
-              + leader.controller().shown()
-              + ", and CAN ID "
-              + device.id()
-              + " isn't the same";
+        boolean sameKind = device.controller() == leader.controller();
+        boolean sameBus = device.bus().equals(leader.bus());
+        if (!sameKind || !sameBus) {
+          return Optional.of(
+              "a joint's motors are on one kind of controller, on one bus: its leader is "
+                  + leader.controller().shown()
+                  + ", and CAN ID "
+                  + device.id()
+                  + " isn't the same");
         }
       }
-      if (leader.controller().drives(motor)) {
-        return null;
+      return Optional.empty();
+    }
+
+    /**
+     * Why the controllers cannot drive the motor, if they cannot: each kind of controller drives
+     * only some motors, and the message lists the kinds that drive this one. Controllers that are
+     * not all of one kind are reported by {@link #whyNotOneKind} instead.
+     */
+    private static Optional<String> whyControllerCannotDrive(
+        Motor motor, List<MechanismWiring.Device> controllers) {
+      if (controllers.isEmpty() || whyNotOneKind(controllers).isPresent()) {
+        return Optional.empty();
       }
-      List<String> could = new ArrayList<>();
+      MechanismWiring.Controller controller = controllers.get(0).controller();
+      if (controller.drives(motor)) {
+        return Optional.empty();
+      }
+      List<String> couldDriveIt = new ArrayList<>();
       for (MechanismWiring.Controller each : MechanismWiring.Controller.values()) {
         if (each.drives(motor)) {
-          could.add(each.shown());
+          couldDriveIt.add(each.shown());
         }
       }
-      return "its "
-          + motor.name()
-          + " is on "
-          + leader.controller().shown()
-          + ", which doesn't drive one: "
-          + String.join(" or ", could)
-          + " does";
+      return Optional.of(
+          "its "
+              + motor.name()
+              + " is on "
+              + controller.shown()
+              + ", which doesn't drive one: "
+              + String.join(" or ", couldDriveIt)
+              + " does");
     }
   }
 
@@ -403,17 +432,19 @@ public record Driven(
     }
   }
 
-  /** The ends with two limit switches, or null when each has one at most. */
-  private static @Nullable String twice(List<LimitSwitch> switches) {
+  /** Why an end of the joint's travel has more than one limit switch, if one has. */
+  private static Optional<String> whyAnEndHasTwo(List<LimitSwitch> switches) {
     Set<Sensor.Switch.Limit.End> seen = new HashSet<>();
-    List<String> twice = new ArrayList<>();
+    List<String> endsWithTwo = new ArrayList<>();
     for (LimitSwitch each : switches) {
-      if (!seen.add(each.end())) {
-        twice.add(each.end().name().toLowerCase(java.util.Locale.ROOT));
+      boolean endAlreadyHasOne = !seen.add(each.end());
+      if (endAlreadyHasOne) {
+        endsWithTwo.add(each.end().name().toLowerCase(java.util.Locale.ROOT));
       }
     }
-    return twice.isEmpty()
-        ? null
-        : "two limit switches at its " + String.join(", ", twice) + " end";
+    if (endsWithTwo.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of("two limit switches at its " + String.join(", ", endsWithTwo) + " end");
   }
 }
