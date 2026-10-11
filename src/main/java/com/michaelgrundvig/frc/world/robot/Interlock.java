@@ -4,7 +4,6 @@ import static com.michaelgrundvig.frc.world.config.Rules.possessive;
 
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 
 /**
  * An interlock is a rule that restricts one joint according to where another joint is, how fast
@@ -236,12 +235,11 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
 
     @Override
     public String toString() {
-      boolean revolute = joint instanceof Joint.Revolute;
       return joint.label()
           + " keeps out of "
-          + Places.shownAt(revolute, region.lower())
+          + joint.shown(region.lower())
           + " to "
-          + Places.shownAt(revolute, region.upper())
+          + joint.shown(region.upper())
           + " while "
           + condition;
     }
@@ -280,41 +278,42 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
   }
 
   /**
-   * Why a condition cannot restrict a joint, or null when it can. An interlock has to be about
-   * something other than the joint it restricts, and has to be something the robot can judge while
-   * it runs. A condition on a sensor always is.
+   * Why a condition cannot restrict a joint, if it cannot. An interlock has to be about something
+   * other than the joint it restricts, and has to be something the robot can judge while it runs. A
+   * condition on a sensor always is.
    */
-  private static @Nullable String whyNotAboutAnother(Joint joint, Condition condition) {
+  private static Optional<String> whyNotAboutAnother(Joint joint, Condition condition) {
     return switch (condition) {
-      case Condition.OnSensor onSensor -> null;
+      case Condition.OnSensor onSensor -> Optional.empty();
       case Condition.UpToSpeed upToSpeed -> whyNotOnSpeed(joint, upToSpeed);
       case Condition.OnJoint onJoint -> whyNotOnPosition(joint, onJoint);
     };
   }
 
   /** Why a joint cannot be restricted by how fast a joint runs: only when it is the same joint. */
-  private static @Nullable String whyNotOnSpeed(Joint joint, Condition.UpToSpeed condition) {
+  private static Optional<String> whyNotOnSpeed(Joint joint, Condition.UpToSpeed condition) {
     if (condition.joint().equals(joint)) {
-      return joint.label()
-          + " can't be held by how fast it runs itself: an interlock is on another";
+      return Optional.of(
+          joint.label() + " can't be held by how fast it runs itself: an interlock is on another");
     }
-    return null;
+    return Optional.empty();
   }
 
   /**
    * Why a joint cannot be restricted by where a joint is. The other joint must be a different one,
    * and the condition must be an edge or a band, not "at" a named place ({@link #whyNotAtAPlace}).
    */
-  private static @Nullable String whyNotOnPosition(Joint joint, Condition.OnJoint condition) {
+  private static Optional<String> whyNotOnPosition(Joint joint, Condition.OnJoint condition) {
     if (condition.joint().equals(joint)) {
-      return joint.label()
-          + " can't be held by where it is itself: limit it by its range, or an interlock on another"
-          + " joint";
+      return Optional.of(
+          joint.label()
+              + " can't be held by where it is itself: limit it by its range, or an interlock on"
+              + " another joint");
     }
     if (condition instanceof Condition.At at) {
-      return whyNotAtAPlace(at);
+      return Optional.of(whyNotAtAPlace(at));
     }
-    return null;
+    return Optional.empty();
   }
 
   /**
@@ -334,15 +333,18 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
           + other
           + ".upToSpeed(...)";
     }
-    boolean revolute = at.joint() instanceof Joint.Revolute;
-    String of = revolute ? "Degrees.of(...)" : "Inches.of(...)";
+    String of =
+        switch (Position.Kind.of(at.joint())) {
+          case ANGLE -> "Degrees.of(...)";
+          case LENGTH -> "Inches.of(...)";
+        };
     return at
         + " holds only with "
         + other
         + " exactly at "
         + at.name()
         + ", "
-        + Places.shownAt(revolute, at.position().orElseThrow().value())
+        + at.joint().shown(at.position().orElseThrow().value())
         + ", which a measured position never is, so the interlock would never hold: say the"
         + " edge where the parts clear, "
         + other
@@ -364,38 +366,36 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
   }
 
   /**
-   * Why a region cannot be one a joint is kept out of, or null when it can. The region must be in
-   * the joint's units, must overlap the joint's range, and must not cover all of it, which would
-   * leave the joint nowhere to be.
+   * Why a region cannot be one a joint is kept out of, if it cannot. The region must be in the
+   * joint's units, must overlap the joint's range, and must not cover all of it, which would leave
+   * the joint nowhere to be.
    */
-  private static @Nullable String whyNotPartOfRange(Joint joint, Range region) {
-    boolean revolute = joint instanceof Joint.Revolute;
-    if (region.kind() != Position.Kind.of(joint)) {
-      return Joint.wrongKind("the region is", revolute);
+  private static Optional<String> whyNotPartOfRange(Joint joint, Range region) {
+    Position.Kind jointsKind = Position.Kind.of(joint);
+    if (region.kind() != jointsKind) {
+      return Optional.of(Joint.wrongKind("the region is", jointsKind == Position.Kind.ANGLE));
     }
     if (joint.range().isEmpty()) {
-      return null;
+      return Optional.empty();
     }
     Range range = joint.range().get();
-    String regionShown =
-        Places.shownAt(revolute, region.lower())
-            + " to "
-            + Places.shownAt(revolute, region.upper());
-    String rangeShown =
-        Places.shownAt(revolute, range.lower()) + " to " + Places.shownAt(revolute, range.upper());
+    String regionShown = joint.shown(region.lower()) + " to " + joint.shown(region.upper());
+    String rangeShown = joint.shown(range.lower()) + " to " + joint.shown(range.upper());
     boolean outsideTheRange = region.upper() <= range.lower() || region.lower() >= range.upper();
     if (outsideTheRange) {
-      return regionShown + " is outside " + possessive(joint.label()) + " range, " + rangeShown;
+      return Optional.of(
+          regionShown + " is outside " + possessive(joint.label()) + " range, " + rangeShown);
     }
     boolean allOfTheRange = region.lower() <= range.lower() && region.upper() >= range.upper();
     if (allOfTheRange) {
-      return regionShown
-          + " is all of "
-          + possessive(joint.label())
-          + " range, "
-          + rangeShown
-          + ": it would have nowhere to be";
+      return Optional.of(
+          regionShown
+              + " is all of "
+              + possessive(joint.label())
+              + " range, "
+              + rangeShown
+              + ": it would have nowhere to be");
     }
-    return null;
+    return Optional.empty();
   }
 }

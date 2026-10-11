@@ -22,7 +22,7 @@ import org.wpilib.units.measure.Distance;
 public record Range(Position.Kind kind, double lower, double upper) {
   public Range {
     boolean angles = kind == Position.Kind.ANGLE;
-    String stops = stop(angles, lower) + " to " + stop(angles, upper);
+    String stops = stop(kind, lower) + " to " + stop(kind, upper);
     if (!Double.isFinite(lower) || !Double.isFinite(upper)) {
       throw new IllegalArgumentException("a range's stops are numbers, not " + stops);
     }
@@ -46,8 +46,11 @@ public record Range(Position.Kind kind, double lower, double upper) {
   }
 
   /** A stop as a message shows it: in degrees or meters, or as it is when it isn't a number. */
-  private static String stop(boolean angles, double value) {
-    return Double.isFinite(value) ? Places.shownAt(angles, value) : value + (angles ? "°" : " m");
+  private static String stop(Position.Kind kind, double value) {
+    if (Double.isFinite(value)) {
+      return kind.shown(value);
+    }
+    return value + (kind == Position.Kind.ANGLE ? "°" : " m");
   }
 
   /** Starts describing a range, one named value at a time. */

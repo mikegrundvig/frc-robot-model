@@ -770,9 +770,7 @@ public record MechanismControl(
 
     /** A band as the team gave it: degrees, meters, or a share of a speed. */
     private static String shownBand(double band, Optional<Position.Kind> kind) {
-      return kind.isEmpty()
-          ? shown(band * 100) + "%"
-          : Places.shownAt(kind.get() == Position.Kind.ANGLE, band);
+      return kind.isEmpty() ? shown(band * 100) + "%" : kind.get().shown(band);
     }
 
     /** Starts describing bands, one named value at a time. */
@@ -796,8 +794,7 @@ public record MechanismControl(
     public EncoderGap {
       if (!(margin > 0) || !Double.isFinite(margin)) {
         throw new IllegalArgumentException(
-            "an encoder gap is more than none, not "
-                + Places.shownAt(kind == Position.Kind.ANGLE, margin));
+            "an encoder gap is more than none, not " + kind.shown(margin));
       }
     }
 

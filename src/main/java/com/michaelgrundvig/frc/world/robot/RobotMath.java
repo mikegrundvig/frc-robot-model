@@ -905,7 +905,7 @@ public final class RobotMath {
       math.encoderProblems(joint, encoders);
       encoders.forEach(problem -> problems.add(Finding.refused(joint.label(), problem)));
     }
-    Places.jointProblems(math, problems);
+    JointSpeedChecks.problems(math, problems);
     for (CameraConfig camera : cameras) {
       List<String> mounted = new ArrayList<>();
       camera.joint().ifPresent(joint -> math.cameraProblems(camera, joint, mounted));

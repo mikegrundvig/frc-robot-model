@@ -12,6 +12,7 @@ import static org.wpilib.units.Units.Value;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rules;
 import com.michaelgrundvig.frc.world.physical.Vector3;
 import io.soabase.recordbuilder.core.RecordBuilder;
 import java.util.ArrayList;
@@ -277,7 +278,17 @@ public sealed interface Joint extends Part permits Joint.Block {
    * @param value in its units: radians, or meters
    */
   default String shown(double value) {
-    return Places.shownAt(this instanceof Revolute, value);
+    return Position.Kind.of(this).shown(value);
+  }
+
+  /**
+   * A speed of it as people read one: rpm for a joint that turns, meters a second for one that
+   * slides ("2000 rpm", "1.5 m/s").
+   *
+   * @param value in its units a second: radians, or meters
+   */
+  default String shownSpeed(double value) {
+    return Position.Kind.of(this).shownSpeed(value);
   }
 
   /**
@@ -647,7 +658,7 @@ public sealed interface Joint extends Part permits Joint.Block {
         + " has no position "
         + position.name()
         + " at "
-        + Places.shownAt(revolute, position.value())
+        + position.kind().shown(position.value())
         + ": "
         + has(names(positions(), List.of()));
   }
@@ -668,11 +679,7 @@ public sealed interface Joint extends Part permits Joint.Block {
       if (had(own, output) || formerOutputs().stream().anyMatch(was -> had(was, output))) {
         return null;
       }
-      boolean revolute = this instanceof Revolute;
-      return notHad(
-          own.name(),
-          "runs at " + Places.shownOutput(revolute, own),
-          Places.shownOutput(revolute, output));
+      return notHad(own.name(), "runs at " + shownOutput(own), shownOutput(output));
     }
     return label()
         + " has no output "
@@ -681,6 +688,15 @@ public sealed interface Joint extends Part permits Joint.Block {
         + has(names(List.of(), outputs()))
         + ", and "
         + Output.STOPPED_NAME;
+  }
+
+  /** What an output runs it at, as people read it: "1000 rpm", "-4 V", "60% of the battery". */
+  private String shownOutput(Output output) {
+    return switch (output.kind()) {
+      case VELOCITY -> shownSpeed(output.value());
+      case VOLTAGE -> Rules.shown(output.value()) + " V";
+      case DUTY_CYCLE -> Rules.shown(output.value() * 100) + "% of the battery";
+    };
   }
 
   /**
@@ -1562,7 +1578,7 @@ public sealed interface Joint extends Part permits Joint.Block {
         wrong.add(
             output.name()
                 + ", "
-                + Places.shownSpeed(!revolute, output.value())
+                + Position.Kind.of(!revolute).shownSpeed(output.value())
                 + ", is "
                 + (revolute
                     ? "a speed along a slide, and "

@@ -132,11 +132,11 @@ public record RobotDefinition(
             () ->
                 whole == null
                     ? List.of()
-                    : Places.configurationProblems(whole, allConfigurations, everyInterlock))
+                    : ConfigurationChecks.problems(whole, allConfigurations, everyInterlock))
         .findings("interlocks", () -> twice(everyInterlock))
         .findings(
             "interlocks",
-            () -> whole == null ? List.of() : Places.interlockProblems(whole, everyInterlock))
+            () -> whole == null ? List.of() : InterlockChecks.problems(whole, everyInterlock))
         .findings("devices", () -> CanDevice.sharedIds(everyDevice))
         .findings("pdh", () -> Pdh.problems(pdh, everyDevice))
         .orThrow();
@@ -380,8 +380,8 @@ public record RobotDefinition(
                   + " .control(DrivetrainControl.builder()...)"));
     }
     found.addAll(Blocks.uncontrolled(math));
-    found.addAll(Places.doubts(math));
-    found.addAll(Places.startDoubts(math, everyInterlock()));
+    found.addAll(JointSpeedChecks.doubts(math));
+    found.addAll(InterlockChecks.startDoubts(math, everyInterlock()));
     found.addAll(missing());
     return found;
   }
@@ -480,7 +480,7 @@ public record RobotDefinition(
         missing.add(unfed);
       }
     }
-    for (Joint joint : Places.unchecked(math)) {
+    for (Joint joint : JointSpeedChecks.unchecked(math)) {
       missing.add(
           missing(
               joint.label(),
@@ -737,7 +737,7 @@ public record RobotDefinition(
    * here, as the definition is built. The competition robot's constant is its practice robot's own.
    */
   public @Nullable String whyNotOwn(Condition condition) {
-    return Places.notOwn(onOwn(joints, condition));
+    return Places.whyNotOwn(onOwn(joints, condition)).orElse(null);
   }
 
   /**
