@@ -841,6 +841,8 @@ public sealed interface Joint extends Part permits Joint.Block {
      * It kept out of a stretch of its travel while a condition holds, enforced beneath every
      * command: {@code .keepsOut(Range.degrees(-180, -101)).when(ELEVATOR.atMost(Inches.of(32)))}.
      * Its target is held at the stretch's edge, on the side it is on, until the condition clears.
+     * The stretch may be written larger than the joint's travel. The part inside the travel is what
+     * counts.
      */
     default KeepingOut<J> keepsOut(Range region) {
       return new KeepingOut<>(this, region, this::interlocked);

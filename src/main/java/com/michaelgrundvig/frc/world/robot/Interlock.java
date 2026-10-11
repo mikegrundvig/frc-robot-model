@@ -107,8 +107,11 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
    * allowed only to leave, by the side {@link #sideKeptTo} names.
    *
    * @param joint the joint it restricts
-   * @param region where the joint may not be while the condition holds, in the joint's units. It is
-   *     part of the joint's range and never all of it.
+   * @param region where the joint may not be while the condition holds, in the joint's units. It
+   *     may be written larger than the joint's travel: a region of -40° to 0° on an arm that
+   *     travels from -30° to 120° is accepted. The part of it inside the travel is what counts, so
+   *     that one reaches the low end of the arm's travel, as -30° to 0° does. It must cover some of
+   *     the travel and never all of it.
    * @param condition where another joint is, how fast it runs, or what a sensor reads, while the
    *     region is closed
    */
@@ -138,7 +141,9 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
      * must be somewhere the joint is allowed to be. The exception is an edge that sits at an end of
      * the joint's range. There is nowhere beyond that edge for the joint to be, so the region is
      * taken to carry on past it: a joint standing on that edge is inside, and so is one whose
-     * encoder reads a little past the hard stop. Either has to leave by the other edge.
+     * encoder reads a little past the hard stop. Either has to leave by the other edge. A region
+     * written larger than the joint's travel, with an edge beyond an end of the range, is treated
+     * the same way as one whose edge sits at that end.
      */
     public boolean isInside(double position) {
       if (Double.isNaN(position)) {
@@ -369,6 +374,9 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
    * Why a region cannot be one a joint is kept out of, if it cannot. The region must be in the
    * joint's units, must overlap the joint's range, and must not cover all of it, which would leave
    * the joint nowhere to be.
+   *
+   * <p>A region that sticks out past one end of the range is accepted. Only the part of it inside
+   * the range counts, so it is treated as reaching that end ({@link KeepsOut#isInside}).
    */
   private static Optional<String> whyNotPartOfRange(Joint joint, Range region) {
     Position.Kind jointsKind = Position.Kind.of(joint);

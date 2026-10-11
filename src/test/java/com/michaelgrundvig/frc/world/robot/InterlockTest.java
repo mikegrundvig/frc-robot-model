@@ -7,6 +7,7 @@ import static com.michaelgrundvig.frc.world.robot.InterlockFixtures.WHEEL_OUT_OF
 import static com.michaelgrundvig.frc.world.robot.StandardRobot.ARM;
 import static com.michaelgrundvig.frc.world.robot.StandardRobot.ARM_CLEARS_BUMPER;
 import static com.michaelgrundvig.frc.world.robot.StandardRobot.ELEVATOR;
+import static com.michaelgrundvig.frc.world.robot.StandardRobot.ELEVATOR_CLEAR;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 import static org.wpilib.units.Units.Degrees;
@@ -34,13 +35,23 @@ class InterlockTest {
   private static final Interlock.KeepsOut ELEVATOR_OFF_THE_BOTTOM = Interlock.that(ELEVATOR).keepsOut(Range.meters(0, 0.3)).when(ARM_DOWN);
   private static final Interlock.KeepsOut ELEVATOR_OFF_THE_TOP = Interlock.that(ELEVATOR).keepsOut(Range.meters(0.9, 1.2)).when(ARM_DOWN);
 
+  // The arm travels from -30° to 120°. These regions are written larger than that travel.
+  private static final Interlock.KeepsOut ARM_PAST_THE_BOTTOM = Interlock.that(ARM).keepsOut(Range.degrees(-40, 0)).when(ELEVATOR.atMost(ELEVATOR_CLEAR));
+  private static final Interlock.KeepsOut ARM_PAST_THE_TOP = Interlock.that(ARM).keepsOut(Range.degrees(90, 130)).when(ELEVATOR.atMost(ELEVATOR_CLEAR));
+
   private static final Optional<Side> NEVER_OUTSIDE = Optional.empty();
   private static final Optional<Side> LAST_BELOW = Optional.of(Side.BELOW);
   private static final Optional<Side> LAST_ABOVE = Optional.of(Side.ABOVE);
   // spotless:on
 
   @ParameterizedTest
-  @MethodSource({"sidesKeptTo", "sidesAtTheEndsOfTheRange", "positionsInside", "edges"})
+  @MethodSource({
+    "sidesKeptTo",
+    "sidesAtTheEndsOfTheRange",
+    "positionsInside",
+    "regionsLargerThanTheTravel",
+    "edges"
+  })
   void itAnswers(Supplier<?> question, Object answer) {
     assertThat(question.get()).isEqualTo(answer);
   }
@@ -106,6 +117,24 @@ class InterlockTest {
         asks("with no range, the lower edge is outside", () -> WHEEL_OUT_OF_A_BAND.isInside(1), false),
         asks("with no range, the upper edge is outside", () -> WHEEL_OUT_OF_A_BAND.isInside(2), false),
         asks("a position that is not a number is not inside", () -> OUT_OF_THE_MIDDLE.isInside(Double.NaN), false));
+  }
+
+  /**
+   * A region may be written larger than the joint's travel. The part inside the travel is what
+   * counts, so a region that sticks out past an end of the range is one that reaches that end.
+   */
+  static Stream<Arguments> regionsLargerThanTheTravel() {
+    return Stream.of(
+        asks("past the bottom: the low end of the travel is inside", () -> ARM_PAST_THE_BOTTOM.isInside(inRadians(-30)), true),
+        asks("past the bottom: reading below the travel is still inside", () -> ARM_PAST_THE_BOTTOM.isInside(inRadians(-45)), true),
+        asks("past the bottom: the edge inside the travel is outside", () -> ARM_PAST_THE_BOTTOM.isInside(inRadians(0)), false),
+        asks("past the bottom: the only way out is above", () -> ARM_PAST_THE_BOTTOM.sideKeptTo(inRadians(-30), LAST_BELOW), Side.ABOVE),
+        asks("past the bottom: reading at the edge below the travel, still out above", () -> ARM_PAST_THE_BOTTOM.sideKeptTo(inRadians(-40), LAST_BELOW), Side.ABOVE),
+        asks("past the top: the high end of the travel is inside", () -> ARM_PAST_THE_TOP.isInside(inRadians(120)), true),
+        asks("past the top: reading above the travel is still inside", () -> ARM_PAST_THE_TOP.isInside(inRadians(135)), true),
+        asks("past the top: the edge inside the travel is outside", () -> ARM_PAST_THE_TOP.isInside(inRadians(90)), false),
+        asks("past the top: the only way out is below", () -> ARM_PAST_THE_TOP.sideKeptTo(inRadians(120), LAST_ABOVE), Side.BELOW),
+        asks("past the top: reading at the edge above the travel, still out below", () -> ARM_PAST_THE_TOP.sideKeptTo(inRadians(130), LAST_ABOVE), Side.BELOW));
   }
 
   /** Where each side's edge is, and how far past it a position is, measured into the region. */
