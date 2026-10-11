@@ -23,7 +23,9 @@ public record Keyframe(@Nullable Pose2d pose, @Nullable Place place, @Nullable S
    * @throws IllegalArgumentException for a blank name
    */
   public Keyframe {
-    if ((pose == null) == (place == null)) {
+    boolean atAPose = pose != null;
+    boolean atAPlace = place != null;
+    if (atAPose == atAPlace) {
       throw new IllegalArgumentException("a keyframe is at a pose or at a place, not both");
     }
     if (name != null && name.isBlank()) {
@@ -55,8 +57,9 @@ public record Keyframe(@Nullable Pose2d pose, @Nullable Place place, @Nullable S
     if (name != null) {
       return name;
     }
-    return pose != null
-        ? String.format(Locale.ROOT, "(%.2f, %.2f)", pose.getX(), pose.getY())
-        : Objects.requireNonNull(place).name();
+    if (pose != null) {
+      return String.format(Locale.ROOT, "(%.2f, %.2f)", pose.getX(), pose.getY());
+    }
+    return Objects.requireNonNull(place).name();
   }
 }

@@ -7,7 +7,6 @@ import java.util.Objects;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Translation2d;
-import org.wpilib.math.kinematics.ChassisAccelerations;
 import org.wpilib.math.kinematics.ChassisVelocities;
 import org.wpilib.math.trajectory.DrivetrainSplineTrajectoryGenerator;
 import org.wpilib.math.trajectory.DrivetrainSplineTrajectoryParameterizer;
@@ -86,44 +85,52 @@ public final class Trajectories {
       Rotation2d facing,
       Limits limits,
       double step) {
-    TrapezoidProfile along =
-        new TrapezoidProfile(new TrapezoidProfile.Constraints(limits.speed, limits.acceleration));
-    TrapezoidProfile turning =
-        new TrapezoidProfile(
-            new TrapezoidProfile.Constraints(limits.rate, limits.angularAcceleration));
-    Translation2d line = to.minus(start.getTranslation());
-    Rotation2d direction = line.getAngle().orElse(Rotation2d.ZERO);
-    double from = start.getRotation().getRadians();
-    TrapezoidProfile.State leaving =
-        new TrapezoidProfile.State(
-            0, moving.vx * direction.getCos() + moving.vy * direction.getSin());
-    TrapezoidProfile.State turned = new TrapezoidProfile.State(from, moving.omega);
-    TrapezoidProfile.State there = new TrapezoidProfile.State(line.getNorm(), 0);
-    TrapezoidProfile.State faced =
-        new TrapezoidProfile.State(from + facing.minus(start.getRotation()).getRadians(), 0);
+    TrapezoidProfile alongLine = profile(limits.speed, limits.acceleration);
+    TrapezoidProfile turning = profile(limits.rate, limits.angularAcceleration);
+
+    // Along the line, position is the distance gone from the start. The robot sets off at
+    // whatever part of its velocity is already along the line, and arrives still.
+    Translation2d toGoal = to.minus(start.getTranslation());
+    Rotation2d direction = toGoal.getAngle().orElse(Rotation2d.ZERO);
+    double speedAlongLine = moving.vx * direction.getCos() + moving.vy * direction.getSin();
+    TrapezoidProfile.State settingOff = new TrapezoidProfile.State(0, speedAlongLine);
+    TrapezoidProfile.State arrived = new TrapezoidProfile.State(toGoal.getNorm(), 0);
+
+    // The heading is unwrapped: the goal is the start's heading plus the nearer way round to
+    // the heading asked for, so the profile turns that way.
+    double startHeading = start.getRotation().getRadians();
+    double nearerWayRound = facing.minus(start.getRotation()).getRadians();
+    TrapezoidProfile.State turningAtStart = new TrapezoidProfile.State(startHeading, moving.omega);
+    TrapezoidProfile.State facingGoal =
+        new TrapezoidProfile.State(startHeading + nearerWayRound, 0);
+
+    // The path lasts as long as the slower of the two takes.
     double duration =
-        Math.max(along.timeLeftUntil(leaving, there), turning.timeLeftUntil(turned, faced));
-    List<Point> points = new ArrayList<>();
+        Math.max(
+            alongLine.timeLeftUntil(settingOff, arrived),
+            turning.timeLeftUntil(turningAtStart, facingGoal));
     int steps = (int) Math.ceil(duration / step);
-    for (int i = 0; i <= steps; i++) {
-      double t = i * step;
-      TrapezoidProfile.State gone = along.calculate(t, leaving, there);
-      TrapezoidProfile.State facingNow = turning.calculate(t, turned, faced);
-      Translation2d at = start.getTranslation().plus(new Translation2d(gone.position, direction));
-      Translation2d velocity = new Translation2d(gone.velocity, direction);
+    List<PathPoint> points = new ArrayList<>();
+    for (int index = 0; index <= steps; index++) {
+      double time = index * step;
+      TrapezoidProfile.State onLine = alongLine.calculate(time, settingOff, arrived);
+      TrapezoidProfile.State heading = turning.calculate(time, turningAtStart, facingGoal);
+      Translation2d place =
+          start.getTranslation().plus(new Translation2d(onLine.position, direction));
+      Translation2d velocity = new Translation2d(onLine.velocity, direction);
       points.add(
-          new Point(
-              t,
-              at,
-              facingNow.position,
-              new ChassisVelocities(velocity.getX(), velocity.getY(), facingNow.velocity)));
+          new PathPoint(
+              time,
+              place,
+              heading.position,
+              new ChassisVelocities(velocity.getX(), velocity.getY(), heading.velocity)));
     }
-    return new Plan(timed(points), new double[0]);
+    return new Plan(PathPoint.trajectory(points), new double[0]);
   }
 
-  /** A keyframe's pose: the path's keyframes are at poses, a place's already found. */
-  private static Pose2d fixed(Keyframe keyframe) {
-    return Objects.requireNonNull(keyframe.pose(), "a place's keyframe is found before it is used");
+  /** A trapezoid profile that holds a speed and an acceleration to their limits. */
+  private static TrapezoidProfile profile(double topSpeed, double acceleration) {
+    return new TrapezoidProfile(new TrapezoidProfile.Constraints(topSpeed, acceleration));
   }
 
   /**
@@ -145,40 +152,111 @@ public final class Trajectories {
       List<Keyframe> keyframes,
       Limits limits,
       double step) {
-    Translation2d before = start.getTranslation();
+    List<Translation2d> places = placesKeptApart(start, keyframes);
+    List<? extends HolonomicSample> path = splineThrough(start, moving, places, limits);
+    double[] passingTimes = passingTimes(path, places);
+    double[] headings = unwrappedHeadings(start, keyframes);
+
+    TrapezoidProfile turning = profile(limits.rate, limits.angularAcceleration);
+    double startHeading = start.getRotation().getRadians();
+    HeadingAlongPath heading =
+        new HeadingAlongPath(turning, passingTimes, headings, startHeading, moving.omega);
+
+    // The spline's own samples say where the robot is and how it moves. Its heading and turning
+    // rate at each are the heading's own.
+    List<PathPoint> points = new ArrayList<>();
+    for (HolonomicSample sample : path) {
+      TrapezoidProfile.State facing = heading.at(sample.time);
+      points.add(
+          new PathPoint(
+              sample.time,
+              sample.pose.getTranslation(),
+              facing.position,
+              new ChassisVelocities(sample.velocity.vx, sample.velocity.vy, facing.velocity)));
+    }
+
+    // If the robot is still turning when the path ends, it waits at the last keyframe while it
+    // finishes, a sample every step.
+    int last = places.size() - 1;
+    double pathEnds = passingTimes[last];
+    double facesTheLast = heading.whenItFacesTheLast();
+    for (double time = pathEnds + step; time < facesTheLast + step; time += step) {
+      TrapezoidProfile.State facing = heading.at(time);
+      points.add(
+          new PathPoint(
+              time,
+              places.get(last),
+              facing.position,
+              new ChassisVelocities(0, 0, facing.velocity)));
+    }
+    return new Plan(PathPoint.trajectory(points), passingTimes);
+  }
+
+  /**
+   * Where each keyframe is, having made sure that each is far enough from the one before it, and
+   * the first from where the robot starts.
+   *
+   * @throws IllegalArgumentException naming the first keyframe that is too near
+   */
+  private static List<Translation2d> placesKeptApart(Pose2d start, List<Keyframe> keyframes) {
     List<Translation2d> places = new ArrayList<>();
+    Translation2d before = start.getTranslation();
     for (Keyframe keyframe : keyframes) {
-      Translation2d place = fixed(keyframe).getTranslation();
+      Translation2d place = poseOf(keyframe).getTranslation();
       if (place.getDistance(before) < APART_METERS) {
+        String whatIsBefore = "the keyframe before";
+        if (places.isEmpty()) {
+          whatIsBefore = "where the robot starts";
+        }
         throw new IllegalArgumentException(
             String.format(
                 Locale.ROOT,
                 "%s is within %.0f cm of %s",
                 keyframe,
                 APART_METERS * 100,
-                places.isEmpty() ? "where the robot starts" : "the keyframe before"));
+                whatIsBefore));
       }
       places.add(place);
       before = place;
     }
+    return places;
+  }
+
+  /** A keyframe's pose: the path's keyframes are at poses, a place's already found. */
+  private static Pose2d poseOf(Keyframe keyframe) {
+    return Objects.requireNonNull(keyframe.pose(), "a place's keyframe is found before it is used");
+  }
+
+  /**
+   * The timed samples of a spline from where the robot starts through each place in turn, stopping
+   * at the last.
+   *
+   * <p>A spline needs to be told which way it sets off and which way it arrives. It sets off
+   * straight toward the first place, and arrives straight from the place before the last, or from
+   * the start if there is only one. It starts at the part of the robot's speed that is already that
+   * way, but never backward and never above the top speed.
+   *
+   * @throws IllegalArgumentException if WPILib finds no path through them
+   */
+  private static List<? extends HolonomicSample> splineThrough(
+      Pose2d start, ChassisVelocities moving, List<Translation2d> places, Limits limits) {
     int last = places.size() - 1;
-    Rotation2d leaving = places.get(0).minus(start.getTranslation()).getAngle().orElseThrow();
-    Rotation2d arriving =
-        places
-            .get(last)
-            .minus(last == 0 ? start.getTranslation() : places.get(last - 1))
-            .getAngle()
-            .orElseThrow();
-    double already = moving.vx * leaving.getCos() + moving.vy * leaving.getSin();
+    Rotation2d settingOff = places.get(0).minus(start.getTranslation()).getAngle().orElseThrow();
+    Translation2d beforeTheLast = start.getTranslation();
+    if (last > 0) {
+      beforeTheLast = places.get(last - 1);
+    }
+    Rotation2d arriving = places.get(last).minus(beforeTheLast).getAngle().orElseThrow();
+    double speedAlreadyThatWay = moving.vx * settingOff.getCos() + moving.vy * settingOff.getSin();
     TrajectoryConfig config =
         new TrajectoryConfig(limits.speed, limits.acceleration)
             .addConstraint(new CentripetalAccelerationConstraint(limits.acceleration))
-            .setStartVelocity(Math.clamp(already, 0, limits.speed));
+            .setStartVelocity(Math.clamp(speedAlreadyThatWay, 0, limits.speed));
     List<? extends HolonomicSample> path;
     try {
       path =
           DrivetrainSplineTrajectoryGenerator.generate(
-                  new Pose2d(start.getTranslation(), leaving),
+                  new Pose2d(start.getTranslation(), settingOff),
                   places.subList(0, last),
                   new Pose2d(places.get(last), arriving),
                   config)
@@ -189,147 +267,59 @@ public final class Trajectories {
     if (path.size() < 2) {
       throw new IllegalArgumentException("no path through its keyframes");
     }
-
-    double[] passing = new double[places.size()];
-    int from = 0;
-    for (int k = 0; k <= last; k++) {
-      from = passes(path, places.get(k), from);
-      passing[k] = path.get(from).time;
-    }
-    passing[last] = path.get(path.size() - 1).time;
-
-    // Each keyframe's heading, unwrapped: the nearer way round from the one before.
-    double[] faced = new double[places.size()];
-    double was = start.getRotation().getRadians();
-    for (int k = 0; k <= last; k++) {
-      was += fixed(keyframes.get(k)).getRotation().minus(new Rotation2d(was)).getRadians();
-      faced[k] = was;
-    }
-    TrapezoidProfile turning =
-        new TrapezoidProfile(
-            new TrapezoidProfile.Constraints(limits.rate, limits.angularAcceleration));
-    Facing facing = new Facing(turning, passing, faced, start.getRotation().getRadians(), moving);
-    List<Point> points = new ArrayList<>();
-    for (HolonomicSample sample : path) {
-      TrapezoidProfile.State now = facing.at(sample.time);
-      points.add(
-          new Point(
-              sample.time,
-              sample.pose.getTranslation(),
-              now.position,
-              new ChassisVelocities(sample.velocity.vx, sample.velocity.vy, now.velocity)));
-    }
-    double end = passing[last];
-    double faces = facing.facedLast();
-    for (double t = end + step; t < faces + step; t += step) {
-      TrapezoidProfile.State now = facing.at(t);
-      points.add(
-          new Point(t, places.get(last), now.position, new ChassisVelocities(0, 0, now.velocity)));
-    }
-    return new Plan(timed(points), passing);
+    return path;
   }
 
-  /** The index of the first sample from {@code from} at a place, or the nearest after it. */
-  private static int passes(List<? extends HolonomicSample> path, Translation2d place, int from) {
+  /**
+   * For each place, the seconds from the path's start at which the path passes it. The places are
+   * looked for in order, each from the sample where the one before was found. The last place is
+   * where the path ends, so its time is the last sample's.
+   */
+  private static double[] passingTimes(
+      List<? extends HolonomicSample> path, List<Translation2d> places) {
+    double[] passingTimes = new double[places.size()];
+    int sample = 0;
+    for (int index = 0; index < places.size(); index++) {
+      sample = sampleThatPasses(path, places.get(index), sample);
+      passingTimes[index] = path.get(sample).time;
+    }
+    passingTimes[places.size() - 1] = path.get(path.size() - 1).time;
+    return passingTimes;
+  }
+
+  /**
+   * The index of the sample at which a path passes a place: the first sample, from the one given
+   * on, that is within a millimeter of the place, or if none is that near, the nearest of them.
+   */
+  static int sampleThatPasses(List<? extends HolonomicSample> path, Translation2d place, int from) {
     int nearest = from;
-    double best = Double.POSITIVE_INFINITY;
-    for (int i = from; i < path.size(); i++) {
-      double off = path.get(i).pose.getTranslation().getDistance(place);
-      if (off <= PASSES_METERS) {
-        return i;
+    double nearestDistance = Double.POSITIVE_INFINITY;
+    for (int index = from; index < path.size(); index++) {
+      double distance = path.get(index).pose.getTranslation().getDistance(place);
+      if (distance <= PASSES_METERS) {
+        return index;
       }
-      if (off < best) {
-        best = off;
-        nearest = i;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = index;
       }
     }
     return nearest;
   }
 
   /**
-   * The robot's heading along a path through keyframes: a trapezoid profile toward each keyframe's
-   * heading in turn, the next begun once the path has passed a keyframe and the robot has faced it.
+   * Each keyframe's heading in radians, unwrapped: each is the one before it plus the nearer way
+   * round to the keyframe's heading, starting from the robot's heading as the path starts. So a
+   * robot facing 170° that is asked for -170° is given 190°, and turns the 20° that takes.
    */
-  private static final class Facing {
-    private final TrapezoidProfile turning;
-    private final double[] passing;
-    private final double[] faced;
-
-    /** The keyframe it's turning toward, from when, and from what heading and rate. */
-    private int toward;
-
-    private double since;
-    private TrapezoidProfile.State from;
-
-    Facing(
-        TrapezoidProfile turning,
-        double[] passing,
-        double[] faced,
-        double start,
-        ChassisVelocities moving) {
-      this.turning = turning;
-      this.passing = passing;
-      this.faced = faced;
-      from = new TrapezoidProfile.State(start, moving.omega);
+  private static double[] unwrappedHeadings(Pose2d start, List<Keyframe> keyframes) {
+    double[] headings = new double[keyframes.size()];
+    double heading = start.getRotation().getRadians();
+    for (int index = 0; index < keyframes.size(); index++) {
+      Rotation2d asked = poseOf(keyframes.get(index)).getRotation();
+      heading += asked.minus(new Rotation2d(heading)).getRadians();
+      headings[index] = heading;
     }
-
-    /** Its heading and rate at a time, never earlier than the last asked. */
-    TrapezoidProfile.State at(double t) {
-      while (toward < faced.length - 1) {
-        double facedAt = since + turning.timeLeftUntil(from, goal());
-        if (t < passing[toward] || t < facedAt) {
-          break;
-        }
-        since = Math.max(passing[toward], facedAt);
-        from = goal();
-        toward++;
-      }
-      return turning.calculate(t - since, from, goal());
-    }
-
-    /** When it faces the last keyframe's heading, asked once the path has ended. */
-    double facedLast() {
-      double t = passing[passing.length - 1];
-      while (true) {
-        at(t);
-        t = since + turning.timeLeftUntil(from, goal());
-        if (toward == faced.length - 1) {
-          return t;
-        }
-      }
-    }
-
-    private TrapezoidProfile.State goal() {
-      return new TrapezoidProfile.State(faced[toward], 0);
-    }
-  }
-
-  /** A path's point: when, where, which way it faces (unwrapped), and its velocity. */
-  private record Point(
-      double time, Translation2d place, double facing, ChassisVelocities velocity) {}
-
-  /** The points as a trajectory, each acceleration the change to the next: the last none. */
-  private static HolonomicTrajectory timed(List<Point> points) {
-    List<HolonomicSample> samples = new ArrayList<>(points.size());
-    for (int i = 0; i < points.size(); i++) {
-      Point point = points.get(i);
-      ChassisAccelerations change = new ChassisAccelerations();
-      if (i + 1 < points.size()) {
-        Point next = points.get(i + 1);
-        double dt = next.time - point.time;
-        change =
-            new ChassisAccelerations(
-                (next.velocity.vx - point.velocity.vx) / dt,
-                (next.velocity.vy - point.velocity.vy) / dt,
-                (next.velocity.omega - point.velocity.omega) / dt);
-      }
-      samples.add(
-          new HolonomicSample(
-              point.time,
-              new Pose2d(point.place, new Rotation2d(point.facing)),
-              point.velocity,
-              change));
-    }
-    return new HolonomicTrajectory(samples);
+    return headings;
   }
 }
