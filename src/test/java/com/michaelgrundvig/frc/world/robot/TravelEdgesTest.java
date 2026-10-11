@@ -20,7 +20,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 class TravelEdgesTest {
   private static final double TURN = 2 * Math.PI;
 
-  /** How far past a limit a heading may be and still count as on it. */
+  /** How far past a limit a position may be and still count as on it. */
   private static final double HAIR = 1e-9;
 
   /** A turret that can go one whole turn either way from its middle, so two turns in all. */
@@ -82,9 +82,15 @@ class TravelEdgesTest {
   static Stream<Arguments> reachable() {
     return Stream.of(
         row("on the upper limit is reachable", () -> whyUnreachable(RAIL_TRAVEL, 16), Optional.empty()),
-        row("the next position up is not", () -> whyUnreachable(RAIL_TRAVEL, Math.nextUp(16.0)), Optional.of("16 m is outside rail's limits, 0 m to 16 m")),
+        row("a rounding step past it is still on it", () -> whyUnreachable(RAIL_TRAVEL, Math.nextUp(16.0)), Optional.empty()),
+        row("...and is sent to the limit itself", () -> RAIL_TRAVEL.goalNear(Math.nextUp(16.0), 3), 16.0),
+        row("a hair past the upper limit is reachable", () -> whyUnreachable(RAIL_TRAVEL, 16 + HAIR), Optional.empty()),
+        row("the next position up is not", () -> whyUnreachable(RAIL_TRAVEL, Math.nextUp(16 + HAIR)), Optional.of("16 m is outside rail's limits, 0 m to 16 m")),
+        row("a centimeter past it is not, and shows as past it", () -> whyUnreachable(RAIL_TRAVEL, 16.01), Optional.of("16.01 m is outside rail's limits, 0 m to 16 m")),
         row("on the lower limit is reachable", () -> whyUnreachable(RAIL_TRAVEL, 0), Optional.empty()),
-        row("the next position down is not", () -> whyUnreachable(RAIL_TRAVEL, -Double.MIN_VALUE), Optional.of("0 m is outside rail's limits, 0 m to 16 m")),
+        row("a rounding step below it is still on it", () -> whyUnreachable(RAIL_TRAVEL, -Double.MIN_VALUE), Optional.empty()),
+        row("a hair below the lower limit is reachable", () -> whyUnreachable(RAIL_TRAVEL, -HAIR), Optional.empty()),
+        row("the next position down is not", () -> whyUnreachable(RAIL_TRAVEL, Math.nextDown(-HAIR)), Optional.of("0 m is outside rail's limits, 0 m to 16 m")),
         row("a turret reaches a heading a turn away", () -> whyUnreachable(TURRET, TURN + 0.5), Optional.empty()),
         row("a hair past a turret's upper limit is reachable", () -> whyUnreachable(NARROWED, 1 + HAIR), Optional.empty()),
         row("the next heading up is not", () -> whyUnreachable(NARROWED, Math.nextUp(1 + HAIR)), Optional.of("57.3°" + OUTSIDE_NARROWED)),

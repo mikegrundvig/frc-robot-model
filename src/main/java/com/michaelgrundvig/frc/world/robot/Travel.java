@@ -62,11 +62,12 @@ public record Travel(
   private static final double TURN = 2 * Math.PI;
 
   /**
-   * How far short of a whole turn, or past a limit, an angle may be and still count as at it, in
-   * radians. A range written in degrees as a whole turn converts to a floating-point step less than
-   * 2π, and a heading that lies exactly on a limit can convert to a step past it.
+   * How far short of a whole turn, or past a limit, a position may be and still count as at it, in
+   * the joint's units. A range written in degrees as a whole turn converts to a floating-point step
+   * less than 2π, and a position that lies exactly on a limit, given in other units, can convert to
+   * a step past it. It is the hair a range allows its own stops ({@link Range#EDGE}).
    */
-  private static final double EDGE = 1e-9;
+  private static final double EDGE = Range.EDGE;
 
   /** The lowest and highest positions a joint is driven to. Either may be infinite. */
   private record Limits(double lower, double upper) {
@@ -213,14 +214,16 @@ public record Travel(
 
   /**
    * Why the joint cannot be sent to a position, or null when it can. It cannot when the position is
-   * outside its limits. For a turret whose range spans a whole turn or more, the position is a
-   * heading, and it cannot only when every turn of that heading is outside its limits.
+   * outside its limits by more than a hair ({@link #EDGE}): a position a rounding step past a limit
+   * is at the limit, and the joint goes to the limit ({@link #clamp}). For a turret whose range
+   * spans a whole turn or more, the position is a heading, and it cannot only when every turn of
+   * that heading is outside its limits.
    *
    * @param position the position asked for
    * @param from where the joint is
    */
   public @Nullable String whyUnreachable(double position, double from) {
-    boolean insideLimits = position >= lower && position <= upper;
+    boolean insideLimits = position >= lower - EDGE && position <= upper + EDGE;
     if (insideLimits) {
       return null;
     }
