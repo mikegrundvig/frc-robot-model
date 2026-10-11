@@ -13,7 +13,7 @@ import static org.wpilib.units.Units.Seconds;
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
+import java.util.Optional;
 import org.wpilib.units.measure.AngularVelocity;
 import org.wpilib.units.measure.Current;
 import org.wpilib.units.measure.LinearVelocity;
@@ -36,18 +36,20 @@ public record DrivetrainControl(Limits limits, Gains gains) {
   }
 
   /**
-   * Why the top speed asked for is past what this drivetrain can reach, or null when it isn't:
-   * velocity control needs room under the free speed to correct with. The robot's definition checks
-   * it as committed, and the drivetrain's tuning limits end at it as the pit tunes it.
+   * Why the top speed asked for is past what this drivetrain can reach, if it is. Velocity control
+   * needs room under the free speed to correct with. The robot's definition checks the speed as it
+   * is committed, and the range the drivetrain's limits can be tuned over in the pit ends at it.
    */
-  public @Nullable String whyTooFastFor(DrivetrainGeometry drivetrain) {
+  public Optional<String> whyTooFastFor(DrivetrainGeometry drivetrain) {
     LinearVelocity freeSpeed = drivetrain.freeSpeed();
-    return limits.maxLinearSpeed().lte(freeSpeed)
-        ? null
-        : shown(limits.maxLinearSpeed())
+    if (limits.maxLinearSpeed().lte(freeSpeed)) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        shown(limits.maxLinearSpeed())
             + " is faster than the drivetrain's free speed of "
             + shown(freeSpeed)
-            + ": give maxLinearSpeed at most that";
+            + ": give maxLinearSpeed at most that");
   }
 
   /**

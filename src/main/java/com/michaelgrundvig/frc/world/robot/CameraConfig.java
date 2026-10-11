@@ -10,9 +10,9 @@ import static org.wpilib.units.Units.Radians;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rule;
 import java.util.Locale;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
@@ -66,7 +66,7 @@ public record CameraConfig(
   public CameraConfig {
     Checks.on(CameraConfig.class, name)
         .field("name", name, notBlank())
-        .field("name", name, CameraConfig::idTooLong)
+        .field("name", name, Rule.of(CameraConfig::whyIdIsTooLong))
         .field("forward", forward, finite())
         .field("left", left, finite())
         .field("up", up, finite())
@@ -93,26 +93,32 @@ public record CameraConfig(
 
   private static String id(String name) {
     String cleaned = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9._-]+", "-");
-    return cleaned.isEmpty() || !Character.isLetterOrDigit(cleaned.charAt(0))
-        ? "x" + cleaned
-        : cleaned;
+    boolean startsWithALetterOrDigit =
+        !cleaned.isEmpty() && Character.isLetterOrDigit(cleaned.charAt(0));
+    if (startsWithALetterOrDigit) {
+      return cleaned;
+    }
+    return "x" + cleaned;
   }
 
   /**
-   * Why a name is too long as an id, read after the field it's in ({@code CameraConfig[...].name:
-   * is too long as an id ("...", 53 characters; at most 52): shorten it}), or null when it isn't.
+   * Why a name is too long once it is made into an id, if it is. The reason is read after the name
+   * of the field it is in: {@code CameraConfig[...].name: is too long as an id ("...", 53
+   * characters; at most 52): shorten it}.
    */
-  private static @Nullable String idTooLong(String name) {
+  private static Optional<String> whyIdIsTooLong(String name) {
     String id = id(name);
-    return id.length() <= MAX_ID_LENGTH
-        ? null
-        : "is too long as an id (\""
+    if (id.length() <= MAX_ID_LENGTH) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "is too long as an id (\""
             + id
             + "\", "
             + id.length()
             + " characters; at most "
             + MAX_ID_LENGTH
-            + "): shorten it";
+            + "): shorten it");
   }
 
   /** Where the lens sits: from the robot's origin, or from its joint's frame. */

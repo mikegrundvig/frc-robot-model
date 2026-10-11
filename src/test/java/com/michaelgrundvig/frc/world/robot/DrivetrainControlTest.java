@@ -67,9 +67,9 @@ class DrivetrainControlTest {
             .limits(changeLimits().maxLinearSpeed(MetersPerSecond.of(5)).build())
             .build();
 
-    assertThat(control().whyTooFastFor(drivetrain)).isNull();
+    assertThat(control().whyTooFastFor(drivetrain)).isEmpty();
     assertThat(tooFast.whyTooFastFor(drivetrain))
-        .isEqualTo(
+        .contains(
             "5 m/s is faster than the drivetrain's free speed of 4.729 m/s: give maxLinearSpeed at"
                 + " most that");
   }

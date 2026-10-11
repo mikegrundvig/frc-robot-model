@@ -9,6 +9,7 @@ import static org.wpilib.units.Units.Degrees;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rule;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -72,7 +73,7 @@ public sealed interface Sensor permits Sensor.Encoder, Sensor.Placed {
       List<Transmission.Term> read = terms;
       Checks.on(Encoder.class, label)
           .field("label", label, notBlank())
-          .field("terms", terms, Transmission.Combined::notTerms)
+          .field("terms", terms, Rule.of(Transmission.Combined::whyNotASumOfJoints))
           .field("countsPerTurn", countsPerTurn, given(positive()))
           .check(
               "terms",

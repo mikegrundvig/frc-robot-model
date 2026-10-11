@@ -7,12 +7,12 @@ import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rule;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Translation3d;
 import org.wpilib.units.measure.Distance;
 
@@ -121,8 +121,8 @@ public sealed interface Transmission {
     public Combined {
       terms = List.copyOf(terms);
       Checks.on(Combined.class)
-          .field("terms", terms, Combined::notTerms)
-          .field("terms", terms, Combined::notTurned)
+          .field("terms", terms, Rule.of(Combined::whyNotASumOfJoints))
+          .field("terms", terms, Rule.of(Combined::whyAShaftCannotSlideThem))
           .field("efficiency", efficiency, positive())
           .field("efficiency", efficiency, atMost(1.0))
           .orThrow();
@@ -155,40 +155,48 @@ public sealed interface Transmission {
     }
 
     /**
-     * Why terms aren't a sum of joints, or null when they are: one joint at least, each once. An
-     * encoder's terms are checked the same way.
+     * Why terms are not a sum of joints, if they are not: there must be at least one, and no joint
+     * twice. An encoder's terms are checked the same way.
      */
-    static @Nullable String notTerms(List<Term> terms) {
+    static Optional<String> whyNotASumOfJoints(List<Term> terms) {
       if (terms.isEmpty()) {
-        return "needs a joint";
+        return Optional.of("needs a joint");
       }
       Set<String> seen = new HashSet<>();
-      List<String> twice = new ArrayList<>();
+      List<String> namedTwice = new ArrayList<>();
       for (Term term : terms) {
-        if (!seen.add(term.joint().label())) {
-          twice.add(term.joint().label());
+        String label = term.joint().label();
+        boolean alreadyNamed = !seen.add(label);
+        if (alreadyNamed) {
+          namedTwice.add(label);
         }
       }
-      return twice.isEmpty() ? null : "name each joint once, not " + String.join(", ", twice);
+      if (namedTwice.isEmpty()) {
+        return Optional.empty();
+      }
+      return Optional.of("name each joint once, not " + String.join(", ", namedTwice));
     }
 
     /**
-     * Why terms can't be a shaft's, or null when they can: a shaft moves a prismatic joint through
-     * a drum, a sprocket or a pinion, whose pitch radius its term names, as a {@link Drum} does.
+     * Why terms cannot be a shaft's, if they cannot. A shaft moves a sliding joint through a drum,
+     * a sprocket or a pinion, so the term for a sliding joint has to name that part's pitch radius,
+     * as a {@link Drum} does.
      */
-    private static @Nullable String notTurned(List<Term> terms) {
-      List<String> bare = new ArrayList<>();
+    private static Optional<String> whyAShaftCannotSlideThem(List<Term> terms) {
+      List<String> slidingWithNoRadius = new ArrayList<>();
       for (Term term : terms) {
         if (term.joint() instanceof Joint.Prismatic && term.pitchRadius().isEmpty()) {
-          bare.add(term.joint().label());
+          slidingWithNoRadius.add(term.joint().label());
         }
       }
-      return bare.isEmpty()
-          ? null
-          : "a shaft slides "
-              + String.join(", ", bare)
+      if (slidingWithNoRadius.isEmpty()) {
+        return Optional.empty();
+      }
+      return Optional.of(
+          "a shaft slides "
+              + String.join(", ", slidingWithNoRadius)
               + " through a drum, a sprocket or a pinion: name its pitch radius, and the turns"
-              + " for each of its turns";
+              + " for each of its turns");
     }
   }
 
@@ -256,8 +264,8 @@ public sealed interface Transmission {
   record Between(Part a, Translation3d onA, Part b, Translation3d onB) implements Transmission {
     public Between {
       Checks.on(Between.class)
-          .field("onA", onA, Between::notAPoint)
-          .field("onB", onB, Between::notAPoint)
+          .field("onA", onA, Rule.of(Between::whyNotAPoint))
+          .field("onB", onB, Rule.of(Between::whyNotAPoint))
           .check("b", () -> a.equals(b) ? "the ends must be on two different parts" : null)
           .orThrow();
     }
@@ -289,10 +297,12 @@ public sealed interface Transmission {
       throw new IllegalStateException("a line between two parts turns no shaft");
     }
 
-    private static @Nullable String notAPoint(Translation3d point) {
-      return Double.isFinite(point.getX() + point.getY() + point.getZ())
-          ? null
-          : point + " must be a point, numbers all";
+    private static Optional<String> whyNotAPoint(Translation3d point) {
+      // A sum is finite only when every part of it is, so one test covers all three coordinates.
+      if (Double.isFinite(point.getX() + point.getY() + point.getZ())) {
+        return Optional.empty();
+      }
+      return Optional.of(point + " must be a point, numbers all");
     }
   }
 }

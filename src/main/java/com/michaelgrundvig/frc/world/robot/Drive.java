@@ -6,7 +6,6 @@ import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
 import java.util.List;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 import org.wpilib.units.measure.Distance;
 
 /**
@@ -27,7 +26,7 @@ public record Drive(String label, Actuator actuator, Transmission transmission) 
   public Drive {
     Checks.on(Drive.class, label)
         .field("label", label, notBlank())
-        .check("transmission", () -> mismatch(actuator, transmission))
+        .whyNot("transmission", () -> whyTheyDoNotGoTogether(actuator, transmission))
         .orThrow();
   }
 
@@ -67,14 +66,19 @@ public record Drive(String label, Actuator actuator, Transmission transmission) 
     return Transmission.Term.builder().joint(joint).ratio(ratio).pitchRadius(pitchRadius).build();
   }
 
-  /** Why an actuator can't go through a transmission, or null when it can. */
-  private static @Nullable String mismatch(Actuator actuator, Transmission transmission) {
-    boolean line = transmission instanceof Transmission.Between;
-    return switch (actuator) {
-      case Actuator.Motors motors when line ->
+  /**
+   * Why an actuator cannot drive through a transmission, if it cannot. Motors turn a shaft, so they
+   * cannot push along a line between two parts as a cylinder or a spring does.
+   */
+  private static Optional<String> whyTheyDoNotGoTogether(
+      Actuator actuator, Transmission transmission) {
+    boolean isMotors = actuator instanceof Actuator.Motors;
+    boolean isALine = transmission instanceof Transmission.Between;
+    if (isMotors && isALine) {
+      return Optional.of(
           "motors turn a shaft: give them a gearing, a drum, or a combination of joints, not a"
-              + " line between parts";
-      default -> null;
-    };
+              + " line between parts");
+    }
+    return Optional.empty();
   }
 }

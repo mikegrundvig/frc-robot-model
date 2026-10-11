@@ -157,9 +157,9 @@ class DrivetrainGeometryTest {
     // The frame is 28 in long and 24 in wide: a 12 in inset meets in the middle side to side.
     DrivetrainGeometry wide = DrivetrainGeometry.uniform(modules(), Inches.of(11), Inches.of(13));
 
-    assertThat(wide.whyWheelsDontFit(body()))
+    assertThat(wide.whyWheelsDontFit(body()).orElseThrow())
         .contains("wheels outside the frame (28 in by 24 in): front-left's");
-    assertThat(drivetrain().whyWheelsDontFit(body())).isNull();
+    assertThat(drivetrain().whyWheelsDontFit(body())).isEmpty();
     assertRejected(
         "DrivetrainGeometry.corners",
         () -> DrivetrainGeometry.inset(modules(), body(), Inches.of(12)));
@@ -185,17 +185,20 @@ class DrivetrainGeometryTest {
 
     assertThat(
             DrivetrainGeometry.uniform(modules(), Meters.of(halfLength), Meters.of(0.2))
-                .whyWheelsDontFit(body()))
+                .whyWheelsDontFit(body())
+                .orElseThrow())
         .as("on the front edge")
         .startsWith(outside);
     assertThat(
             DrivetrainGeometry.uniform(modules(), Meters.of(0.2), Meters.of(halfWidth))
-                .whyWheelsDontFit(body()))
+                .whyWheelsDontFit(body())
+                .orElseThrow())
         .as("on the side edge")
         .startsWith(outside);
     assertThat(
             DrivetrainGeometry.uniform(modules(), Meters.of(halfLength * 1.2), Meters.of(0.2))
-                .whyWheelsDontFit(body()))
+                .whyWheelsDontFit(body())
+                .orElseThrow())
         .as("past half its length, inside all of it")
         .startsWith(outside);
     assertThat(
@@ -203,7 +206,7 @@ class DrivetrainGeometryTest {
                     modules(), Meters.of(halfLength - 0.01), Meters.of(halfWidth - 0.01))
                 .whyWheelsDontFit(body()))
         .as("just inside both")
-        .isNull();
+        .isEmpty();
   }
 
   /**

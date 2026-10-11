@@ -11,6 +11,7 @@ import static org.wpilib.units.Units.MetersPerSecond;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rule;
 import com.michaelgrundvig.frc.world.physical.Inertia;
 import com.michaelgrundvig.frc.world.physical.MassProperties;
 import com.michaelgrundvig.frc.world.physical.Vector3;
@@ -63,9 +64,9 @@ public record DrivetrainGeometry(
     List<Corner> all = corners;
     Optional<SwerveWiring> wired = wiring;
     Checks.on(DrivetrainGeometry.class)
-        .field("corners", corners, DrivetrainGeometry::notFourCorners)
-        .check("corners", () -> all.size() == 4 ? misplaced(all) : null)
-        .check("wiring", () -> wired.map(each -> unwirable(all, each)).orElse(null))
+        .field("corners", corners, Rule.of(DrivetrainGeometry::whyNotFourCorners))
+        .whyNot("corners", () -> whyCornersAreMisplaced(all))
+        .whyNot("wiring", () -> wired.flatMap(each -> whyItCannotBeWired(all, each)))
         .orThrow();
   }
 
@@ -475,102 +476,160 @@ public record DrivetrainGeometry(
   }
 
   /**
-   * Why the wheels don't fit this body's frame, or null when they do: each wheel's center inside
-   * the outside of the frame.
+   * Why the wheels do not fit a body's frame, if they do not: the center of each wheel has to be
+   * inside the outline of the frame.
    */
-  public @Nullable String whyWheelsDontFit(Body body) {
+  public Optional<String> whyWheelsDontFit(Body body) {
     double halfLength = body.frameLength().in(Meters) / 2;
     double halfWidth = body.frameWidth().in(Meters) / 2;
     List<String> outside = new ArrayList<>();
-    for (int i = 0; i < corners.size(); i++) {
-      Translation2d at = corners.get(i).position();
-      if (!(Math.abs(at.getX()) < halfLength && Math.abs(at.getY()) < halfWidth)) {
-        outside.add(LABELS.get(i) + "'s, at " + at);
+    for (int corner = 0; corner < corners.size(); corner++) {
+      Translation2d wheel = corners.get(corner).position();
+      boolean insideTheFrame =
+          Math.abs(wheel.getX()) < halfLength && Math.abs(wheel.getY()) < halfWidth;
+      if (!insideTheFrame) {
+        outside.add(LABELS.get(corner) + "'s, at " + wheel);
       }
     }
-    return outside.isEmpty()
-        ? null
-        : "wheels outside the frame ("
+    if (outside.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "wheels outside the frame ("
             + shown(body.frameLength())
             + " by "
             + shown(body.frameWidth())
             + "): "
-            + String.join(", ", outside);
+            + String.join(", ", outside));
   }
 
-  private static @Nullable String notFourCorners(List<Corner> corners) {
-    return corners.size() == 4
-        ? null
-        : "needs four, front left, front right, back left and back right, not " + corners.size();
+  private static Optional<String> whyNotFourCorners(List<Corner> corners) {
+    if (corners.size() == 4) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "needs four, front left, front right, back left and back right, not " + corners.size());
   }
 
   /**
-   * Why a wiring can't drive these modules, or null when it can: a controller that doesn't drive
-   * its motor (a NEO on a TalonFX, say), as a joint's block refuses, or SPARKs on a CANivore, where
-   * a SPARK can't be.
+   * Why a wiring cannot drive these modules, if it cannot. Each module's motors must be on a kind
+   * of controller that drives them (a NEO is not driven by a TalonFX), which a joint's block
+   * refuses in the same way. And SPARKs cannot be on a CANivore. Each reason is given once however
+   * many corners it is true of.
    */
-  private static @Nullable String unwirable(List<Corner> corners, SwerveWiring wiring) {
-    Set<String> problems = new LinkedHashSet<>();
+  private static Optional<String> whyItCannotBeWired(List<Corner> corners, SwerveWiring wiring) {
+    Set<String> reasons = new LinkedHashSet<>();
     for (Corner corner : corners) {
       ModuleType module = corner.module();
-      String drive = onController("drive", module.driveMotor(), wiring.driveController());
-      String steering = onController("steering", module.steerMotor(), wiring.steerController());
-      if (drive != null) {
-        problems.add(drive);
-      }
-      if (steering != null) {
-        problems.add(steering);
-      }
+      whyNotOnController("drive", module.driveMotor(), wiring.driveController())
+          .ifPresent(reasons::add);
+      whyNotOnController("steering", module.steerMotor(), wiring.steerController())
+          .ifPresent(reasons::add);
     }
-    boolean sparks =
+    boolean hasSparks =
         wiring.driveController() != MechanismWiring.Controller.TALON_FX
             || wiring.steerController() != MechanismWiring.Controller.TALON_FX;
-    if (sparks && !(wiring.canBus() instanceof CanBus.Port)) {
-      problems.add("its SPARKs are on a CANivore: a SPARK is on Systemcore's own CAN");
+    boolean onSystemcoresOwnCan = wiring.canBus() instanceof CanBus.Port;
+    if (hasSparks && !onSystemcoresOwnCan) {
+      reasons.add("its SPARKs are on a CANivore: a SPARK is on Systemcore's own CAN");
     }
-    return problems.isEmpty() ? null : String.join("; ", problems);
+    if (reasons.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(String.join("; ", reasons));
   }
 
-  /** Why a module's motor can't be on a controller, saying which can; null when it can. */
-  private static @Nullable String onController(
+  /**
+   * Why a module's motor cannot be on a kind of controller, if it cannot. The reason lists the
+   * kinds that do drive the motor.
+   *
+   * @param which which of the module's motors it is, as the message says it: "drive" or "steering"
+   */
+  private static Optional<String> whyNotOnController(
       String which, Motor motor, MechanismWiring.Controller controller) {
     if (controller.drives(motor)) {
-      return null;
+      return Optional.empty();
     }
-    List<String> could = new ArrayList<>();
+    List<String> couldDriveIt = new ArrayList<>();
     for (MechanismWiring.Controller each : MechanismWiring.Controller.values()) {
       if (each.drives(motor)) {
-        could.add(each.shown());
+        couldDriveIt.add(each.shown());
       }
     }
-    return "its "
-        + which
-        + "'s "
-        + motor.name()
-        + " is on "
-        + controller.shown()
-        + ", which doesn't drive one: "
-        + String.join(" or ", could)
-        + " does";
+    return Optional.of(
+        "its "
+            + which
+            + "'s "
+            + motor.name()
+            + " is on "
+            + controller.shown()
+            + ", which doesn't drive one: "
+            + String.join(" or ", couldDriveIt)
+            + " does");
   }
 
-  /** The corners not in their own quarter of the robot, or null if each is. */
-  private static @Nullable String misplaced(List<Corner> corners) {
-    double[][] signs = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+  /**
+   * The four quarters of the robot, in the order its corners are listed. A corner's position has x
+   * forward of the robot's center and y to its left.
+   */
+  private enum Quarter {
+    FRONT_LEFT("ahead of", "left"),
+    FRONT_RIGHT("ahead of", "right"),
+    BACK_LEFT("behind", "left"),
+    BACK_RIGHT("behind", "right");
+
+    /** Where the quarter is along the robot, as a message says it: "ahead of" the center. */
+    private final String aheadOrBehind;
+
+    /** Which side of the center the quarter is on, as a message says it. */
+    private final String leftOrRight;
+
+    Quarter(String aheadOrBehind, String leftOrRight) {
+      this.aheadOrBehind = aheadOrBehind;
+      this.leftOrRight = leftOrRight;
+    }
+
+    /** Whether a position is inside this quarter. One on either center line is in none. */
+    boolean holds(Translation2d position) {
+      boolean ahead = position.getX() > 0;
+      boolean behind = position.getX() < 0;
+      boolean left = position.getY() > 0;
+      boolean right = position.getY() < 0;
+      return switch (this) {
+        case FRONT_LEFT -> ahead && left;
+        case FRONT_RIGHT -> ahead && right;
+        case BACK_LEFT -> behind && left;
+        case BACK_RIGHT -> behind && right;
+      };
+    }
+  }
+
+  /**
+   * Why corners are not where their place in the list says, if any is not: the first in the front
+   * left quarter of the robot, then front right, back left and back right. A list that is not four
+   * corners long is refused for that instead.
+   */
+  private static Optional<String> whyCornersAreMisplaced(List<Corner> corners) {
+    if (corners.size() != 4) {
+      return Optional.empty();
+    }
     List<String> misplaced = new ArrayList<>();
-    for (int i = 0; i < 4; i++) {
-      Translation2d at = corners.get(i).position();
-      if (!(at.getX() * signs[i][0] > 0 && at.getY() * signs[i][1] > 0)) {
+    for (Quarter quarter : Quarter.values()) {
+      Translation2d position = corners.get(quarter.ordinal()).position();
+      if (!quarter.holds(position)) {
         misplaced.add(
-            LABELS.get(i)
+            LABELS.get(quarter.ordinal())
                 + " must be "
-                + (signs[i][0] > 0 ? "ahead of" : "behind")
+                + quarter.aheadOrBehind
                 + " the center and "
-                + (signs[i][1] > 0 ? "left" : "right")
+                + quarter.leftOrRight
                 + " of it, not at "
-                + at);
+                + position);
       }
     }
-    return misplaced.isEmpty() ? null : String.join("; ", misplaced);
+    if (misplaced.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(String.join("; ", misplaced));
   }
 }

@@ -6,13 +6,12 @@ import static org.wpilib.units.Units.Rotations;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rule;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 import org.wpilib.units.measure.Angle;
 
 /**
@@ -50,10 +49,10 @@ public record SwerveWiring(
         .field("gyroId", gyroId, between(0, 62)) // a CAN ID
         .field("gyroYawScale", gyroYawScale, between(0.9, 1.1)) // off by more is a broken gyro
         .field("modules", modules, size(4))
-        .field("driveController", driveController, SwerveWiring::notSwerve)
-        .field("steerController", steerController, SwerveWiring::notSwerve)
-        .check("modules", () -> encoders(steerController, wired))
-        .check("modules", () -> sharedIds(driveController, steerController, wired))
+        .field("driveController", driveController, Rule.of(SwerveWiring::whyItRunsNoModule))
+        .field("steerController", steerController, Rule.of(SwerveWiring::whyItRunsNoModule))
+        .whyNot("modules", () -> whyEncodersDoNotFit(steerController, wired))
+        .whyNot("modules", () -> whyIdsAreShared(driveController, steerController, wired))
         .orThrow();
   }
 
@@ -152,60 +151,67 @@ public record SwerveWiring(
     }
   }
 
-  /** Why a controller can't run a swerve module yet, or null when it can. */
-  private static @Nullable String notSwerve(MechanismWiring.Controller controller) {
-    return controller == MechanismWiring.Controller.TALON_FXS
-        ? "a TalonFXS doesn't run a swerve module in the template yet"
-        : null;
+  /** Why a kind of controller cannot run a swerve module yet, if it cannot. */
+  private static Optional<String> whyItRunsNoModule(MechanismWiring.Controller controller) {
+    if (controller == MechanismWiring.Controller.TALON_FXS) {
+      return Optional.of("a TalonFXS doesn't run a swerve module in the template yet");
+    }
+    return Optional.empty();
   }
 
   /**
-   * Why the modules' encoders don't fit their steering, or null when they do: a TalonFX steers by a
-   * CANcoder; a SPARK by the encoder on its data port, with no CANcoder.
+   * Why the modules' absolute encoders do not fit what steers them, if they do not. A TalonFX
+   * steers by a CANcoder, so every module names one. A SPARK steers by the encoder on its own data
+   * port, so no module names a CANcoder.
    */
-  private static @Nullable String encoders(
+  private static Optional<String> whyEncodersDoNotFit(
       MechanismWiring.Controller steer, List<ModuleWiring> modules) {
-    boolean spark = steer != MechanismWiring.Controller.TALON_FX;
+    boolean steersByACancoder = steer == MechanismWiring.Controller.TALON_FX;
     for (ModuleWiring module : modules) {
-      if (spark && module.encoderId().isPresent()) {
-        return "a SPARK steers by the absolute encoder on its data port, so its module names no"
-            + " CANcoder";
+      boolean namesACancoder = module.encoderId().isPresent();
+      if (!steersByACancoder && namesACancoder) {
+        return Optional.of(
+            "a SPARK steers by the absolute encoder on its data port, so its module names no"
+                + " CANcoder");
       }
-      if (!spark && module.encoderId().isEmpty()) {
-        return "a TalonFX steers by a CANcoder: give each module its CANcoder's ID";
+      if (steersByACancoder && !namesACancoder) {
+        return Optional.of("a TalonFX steers by a CANcoder: give each module its CANcoder's ID");
       }
     }
-    return null;
+    return Optional.empty();
   }
 
   /**
-   * Which CAN IDs two devices of one kind share, or null if none do: two TalonFXs, two SPARKs, or
-   * two CANcoders. Devices of different kinds may share an ID.
+   * Which CAN IDs two devices of one kind share, if any do: two TalonFXs, two SPARKs, or two
+   * CANcoders. Devices of different kinds may share an ID.
    */
-  private static @Nullable String sharedIds(
+  private static Optional<String> whyIdsAreShared(
       MechanismWiring.Controller drive,
       MechanismWiring.Controller steer,
       List<ModuleWiring> modules) {
     Set<String> seen = new HashSet<>();
     List<String> shared = new ArrayList<>();
     for (ModuleWiring module : modules) {
-      for (var device :
-          List.of(
-              Map.entry(drive.kind(), module.driveId()),
-              Map.entry(steer.kind(), module.steerId()))) {
-        if (!seen.add(device.getKey() + " " + device.getValue())) {
-          shared.add("CAN ID " + device.getValue() + " is used by two " + device.getKey() + "s");
-        }
-      }
-      module
-          .encoderId()
-          .ifPresent(
-              id -> {
-                if (!seen.add("CANcoder " + id)) {
-                  shared.add("CAN ID " + id + " is used by two CANcoders");
-                }
-              });
+      addIfShared(drive.kind().toString(), module.driveId(), seen, shared);
+      addIfShared(steer.kind().toString(), module.steerId(), seen, shared);
+      module.encoderId().ifPresent(id -> addIfShared("CANcoder", id, seen, shared));
     }
-    return shared.isEmpty() ? null : String.join("; ", shared);
+    if (shared.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(String.join("; ", shared));
+  }
+
+  /**
+   * Notes one device, and adds a problem if another of its kind already has its ID.
+   *
+   * @param kind what kind of device it is, as the message says it: "TalonFX"
+   * @param seen every kind and ID noted so far
+   */
+  private static void addIfShared(String kind, int id, Set<String> seen, List<String> shared) {
+    boolean alreadyUsed = !seen.add(kind + " " + id);
+    if (alreadyUsed) {
+      shared.add("CAN ID " + id + " is used by two " + kind + "s");
+    }
   }
 }

@@ -11,7 +11,6 @@ import com.michaelgrundvig.frc.world.config.ConfigRecord;
 import com.michaelgrundvig.frc.world.physical.Inertia;
 import com.michaelgrundvig.frc.world.physical.MassProperties;
 import java.util.Optional;
-import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Translation3d;
 import org.wpilib.units.measure.Distance;
 import org.wpilib.units.measure.Mass;
@@ -71,25 +70,32 @@ public record Body(
         .field("bumperSides", bumperSides, positive())
         .field("bumperBottom", bumperBottom, nonNegative())
         .field("bumperTop", bumperTop, positive())
-        .check(
-            "bumperTop",
-            () ->
-                bumperTop.gt(bumperBottom) && bumperTop.lte(height)
-                    ? null
-                    : shown(bumperTop)
-                        + " must be above the bumpers' bottom ("
-                        + shown(bumperBottom)
-                        + ") and no higher than the robot ("
-                        + shown(height)
-                        + ")")
-        .check(
+        .whyNot("bumperTop", () -> whyBumperTopIsMisplaced(bumperTop, bumperBottom, height))
+        .whyNot(
             "inertia",
             () ->
                 whyNotABody(
                     inertia, box(weight, frameLength, frameWidth, height, bumperEnds, bumperSides)))
-        .check(
-            "cg", () -> cg.isPresent() ? outside(cg.get(), frameLength, frameWidth, height) : null)
+        .whyNot("cg", () -> cg.flatMap(given -> whyOutside(given, frameLength, frameWidth, height)))
         .orThrow();
+  }
+
+  /**
+   * Why the top of the bumpers is not where it can be, if it is not: above their bottom, and no
+   * higher than the robot.
+   */
+  private static Optional<String> whyBumperTopIsMisplaced(
+      Distance bumperTop, Distance bumperBottom, Distance height) {
+    if (bumperTop.gt(bumperBottom) && bumperTop.lte(height)) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        shown(bumperTop)
+            + " must be above the bumpers' bottom ("
+            + shown(bumperBottom)
+            + ") and no higher than the robot ("
+            + shown(height)
+            + ")");
   }
 
   /**
@@ -151,29 +157,42 @@ public record Body(
   }
 
   /**
-   * Why a robot's inertia can't be a body's, or null when it can: a given tensor that turns too
-   * easily about some axis, or a given yaw the box's pitch and roll can't stand beside, each of the
-   * three at most the sum of the other two. Never adjusted: give the whole tensor instead.
+   * Why a robot's inertia cannot be a body's, if it cannot. A tensor that was given must be a
+   * solid's. A yaw that was given stands beside the box's roll and pitch, and the three must be
+   * able to belong to one body ({@link #whyYawDoesNotFitTheBox}). Nothing is ever adjusted to fit:
+   * the answer to a yaw that does not fit is to give the whole tensor.
    */
-  private static @Nullable String whyNotABody(Turning inertia, Inertia box) {
+  private static Optional<String> whyNotABody(Turning inertia, Inertia box) {
     return switch (inertia) {
-      case Turning.Tensor tensor -> tensor.inertia().whyNotSolid();
-      case Turning.Yaw yaw -> {
-        double izz = yaw.yaw().in(KilogramSquareMeters);
-        yield izz <= box.ixx() + box.iyy()
-                && box.ixx() <= box.iyy() + izz
-                && box.iyy() <= box.ixx() + izz
-            ? null
-            : "a yaw of "
-                + shown(izz)
-                + " kg m² can't stand beside the box's roll and pitch, "
-                + shown(box.ixx())
-                + " and "
-                + shown(box.iyy())
-                + " kg m²: each must be at most the sum of the other two. Give the whole tensor";
-      }
-      case Turning.Box nothing -> null;
+      case Turning.Tensor tensor -> Optional.ofNullable(tensor.inertia().whyNotSolid());
+      case Turning.Yaw yaw -> whyYawDoesNotFitTheBox(yaw.yaw().in(KilogramSquareMeters), box);
+      case Turning.Box nothing -> Optional.empty();
     };
+  }
+
+  /**
+   * Why a yaw inertia cannot stand beside a box's roll and pitch, if it cannot. A body's three
+   * principal moments of inertia obey the triangle inequality: each is at most the sum of the other
+   * two.
+   *
+   * @param yaw the inertia about the vertical axis, in kg·m²
+   */
+  private static Optional<String> whyYawDoesNotFitTheBox(double yaw, Inertia box) {
+    double roll = box.ixx();
+    double pitch = box.iyy();
+    boolean eachIsAtMostTheOtherTwo =
+        yaw <= roll + pitch && roll <= pitch + yaw && pitch <= roll + yaw;
+    if (eachIsAtMostTheOtherTwo) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "a yaw of "
+            + shown(yaw)
+            + " kg m² can't stand beside the box's roll and pitch, "
+            + shown(roll)
+            + " and "
+            + shown(pitch)
+            + " kg m²: each must be at most the sum of the other two. Give the whole tensor");
   }
 
   /** A solid box of the robot's mass, as long and wide as its bumpers and as tall as it is. */
@@ -190,18 +209,24 @@ public record Body(
             frameLength.plus(bumperEnds.times(2)), frameWidth.plus(bumperSides.times(2)), height));
   }
 
-  /** Why a center of mass isn't inside the frame and under its top, or null when it is. */
-  private static @Nullable String outside(
+  /**
+   * Why a center of mass is not somewhere a robot's can be, if it is not: inside the frame, above
+   * the floor and below the robot's height.
+   */
+  private static Optional<String> whyOutside(
       Translation3d cg, Distance frameLength, Distance frameWidth, Distance height) {
-    return Math.abs(cg.getX()) <= frameLength.in(Meters) / 2
-            && Math.abs(cg.getY()) <= frameWidth.in(Meters) / 2
-            && cg.getZ() > 0
-            && cg.getZ() < height.in(Meters)
-        ? null
-        : cg
+    boolean insideTheFrame =
+        Math.abs(cg.getX()) <= frameLength.in(Meters) / 2
+            && Math.abs(cg.getY()) <= frameWidth.in(Meters) / 2;
+    boolean betweenFloorAndTop = cg.getZ() > 0 && cg.getZ() < height.in(Meters);
+    if (insideTheFrame && betweenFloorAndTop) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        cg
             + " must be inside the frame, above the floor and below the robot's height ("
             + shown(height)
-            + ")";
+            + ")");
   }
 
   /**

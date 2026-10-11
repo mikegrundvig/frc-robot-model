@@ -4,8 +4,9 @@ import static com.michaelgrundvig.frc.world.config.Rules.finite;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.config.Rule;
 import java.util.List;
-import org.jspecify.annotations.Nullable;
+import java.util.Optional;
 import org.wpilib.math.geometry.Translation2d;
 
 /**
@@ -45,7 +46,7 @@ public sealed interface Coupling permits Coupling.Linear, Coupling.Curve {
       Checks.on(Linear.class, follower.label())
           .field("ratio", ratio, finite())
           .field("offset", offset, finite())
-          .check("follower", () -> notItself(leader, follower))
+          .whyNot("follower", () -> whyItFollowsItself(leader, follower))
           .orThrow();
     }
 
@@ -80,8 +81,8 @@ public sealed interface Coupling permits Coupling.Linear, Coupling.Curve {
     public Curve {
       table = List.copyOf(table);
       Checks.on(Curve.class, follower.label())
-          .field("table", table, Curve::notACurve)
-          .check("follower", () -> notItself(leader, follower))
+          .field("table", table, Rule.of(Curve::whyNotACurve))
+          .whyNot("follower", () -> whyItFollowsItself(leader, follower))
           .orThrow();
     }
 
@@ -119,26 +120,36 @@ public sealed interface Coupling permits Coupling.Linear, Coupling.Curve {
       return 0;
     }
 
-    private static @Nullable String notACurve(List<Translation2d> table) {
+    /**
+     * Why a table is not a curve, if it is not: it needs at least two points, each a pair of
+     * numbers, with the leader's position rising from each point to the next.
+     */
+    private static Optional<String> whyNotACurve(List<Translation2d> table) {
       if (table.size() < 2) {
-        return "needs two points or more, not " + table.size();
+        return Optional.of("needs two points or more, not " + table.size());
       }
-      for (int i = 0; i < table.size(); i++) {
-        Translation2d point = table.get(i);
+      for (int index = 0; index < table.size(); index++) {
+        Translation2d point = table.get(index);
+        // A sum is finite only when both its parts are, so one test covers both coordinates.
         if (!Double.isFinite(point.getX() + point.getY())) {
-          return "point " + i + " isn't a number: " + point;
+          return Optional.of("point " + index + " isn't a number: " + point);
         }
-        if (i > 0 && !(point.getX() > table.get(i - 1).getX())) {
-          return "the leader's positions must rise from point to point, and point "
-              + i
-              + "'s doesn't";
+        boolean risesFromThePointBefore = index == 0 || point.getX() > table.get(index - 1).getX();
+        if (!risesFromThePointBefore) {
+          return Optional.of(
+              "the leader's positions must rise from point to point, and point "
+                  + index
+                  + "'s doesn't");
         }
       }
-      return null;
+      return Optional.empty();
     }
   }
 
-  private static @Nullable String notItself(Joint leader, Joint follower) {
-    return leader.equals(follower) ? "a joint can't follow itself" : null;
+  private static Optional<String> whyItFollowsItself(Joint leader, Joint follower) {
+    if (leader.equals(follower)) {
+      return Optional.of("a joint can't follow itself");
+    }
+    return Optional.empty();
   }
 }
