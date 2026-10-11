@@ -64,15 +64,15 @@ class TravelTest {
 
   private static final RobotDefinition ROBOT = StandardRobot.robotOf(PIVOT, ELEVATOR, TURRET);
 
-  private static final RobotDefinition WIDE_ROBOT = StandardRobot.robotOf(PIVOT, WIDE);
-
   private static MechanismControl control(Joint joint) {
     return joint.driven().control().orElseThrow();
   }
 
   private static Travel travel(Joint joint) {
-    RobotDefinition robot = joint.equals(WIDE) ? WIDE_ROBOT : ROBOT;
-    return Travel.of(robot.math(), joint, control(joint));
+    if (joint.equals(PIVOT) || joint.equals(ELEVATOR) || joint.equals(TURRET)) {
+      return Travel.of(ROBOT.math(), joint, control(joint));
+    }
+    return Travel.of(StandardRobot.robotOf(PIVOT, joint).math(), joint, control(joint));
   }
 
   /** A robot's loop, 50 Hz: the robot program's to say. */
@@ -141,13 +141,34 @@ class TravelTest {
   }
 
   /**
+   * A range counts as a whole turn from a hair short of one, since a whole turn written in degrees
+   * converts to a floating-point step under 2π. The next range narrower does not.
+   */
+  @Test
+  void aRangeAHairShortOfATurnStillSpansOne() {
+    double hairShortOfATurn = 2 * Math.PI - 1e-9;
+
+    assertThat(travel(turretSpanning(hairShortOfATurn)).choosesTurn()).isTrue();
+    assertThat(travel(turretSpanning(Math.nextDown(hairShortOfATurn))).choosesTurn()).isFalse();
+  }
+
+  /** The turret with stops this far apart, in radians, from 0 up. */
+  private static Joint.Revolute turretSpanning(double width) {
+    Range range = Range.builder().kind(Position.Kind.ANGLE).lower(0).upper(width).build();
+    return JointRevoluteBuilder.builder(TURRET).range(range).build();
+  }
+
+  /**
    * Soft limits narrower than a turn leave headings with no turn inside: one is refused, saying so,
    * and taken at the limit nearer it either way round.
    */
   @Test
   void aHeadingWithNoTurnInsideIsRefusedAndHeldAtTheNearerLimit() {
     Travel soft =
-        Travel.of(WIDE_ROBOT.math(), WIDE, control(WIDE).withSoftLimits(Range.degrees(-190, 160)));
+        Travel.of(
+            StandardRobot.robotOf(PIVOT, WIDE).math(),
+            WIDE,
+            control(WIDE).withSoftLimits(Range.degrees(-190, 160)));
 
     assertThat(soft.turnNear(radians(163), 0)).isCloseTo(radians(160), within(1e-12));
     assertThat(soft.turnNear(radians(-193), 0)).isCloseTo(radians(-190), within(1e-12));
