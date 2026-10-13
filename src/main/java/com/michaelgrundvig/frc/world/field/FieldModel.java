@@ -199,6 +199,31 @@ public final class FieldModel {
     ElementChecks.require(this, field.shared);
   }
 
+  /** A field like another in everything but what stands on it. */
+  private FieldModel(FieldModel like, List<Element> elements) {
+    name = like.name;
+    length = like.length;
+    width = like.width;
+    symmetry = like.symmetry;
+    tags = like.tags;
+    partners = like.partners;
+    starts = like.starts;
+    places = like.places;
+    zones = like.zones;
+    terrain = like.terrain;
+    outline = like.outline;
+    this.elements = elements;
+  }
+
+  /**
+   * This field with nothing standing on it: the same tags, places, zones and terrain, and no
+   * elements. For what wants the field's floor to itself, such as a test that drives a robot across
+   * it without minding where the hub is.
+   */
+  public FieldModel withoutElements() {
+    return new FieldModel(this, List.of());
+  }
+
   /** The layout's name, such as "2026 FRC Rebuilt Welded". */
   public String name() {
     return name;

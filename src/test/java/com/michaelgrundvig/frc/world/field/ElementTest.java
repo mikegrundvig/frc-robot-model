@@ -84,6 +84,10 @@ class ElementTest {
         .satisfies(body -> assertThat(body.centroid().getDistance(xy(11.5, 4))).isLessThan(1e-9));
     assertThat(model.outline().corners()).containsExactly(xy(0, 0), xy(16, 0), xy(16, 8), xy(0, 8));
     assertThat(TestFields.FIELD.elements()).as("a field with none written").isEmpty();
+    FieldModel bare = model.withoutElements();
+    assertThat(bare.elements()).as("the same field, with nothing standing on it").isEmpty();
+    assertThat(bare.tags()).isEqualTo(model.tags());
+    assertThat(bare.outline()).isEqualTo(model.outline());
   }
 
   static Stream<Arguments> refusals() {

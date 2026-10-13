@@ -26,4 +26,12 @@ public record Game(
   public FieldModel officialField() {
     return model.apply(TagLayout.of(official));
   }
+
+  /**
+   * This game with nothing standing on its field, whichever layout it is built on ({@link
+   * FieldModel#withoutElements}): for a test that drives a robot across the floor.
+   */
+  public Game withoutElements() {
+    return new Game(official, variants, symmetry, model.andThen(FieldModel::withoutElements));
+  }
 }

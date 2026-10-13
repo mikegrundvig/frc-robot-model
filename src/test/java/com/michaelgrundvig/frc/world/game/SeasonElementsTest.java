@@ -88,7 +88,7 @@ class SeasonElementsTest {
     // A block low enough to drive over would be terrain: every element stands above the bumpers.
     double bumperTop = BODY.bumperTop().in(Meters);
     assertThat(field.elements())
-        .allSatisfy(e -> assertThat(e.heightMeters()).isGreaterThan(bumperTop));
+        .allSatisfy(element -> assertThat(element.heightMeters()).isGreaterThan(bumperTop));
   }
 
   /** A robot on any start, for either alliance, is clear of everything its bumpers could hit. */
