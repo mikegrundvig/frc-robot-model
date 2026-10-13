@@ -19,7 +19,9 @@ class ArchitectureTest {
    * games ({@code game}: a season's limits, which read the robot's definition, and its field, which
    * reads the field, the physical values and the robot's body) read what they describe, and neither
    * the paths nor the games are read by the field, the robot or the other; the writers for other
-   * tools ({@code bridges}) read all of it, and nothing reads them.
+   * tools ({@code bridges}) read all of it, and nothing reads them; the record of what a robot did
+   * ({@code record}) reads the robot's definition, to say a fact in the robot's own names, and
+   * nothing here reads it.
    */
   @Test
   void theModelsPackagesStayApart() {
@@ -39,19 +41,23 @@ class ArchitectureTest {
         .definedBy("com.michaelgrundvig.frc.world.game..")
         .layer("bridges")
         .definedBy("com.michaelgrundvig.frc.world.bridges..")
+        .layer("record")
+        .definedBy("com.michaelgrundvig.frc.world.record..")
         .whereLayer("kit")
-        .mayOnlyBeAccessedByLayers("physical", "field", "robot", "game", "bridges")
+        .mayOnlyBeAccessedByLayers("physical", "field", "robot", "game", "bridges", "record")
         .whereLayer("physical")
         .mayOnlyBeAccessedByLayers("field", "robot", "game", "bridges")
         .whereLayer("field")
         .mayOnlyBeAccessedByLayers("path", "game", "bridges")
         .whereLayer("robot")
-        .mayOnlyBeAccessedByLayers("game", "bridges")
+        .mayOnlyBeAccessedByLayers("game", "bridges", "record")
         .whereLayer("path")
         .mayOnlyBeAccessedByLayers("bridges")
         .whereLayer("game")
         .mayOnlyBeAccessedByLayers("bridges")
         .whereLayer("bridges")
+        .mayNotBeAccessedByAnyLayer()
+        .whereLayer("record")
         .mayNotBeAccessedByAnyLayer()
         .because(
             "a field that knew the robot, or a robot the field, would change whenever the other did;"

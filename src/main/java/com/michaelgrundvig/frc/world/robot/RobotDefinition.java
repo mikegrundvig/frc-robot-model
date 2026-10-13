@@ -488,6 +488,14 @@ public record RobotDefinition(
     return List.of();
   }
 
+  /**
+   * Every sensor: each joint's own, from its block, then the robot's list. A record of what the
+   * robot did names a sensor by where it is in this list.
+   */
+  public List<Sensor> everySensor() {
+    return everySensor(joints, sensors);
+  }
+
   /** Each joint's own sensors, then the robot's. */
   private static List<Sensor> everySensor(List<Joint> joints, List<Sensor> sensors) {
     List<Sensor> every = new ArrayList<>();
