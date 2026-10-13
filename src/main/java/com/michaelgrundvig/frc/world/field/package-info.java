@@ -1,7 +1,7 @@
 /**
  * The field model: the field's size, AprilTags, and symmetry, the places and zones robot code
- * refers to by name, the raised ground robots drive over, and the one conversion between the
- * alliances.
+ * refers to by name, the raised ground robots drive over, the elements that stand on it, and the
+ * one conversion between the alliances.
  *
  * <p>Frames, written down once:
  *
@@ -28,6 +28,12 @@
  * <p>The ground is the floor, raised where a {@link com.michaelgrundvig.frc.world.field.Surface}
  * is: a bump, a ramp, a platform, or a mesh from CAD, each described exactly twice over, as heights
  * and as triangles.
+ *
+ * <p>What a robot runs into is an {@link com.michaelgrundvig.frc.world.field.Element}: a hub, a
+ * tower, a wall's face, made of upright {@link com.michaelgrundvig.frc.world.field.Block}s. It
+ * answers what it covers seen from above, how tall it is, and what of it is in the way at a given
+ * height, so a simulator, a view and a path ask the same thing. The walls around the field are the
+ * field's own outline ({@link com.michaelgrundvig.frc.world.field.FieldModel#outline}).
  */
 @NullMarked
 package com.michaelgrundvig.frc.world.field;

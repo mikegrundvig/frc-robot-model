@@ -16,19 +16,26 @@ import org.wpilib.math.geometry.Translation2d;
 
 /**
  * One season's field: its size, AprilTags, and symmetry, the start positions, places, and zones
- * robot code refers to, and the terrain robots drive over. Built once at startup ({@link #builder})
- * from the field's tags (WPILib's official layout, or a venue's survey of it) and never changed
- * after. Everything is checked against the tags as the model is built, so a wrong tag number fails
- * at startup, and first in the tests.
+ * robot code refers to, the terrain robots drive over, and the elements that stand on it. Built
+ * once at startup ({@link #builder}) from the field's tags (WPILib's official layout, or a venue's
+ * survey of it) and never changed after. Everything is checked against the tags as the model is
+ * built, so a wrong tag number fails at startup, and first in the tests.
  *
  * <p>Everything is written for the blue alliance, and {@link #forAlliance} is the one conversion to
  * red (see the package documentation). Tags pair with their partners on the other half by their
  * official poses, which the symmetry turns ({@link TagPartners}); where a survey found them never
  * changes which tag plays which part.
  *
- * <p>The model names the two copies of a surface written for blue's half "(blue)" and "(red)": for
- * the half each is on, not for whose it is. Whose something is lives on the places and zones robot
- * code asks about ({@link Zone#ours}), which say it whichever half they're on.
+ * <p>The model names the two copies of what's written for blue's half, a surface or an element,
+ * "(blue)" and "(red)": for the half each is on, not for whose it is. A 2024 source stands by the
+ * opposing alliance's wall, so "Source (blue)" is the red alliance's. Whose something is lives on
+ * the places and zones robot code asks about ({@link Zone#ours}), which say it whichever half
+ * they're on. What stands across the center line, on both halves at once (2025's barge), is written
+ * once, whole ({@link Builder#shared}): it isn't mirrored, and keeps its name.
+ *
+ * <p>The walls around the field are the field's own {@link #outline}, not elements: no season
+ * writes them, they carry no tags of their own, and nothing mirrors them. What's built into a wall
+ * (a speaker, a pocket, an outpost's face) is an element like any other.
  */
 public final class FieldModel {
   private final String name;
@@ -41,9 +48,11 @@ public final class FieldModel {
   private final List<Place> places;
   private final List<Zone> zones;
   private final Terrain terrain;
+  private final List<Element> elements;
+  private final Polygon2d outline;
 
   /**
-   * A field on a WPILib layout, its tags as it gives them, with no terrain.
+   * A field on a WPILib layout, its tags as it gives them, with no terrain or elements.
    *
    * @param layout the field's size and AprilTags; the model keeps its own copy
    * @param symmetry how red's half relates to blue's
@@ -99,6 +108,8 @@ public final class FieldModel {
     private List<Place> places = List.of();
     private List<Zone> zones = List.of();
     private List<? extends Surface> surfaces = List.of();
+    private List<Element> elements = List.of();
+    private List<Element> shared = List.of();
 
     private Builder(TagLayout layout, Symmetry symmetry) {
       this.layout = layout;
@@ -134,11 +145,32 @@ public final class FieldModel {
     }
 
     /**
+     * What stands on the blue alliance's half, carrying the tags on it, whichever alliance's it is:
+     * the model adds each one's partner on red's half, carrying the partners of its tags, and names
+     * them "(blue)" and "(red)" for the half each stands on.
+     */
+    public Builder elements(List<Element> elements) {
+      this.elements = List.copyOf(elements);
+      return this;
+    }
+
+    /**
+     * What stands across the center line, both halves' at once, such as 2025's barge: each written
+     * once, whole, and its own image under the field's symmetry, which the model checks. It may
+     * carry tags on both halves, each with its partner, and keeps its name as it's given.
+     */
+    public Builder shared(List<Element> shared) {
+      this.shared = List.copyOf(shared);
+      return this;
+    }
+
+    /**
      * The field, checked.
      *
      * @throws IllegalArgumentException if anything doesn't fit the tags or the field (a tag that
-     *     isn't in it, or has no partner on the other half; a surface or zone off the field), or
-     *     two share a name
+     *     isn't in it, or has no partner on the other half; a surface or zone off the field; an
+     *     element's block wholly off it; a shared element that isn't its own image), or two share a
+     *     name
      */
     public FieldModel build() {
       return new FieldModel(this);
@@ -161,7 +193,10 @@ public final class FieldModel {
     places = field.places;
     zones = field.zones;
     terrain = Terrain.onBothHalves(field.surfaces, symmetry, length, width);
+    outline = Polygon2d.rectangle(Translation2d.ZERO, new Translation2d(length, width));
+    elements = Elements.onBothHalves(field.elements, field.shared, this);
     FieldChecks.require(this);
+    ElementChecks.require(this, field.shared);
   }
 
   /** The layout's name, such as "2026 FRC Rebuilt Welded". */
@@ -222,6 +257,24 @@ public final class FieldModel {
   /** The raised ground robots drive over, on both halves of the field. */
   public Terrain terrain() {
     return terrain;
+  }
+
+  /**
+   * What stands on the field, on both halves, each carrying its tags: named "(blue)" or "(red)" for
+   * the half it stands on, and what's shared across the center line, under its own name. Robots run
+   * into them; what robots drive over is the {@link #terrain}.
+   */
+  public List<Element> elements() {
+    return elements;
+  }
+
+  /**
+   * The inside faces of the walls around the field, seen from above: the layout's rectangle,
+   * counterclockwise from the corner at the field's origin. A robot stays inside it, as it stays
+   * outside each element's {@link Element#footprint}.
+   */
+  public Polygon2d outline() {
+    return outline;
   }
 
   /**

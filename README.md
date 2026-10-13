@@ -12,7 +12,7 @@ It's unreleased: there are no versions yet, and anything may change.
 | Package (`com.michaelgrundvig.frc.world`) | Holds |
 |---|---|
 | `robot` | The robot's definition: its body, drivetrain, joints and what drives them, sensors, cameras and IMUs, and the rules between them (interlocks, conditions, named places and outputs); and what a joint's definition means for a program, as functions of plain values (where it is driven, what its interlocks allow it each loop, how far its encoder and motor may disagree, which limits its controller reads). |
-| `field` | The field: its tags, the places and zones code names, headings, starts, terrain, and a venue's measured layout. |
+| `field` | The field: its tags, the places and zones code names, headings, starts, terrain, the elements that stand on it, and a venue's measured layout. |
 | `physical` | What both are made of: mass and inertia, shapes and materials. |
 | `config` | The validation kit every record is built and checked with. A definition that can't work is refused as it's built, saying why; one that's doubtful says so. |
 | `path` | Timed paths for a drivetrain: keyframes at poses or the field's places, and the trajectories planned through them or along a line under the limits they're given. |
@@ -41,6 +41,44 @@ static final Joint.Revolute ROLLER =
 
 That's `src/test/java/com/michaelgrundvig/frc/world/examples/ExampleJoints.java`, which the build
 compiles and the Javadoc shows.
+
+## What stands on a field
+
+A field has two kinds of structure, and a thing is one or the other. What a robot drives over is
+terrain: a bump, a ramp, a platform, a low plate. What a robot runs into is an element: a hub, a
+tower, a trench's column, a speaker built into the wall. An element is made of upright blocks, each
+an outline seen from above standing from one height to another, and it carries the AprilTags that
+hang on it.
+
+A season's field writes what stands on blue's half, and the model adds red's:
+
+```java
+static List<Element> elements() {
+  Polygon2d hub =
+      Polygon2d.rectangle(new Pose2d(HUB_X, WIDTH / 2, Rotation2d.ZERO), HUB_SIZE, HUB_SIZE);
+  return List.of(
+      Element.standing("Hub", hub, HUB_HEIGHT, STRUCTURE, 18, 19, 20, 21, 24, 25, 26, 27),
+      trench("Right trench", 0, TRENCH_OPENING, BUMP_EDGE, 17, 28));
+}
+
+FieldModel.builder(layout, SYMMETRY).surfaces(surfaces()).elements(elements()).build();
+```
+
+The field then has "Hub (blue)" and "Hub (red)", the second carrying the partners of the first's
+tags. Something across the center line, such as 2025's barge, is written once with `shared`. As the
+field is built it refuses an element whose tag isn't in the layout or doesn't hang on it, a block
+wholly off the field, and a shared element that isn't its own image.
+
+Whatever reads an element asks it, and works nothing out again: `footprint()` is what it covers seen
+from above, `heightMeters()` how tall it is, and `inTheWayOf(lowest, highest)` the outlines of what
+something between two heights runs into, so a robot's bumpers meet a trench's column and not the
+bar it drives under. The walls around the field are the field's own `outline()`, not elements. None
+of it needs the simulator: a path that must go around a hub reads the same footprints.
+
+A block stands straight up. What slopes or leans (a subwoofer's inclined panels, a reef's angled
+branches, a stage's chains) is left out, and each season's field says what it left out. Elements
+are nominal geometry from the manual: a venue's file surveys tags, not elements, just as it doesn't
+survey terrain.
 
 `docs-processor/` is an annotation processor that goes with it. As a project compiles, it writes
 each configuration record's Javadoc into the jar, so a tool can show what a value means in the

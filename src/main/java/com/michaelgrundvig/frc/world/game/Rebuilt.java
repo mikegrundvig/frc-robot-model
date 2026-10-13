@@ -1,11 +1,14 @@
 package com.michaelgrundvig.frc.world.game;
 
+import static com.michaelgrundvig.frc.world.game.FieldShapes.box;
 import static com.michaelgrundvig.frc.world.game.Manuals.IN;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.Pounds;
 
+import com.michaelgrundvig.frc.world.field.Block;
 import com.michaelgrundvig.frc.world.field.Bump;
+import com.michaelgrundvig.frc.world.field.Element;
 import com.michaelgrundvig.frc.world.field.FieldModel;
 import com.michaelgrundvig.frc.world.field.Place;
 import com.michaelgrundvig.frc.world.field.Platform;
@@ -16,6 +19,7 @@ import com.michaelgrundvig.frc.world.field.Zone;
 import com.michaelgrundvig.frc.world.physical.Material;
 import com.michaelgrundvig.frc.world.physical.Polygon2d;
 import com.michaelgrundvig.frc.world.robot.Body;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.wpilib.fields.Field;
@@ -33,6 +37,9 @@ import org.wpilib.math.geometry.Translation2d;
  * measured at an event moves them for both alliances. Sizes come from the game manual's section 5,
  * and where things stand from WPILib's 2026 tag layout. The two exceptions say so where they're
  * used: the tower's uprights and the depot, which no tag marks, are placed from maple-sim's arena.
+ *
+ * <p>What robots run into is an element ({@link #elements}), and what they drive over is terrain
+ * ({@link #surfaces}).
  *
  * <p>Every figure here is the manual's nominal one. The official drawings hold the tolerances, and
  * a venue's survey holds where an event's tags really are.
@@ -93,6 +100,11 @@ public final class Rebuilt {
   /** The hub's footprint: 47 in square (5.4). */
   static final double HUB_SIZE = 47.0 * IN;
 
+  /**
+   * The front edge of the hub's opening, 72 in up (5.4). The funnel and net above it aren't drawn.
+   */
+  static final double HUB_HEIGHT = 72.0 * IN;
+
   // Each bump, beside the hub: 73.0 in wide, 44.4 in deep, and 6.513 in tall, a ridge with 15°
   // ramps down toward both zones, its crest on the hub's center line (5.5).
   static final double BUMP_WIDTH = 1.854;
@@ -106,6 +118,18 @@ public final class Rebuilt {
   static final double TRENCH_DEPTH = 1.194;
 
   static final double TRENCH_OPENING = 1.279;
+
+  /** A trench's height: 40.25 in (5.6). */
+  static final double TRENCH_HEIGHT = 40.25 * IN;
+
+  /** The clear space under a trench's arm: 22.25 in tall (5.6). */
+  static final double TRENCH_CLEARANCE = 22.25 * IN;
+
+  /**
+   * The arm's crossbar, front to back: between the faces its two tags hang on (17 and 28, at x
+   * 4.588 and 4.663). The rest of the arm's frame isn't in the manual, so it isn't drawn.
+   */
+  static final double TRENCH_BAR_DEPTH = 0.075;
 
   /** The bump on the drivers' left of their hub, between it and the trench. */
   public static final Bump LEFT_BUMP =
@@ -137,6 +161,71 @@ public final class Rebuilt {
 
   static final double BASE_DEPTH = 45.18 * IN;
   static final double BASE_HEIGHT = 0.25 * IN;
+
+  /**
+   * How far the uprights' middles stand out from the alliance wall: 41.8 in, from maple-sim's arena
+   * ({@code Arena2026Rebuilt} at 1b1e8ea), which no tag or manual figure gives. Their field faces
+   * land 43.5 in out, where the tower spot's test puts the tower's face.
+   */
+  static final double UPRIGHT_X = 1.062;
+
+  /** Each upright: a sheet metal box 3.5 in deep and 1.5 in thick, 72.1 in tall above the base. */
+  static final double UPRIGHT_DEPTH = 3.5 * IN;
+
+  static final double UPRIGHT_THICKNESS = 1.5 * IN;
+  static final double UPRIGHT_HEIGHT = 72.1 * IN;
+
+  /** The clear gap between the uprights. */
+  static final double UPRIGHT_GAP = 32.25 * IN;
+
+  /** The rungs' centers off the floor: low, mid and high, 18 in apart. */
+  static final List<Double> RUNG_HEIGHTS = List.of(27.0 * IN, 45.0 * IN, 63.0 * IN);
+
+  /**
+   * A rung: 1-1/4 in Sch 40 pipe, 1.66 in across, reaching 5.875 in past each upright. A block
+   * can't be round, so each is drawn as a square bar that far across.
+   */
+  static final double RUNG_DIAMETER = 1.66 * IN;
+
+  static final double RUNG_OVERHANG = 5.875 * IN;
+
+  /**
+   * The braces from each upright back to the tower wall, about 28.40 to 43.38 in off the floor. The
+   * manual gives only that span, so each is drawn as a solid block an upright thick.
+   */
+  static final double BRACE_BOTTOM = 28.40 * IN;
+
+  static final double BRACE_TOP = 43.38 * IN;
+
+  /**
+   * The tower as a whole: 49.25 in wide and 78.25 in tall. Its wall, which the manual counts as
+   * part of it and its tags (31 and 32) hang on, is drawn that wide and tall: the manual gives no
+   * size for the wall alone.
+   */
+  static final double TOWER_WIDTH = 49.25 * IN;
+
+  static final double TOWER_HEIGHT = 78.25 * IN;
+
+  /**
+   * The face of the alliance wall where its tags hang, the tower's and the outpost's: 0.008 m in
+   * from the field's edge, as WPILib's layout puts tags 29 to 32. Each part of the wall is drawn
+   * from the field's edge to this face; what's behind it no robot reaches.
+   */
+  static final double WALL_FACE_X = 0.008;
+
+  // ---- The outpost, in the alliance wall by the guardrail (5.3) ----
+
+  /**
+   * How far across the field the outpost reaches from the guardrail: the outpost area's 71.0 in,
+   * which it bounds on the field's side (5.3). The manual gives no width for the outpost itself.
+   */
+  static final double OUTPOST_WIDTH = 71.0 * IN;
+
+  /**
+   * The top of the outpost's upper opening: its bottom 28.1 in up, and 7.0 in tall. The outpost is
+   * drawn up to there: how much higher it stands isn't in the manual's text.
+   */
+  static final double OUTPOST_HEIGHT = (28.1 + 7.0) * IN;
 
   // ---- The depot, along the alliance wall (5.7) ----
 
@@ -225,6 +314,103 @@ public final class Rebuilt {
             depotRight + BARRIER_WIDTH,
             BARRIER_HEIGHT,
             STEEL));
+  }
+
+  /**
+   * What stands on blue's half, and robots run into: the hub, the trenches, the tower, and the
+   * outpost. The bumps, the tower's base plate and the depot's barriers are driven over, so they
+   * are terrain ({@link #surfaces}), not elements.
+   */
+  static List<Element> elements() {
+    Polygon2d hub =
+        Polygon2d.rectangle(new Pose2d(HUB_X, WIDTH / 2, Rotation2d.ZERO), HUB_SIZE, HUB_SIZE);
+    return List.of(
+        Element.standing("Hub", hub, HUB_HEIGHT, STRUCTURE, 18, 19, 20, 21, 24, 25, 26, 27),
+        trench("Right trench", 0, TRENCH_OPENING, BUMP_EDGE, 17, 28),
+        trench("Left trench", WIDTH, WIDTH - TRENCH_OPENING, WIDTH - BUMP_EDGE, 22, 23),
+        tower(),
+        outpost());
+  }
+
+  /**
+   * A trench: its column, full height, between the opening and the bump; and its arm's crossbar,
+   * carrying the tags, over the opening from the clearance up.
+   *
+   * @param guardrail where the opening starts across the field
+   * @param opening where it ends, at the column
+   * @param bump where the column meets the bump
+   */
+  private static Element trench(
+      String name, double guardrail, double opening, double bump, Integer... tags) {
+    double front = HUB_X - TRENCH_DEPTH / 2;
+    double back = HUB_X + TRENCH_DEPTH / 2;
+    Block column = box(front, back, opening, bump, 0, TRENCH_HEIGHT, STRUCTURE);
+    Block crossbar =
+        box(
+            HUB_X - TRENCH_BAR_DEPTH / 2,
+            HUB_X + TRENCH_BAR_DEPTH / 2,
+            guardrail,
+            opening,
+            TRENCH_CLEARANCE,
+            TRENCH_HEIGHT,
+            STRUCTURE);
+    return new Element(name, List.of(column, crossbar), List.of(tags));
+  }
+
+  /**
+   * The outpost, from the guardrail along the alliance wall, carrying its tags (29 and 30). Drawn
+   * as its face in the wall: its openings, the chute's and the corral's, aren't cut out of it.
+   */
+  private static Element outpost() {
+    Block face = box(0, WALL_FACE_X, 0, OUTPOST_WIDTH, 0, OUTPOST_HEIGHT, STRUCTURE);
+    return new Element("Outpost", List.of(face), List.of(29, 30));
+  }
+
+  /**
+   * The tower: its wall, carrying its tags (31 and 32); two uprights on its base, a brace from each
+   * back to the wall; and three rungs across them.
+   */
+  private static Element tower() {
+    List<Block> blocks = new ArrayList<>();
+    blocks.add(
+        box(
+            0,
+            WALL_FACE_X,
+            TOWER_Y - TOWER_WIDTH / 2,
+            TOWER_Y + TOWER_WIDTH / 2,
+            0,
+            TOWER_HEIGHT,
+            STRUCTURE));
+    double uprightFront = UPRIGHT_X + UPRIGHT_DEPTH / 2;
+    double uprightBack = UPRIGHT_X - UPRIGHT_DEPTH / 2;
+    double fromTowersMiddle = UPRIGHT_GAP / 2 + UPRIGHT_THICKNESS / 2;
+    for (double y : new double[] {TOWER_Y - fromTowersMiddle, TOWER_Y + fromTowersMiddle}) {
+      double rightSide = y - UPRIGHT_THICKNESS / 2;
+      double leftSide = y + UPRIGHT_THICKNESS / 2;
+      blocks.add(
+          box(
+              uprightBack,
+              uprightFront,
+              rightSide,
+              leftSide,
+              BASE_HEIGHT,
+              BASE_HEIGHT + UPRIGHT_HEIGHT,
+              STEEL));
+      blocks.add(box(0, uprightBack, rightSide, leftSide, BRACE_BOTTOM, BRACE_TOP, STEEL));
+    }
+    double rungLength = UPRIGHT_GAP + 2 * UPRIGHT_THICKNESS + 2 * RUNG_OVERHANG;
+    for (double height : RUNG_HEIGHTS) {
+      blocks.add(
+          box(
+              UPRIGHT_X - RUNG_DIAMETER / 2,
+              UPRIGHT_X + RUNG_DIAMETER / 2,
+              TOWER_Y - rungLength / 2,
+              TOWER_Y + rungLength / 2,
+              height - RUNG_DIAMETER / 2,
+              height + RUNG_DIAMETER / 2,
+              STEEL));
+    }
+    return new Element("Tower", blocks, List.of(31, 32));
   }
 
   /**
@@ -317,6 +503,7 @@ public final class Rebuilt {
         .places(List.of(HUB, TOWER))
         .zones(List.of(ALLIANCE_ZONE, TRENCH))
         .surfaces(surfaces())
+        .elements(elements())
         .build();
   }
 }
