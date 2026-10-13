@@ -7,9 +7,11 @@ import static org.wpilib.units.Units.Kilograms;
 
 import com.michaelgrundvig.frc.world.config.Finding;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.OptionalDouble;
 
 /**
  * What a robot's definition does not know: the values nobody has measured or written yet. None of
@@ -26,6 +28,9 @@ import java.util.Optional;
 final class MissingNotes {
   /** Below this, in newton meters or newtons, a joint's links are taken to give it no gravity. */
   private static final double NO_GRAVITY = 1e-12;
+
+  /** Below this, in seconds, a time is told in milliseconds. */
+  private static final double TENTH_OF_A_SECOND = 0.1;
 
   private final RobotDefinition robot;
   private final RobotMath math;
@@ -235,11 +240,66 @@ final class MissingNotes {
     if (heldAgainstGravity) {
       gravityComesFromKg = possessive(joint.label()) + " gravity comes from its kG, and ";
     }
+    String rotorsSpinItUp = "";
+    if (!hasInertia) {
+      rotorsSpinItUp = rotorsSpinItUp(joint);
+    }
     note(
         joint.label(),
         what,
-        gravityComesFromKg + link.label() + addsToInertia + possessive(joint.label()) + " inertia",
+        gravityComesFromKg
+            + link.label()
+            + addsToInertia
+            + possessive(joint.label())
+            + " inertia"
+            + rotorsSpinItUp,
         Finding.Scope.SIMULATOR);
+  }
+
+  /**
+   * What a joint with no mass gets from nothing but its motors' rotors, if it only runs at speeds:
+   * how long they take to bring it to its fastest named speed, at their stator limit ({@link
+   * RobotMath#secondsFromRestAtStatorLimit}). The simulator has it there that fast, which hides a
+   * move that waited too little for it. Nothing for a joint held at positions, one whose outputs
+   * name no speed, or one whose time can't be worked out.
+   */
+  private String rotorsSpinItUp(Joint joint) {
+    if (joint.holdsPositions()) {
+      return "";
+    }
+    Optional<Output> fastest =
+        joint.outputs().stream()
+            .filter(output -> output.kind() == Output.Kind.VELOCITY)
+            .max(Comparator.comparingDouble(output -> Math.abs(output.value())));
+    if (fastest.isEmpty()) {
+      return "";
+    }
+    Output speed = fastest.get();
+    OptionalDouble seconds = math.secondsFromRestAtStatorLimit(joint, speed.value());
+    if (seconds.isEmpty()) {
+      return "";
+    }
+    return ", so its rotors alone bring it to "
+        + speed.name()
+        + ", "
+        + joint.shownSpeed(speed.value())
+        + ", in "
+        + shownTime(seconds.getAsDouble());
+  }
+
+  /**
+   * A time as a note says it, as an estimate: whole milliseconds below a tenth of a second,
+   * otherwise tenths of a second.
+   */
+  private static String shownTime(double seconds) {
+    if (seconds < TENTH_OF_A_SECOND) {
+      long milliseconds = Math.round(seconds * 1000);
+      if (milliseconds == 0) {
+        return "under a millisecond";
+      }
+      return "about " + milliseconds + " ms";
+    }
+    return "about " + shown(Math.round(seconds * 10) / 10.0) + " s";
   }
 
   /** Whether anything moves a joint: a coupling that leads it, or a drive that turns it. */

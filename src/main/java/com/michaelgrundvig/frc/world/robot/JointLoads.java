@@ -258,6 +258,27 @@ final class JointLoads {
   }
 
   /**
+   * What the motors that move a joint push it with for each ampere through each of them, with the
+   * joints at rest: for each motor, its torque constant through the gearing, less what the gearing
+   * loses. Newton meters, or newtons for a slide, for each ampere. Zero where no motors move the
+   * joint.
+   */
+  double pushPerAmp(int number) {
+    double[] atRest = tree.positions(Map.of());
+    double[] rates = tree.rates(number, atRest);
+    double pushPerAmp = 0;
+    for (Drive drive : motorsThatMove(rates)) {
+      Actuator.Motors motors = (Actuator.Motors) drive.actuator();
+      DCMotor together = motors.model();
+      double torqueConstant = together.stallTorque / together.stallCurrent;
+      double efficiency = drive.transmission().efficiency();
+      pushPerAmp +=
+          motors.count() * torqueConstant * Math.abs(shaftRate(drive, rates)) * efficiency;
+    }
+    return pushPerAmp;
+  }
+
+  /**
    * A joint's ideal feedforward gains, from the motors that move it, with every joint where it
    * rests.
    *

@@ -1,5 +1,6 @@
 package com.michaelgrundvig.frc.world.robot;
 
+import static org.wpilib.units.Units.Amps;
 import static org.wpilib.units.Units.Kilograms;
 import static org.wpilib.units.Units.Meters;
 
@@ -12,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalDouble;
 import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Transform3d;
@@ -470,6 +472,35 @@ public final class RobotMath {
    */
   public double inertia(Joint joint, Map<Joint, Double> positions) {
     return loads.inertia(tree.numberOfIndependent(joint), tree.positions(positions));
+  }
+
+  /**
+   * About how long the joint's motors take to bring it from rest to a speed, held at their stator
+   * current limit the whole way: the joint's inertia with every joint where it rests, times the
+   * speed, over the push the motors give at that limit, each motor's limit times its torque
+   * constant, through the gearing and less what the gearing loses. That is {@code inertia * speed /
+   * (amperes * push per ampere)}.
+   *
+   * <p>It is an estimate that leaves out what slows a real joint: the back-EMF, which cuts the
+   * current as the speed nears the motors' free speed, so the real time is longer, most of all near
+   * it; friction; gravity; and the supply limit and the battery's sag.
+   *
+   * @param speed in the joint's units a second: radians, or meters
+   * @return seconds, or empty where the joint has no control, so no stator limit, where it follows
+   *     another joint, or where no motors move it
+   */
+  public OptionalDouble secondsFromRestAtStatorLimit(Joint joint, double speed) {
+    if (leaderOf(joint) != null || joint.driven().control().isEmpty()) {
+      return OptionalDouble.empty();
+    }
+    int number = tree.numberOfIndependent(joint);
+    double amps = joint.driven().control().get().currentLimits().stator().in(Amps);
+    double push = loads.pushPerAmp(number) * amps;
+    if (!(push > 0)) {
+      return OptionalDouble.empty();
+    }
+    double inertia = loads.inertia(number, tree.positions(Map.of()));
+    return OptionalDouble.of(inertia * Math.abs(speed) / push);
   }
 
   /**
