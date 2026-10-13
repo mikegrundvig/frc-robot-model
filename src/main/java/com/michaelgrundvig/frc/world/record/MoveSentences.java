@@ -221,10 +221,7 @@ public final class MoveSentences {
               + possessive(reasonJoint(definition, move).label())
               + " position stopped being a number: check its encoder and its motor controller's"
               + " settings";
-      case JOINT_NOT_ANSWERING ->
-          cannotGoOn(move)
-              + reasonJoint(definition, move).label()
-              + " isn't answering: its motor controllers are silent";
+      case JOINT_NOT_ANSWERING -> cannotGoOn(move) + notAnswering(reasonJoint(definition, move));
       case JOINT_FAULTED -> cannotGoOn(move) + why;
       case GATE_FALSE,
           GATE_FELL,
@@ -235,6 +232,14 @@ public final class MoveSentences {
           PATH_NOT_PLANNED ->
           why;
     };
+  }
+
+  /**
+   * What is said of a joint whose motor controllers are silent, which refuses every move on it:
+   * "pivot isn't answering: its motor controllers are silent".
+   */
+  public static String notAnswering(Joint joint) {
+    return joint.label() + " isn't answering: its motor controllers are silent";
   }
 
   /**

@@ -13,7 +13,11 @@ public enum DriveMoveTask {
   /** Drives at a velocity until a condition holds. */
   RUN_UNTIL,
   /** Drives from the driver's sticks until it is interrupted. */
-  WITH_THE_STICKS;
+  WITH_THE_STICKS,
+  /**
+   * Drives from the driver's sticks while the drivetrain holds a heading, until it is interrupted.
+   */
+  FACING_A_HEADING;
 
   /** Whether the move follows a planned path to its end, and so says where it got to. */
   public boolean followsAPath() {

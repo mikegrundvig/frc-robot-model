@@ -27,6 +27,8 @@ class ControlSentencesTest {
     assertThat(ControlSentences.gateTerm(ROBOT, "ready to shoot", GateTerm.settling(), TEXT))
         .isEqualTo("ready to shoot settling");
     assertThat(term(GateTerm.Kind.THREW, 1)).isEqualTo("ready to shoot threw: no target");
+    assertThat(ControlSentences.settling("aimed")).isEqualTo("aimed settling");
+    assertThat(ControlSentences.threw("aimed", "no target")).isEqualTo("aimed threw: no target");
   }
 
   @Test
@@ -45,6 +47,25 @@ class ControlSentencesTest {
         .isEqualTo("operator right trigger: while held: Intake");
     assertThat(ControlSentences.binding("driver", "back", BindingStart.ON_PRESS, "Reset heading"))
         .isEqualTo("driver back: on press: Reset heading");
+  }
+
+  /** A fired binding is facts alone: nothing in it is text, so AdvantageKit can log it. */
+  @Test
+  void aFiredBindingSaysWhichBindingOnWhichControlAndHowItStarts() {
+    BindingFired onAButton =
+        new BindingFired(2, 1, BindingFired.Control.BUTTON, 7, BindingStart.ON_PRESS);
+    BindingFired onATrigger =
+        new BindingFired(
+            0, 1, BindingFired.Control.RIGHT_TRIGGER, Identity.NONE, BindingStart.WHILE_HELD);
+
+    assertThat(onAButton.binding()).isEqualTo(2);
+    assertThat(onAButton.port()).isEqualTo(1);
+    assertThat(Identity.isSome(onAButton.button())).isTrue();
+    assertThat(Identity.isSome(onATrigger.button())).as("a trigger is no button").isFalse();
+    assertThat(onATrigger.start().startsOnPress()).isTrue();
+    assertThat(BindingFired.class.getRecordComponents())
+        .extracting(component -> component.getType().getSimpleName())
+        .doesNotContain("String");
   }
 
   @Test

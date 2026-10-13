@@ -81,8 +81,23 @@ public record JointState(Standing standing, Toward toward, double secondsAllowed
     return new JointState(Standing.HOMING, toward, secondsAllowed, Fault.NONE);
   }
 
-  /** A joint faulted for a reason. */
+  /**
+   * A joint faulted for a reason. Each reason has one state, made once, so asking for it in a loop
+   * makes nothing.
+   */
   public static JointState faulted(Fault fault) {
-    return new JointState(Standing.FAULTED, Toward.NOTHING, 0, fault);
+    return FAULTED[fault.ordinal()];
+  }
+
+  /** The state of a joint faulted for each reason, in the reasons' order. */
+  private static final JointState[] FAULTED = faultedForEachReason();
+
+  private static JointState[] faultedForEachReason() {
+    Fault[] reasons = Fault.values();
+    JointState[] faulted = new JointState[reasons.length];
+    for (Fault reason : reasons) {
+      faulted[reason.ordinal()] = new JointState(Standing.FAULTED, Toward.NOTHING, 0, reason);
+    }
+    return faulted;
   }
 }

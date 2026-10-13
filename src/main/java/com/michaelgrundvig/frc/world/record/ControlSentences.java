@@ -30,9 +30,24 @@ public final class ControlSentences {
       case JOINT_NOT_ANSWERING ->
           definition.joints().get(term.index()).label() + " isn't answering";
       case SENSOR_LOST -> definition.everySensor().get(term.index()).label() + " lost";
-      case SETTLING -> gate + " settling";
-      case THREW -> gate + " threw: " + text.get(term.index());
+      case SETTLING -> settling(gate);
+      case THREW -> threw(gate, text.get(term.index()));
     };
+  }
+
+  /** What a debounced gate says while what it reads has not yet held for its time. */
+  public static String settling(String gate) {
+    return gate + " settling";
+  }
+
+  /**
+   * What a gate whose logic threw says, as its one term: "aimed threw: no target".
+   *
+   * @param gate the gate's name
+   * @param thrown what was thrown, as it says itself
+   */
+  public static String threw(String gate, String thrown) {
+    return gate + " threw: " + thrown;
   }
 
   /**

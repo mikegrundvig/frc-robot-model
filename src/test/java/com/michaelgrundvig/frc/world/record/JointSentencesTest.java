@@ -36,6 +36,18 @@ class JointSentencesTest {
         .isEqualTo("FAULTED: pivot's homing found no stop in 2.0 s, pushing toward its lower one");
   }
 
+  /** Each reason a joint is faulted for has one state, so asking for it in a loop makes nothing. */
+  @Test
+  void aFaultedStateIsMadeOnceForEachReason() {
+    for (JointState.Fault fault : JointState.Fault.values()) {
+      JointState faulted = JointState.faulted(fault);
+
+      assertThat(faulted).isSameAs(JointState.faulted(fault));
+      assertThat(faulted.standing()).isEqualTo(JointState.Standing.FAULTED);
+      assertThat(faulted.fault()).isEqualTo(fault);
+    }
+  }
+
   @Test
   void whatHoldsAJointIsEachThingInItsOwnWords() {
     assertThat(JointSentences.heldBy(ROBOT, List.of())).isEmpty();

@@ -7,6 +7,7 @@ import static com.michaelgrundvig.frc.world.robot.RecordedRobot.ROBOT;
 import static com.michaelgrundvig.frc.world.robot.RecordedRobot.ROLLER;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.michaelgrundvig.frc.world.robot.RecordedRobot;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -274,6 +275,20 @@ class MoveSentencesTest {
                 + " encoder and its motor controller's settings");
     assertThat(refused(MoveTask.GO_TO, MoveProgress.NOT_BEGUN, MoveReason.NO_DRIVER, ""))
         .isEqualTo("pivot → out: REFUSED: " + MoveSentences.NO_DRIVER);
+  }
+
+  @Test
+  void aSilentJointIsSaidTheSameWayWhereverItIsSaid() {
+    assertThat(MoveSentences.notAnswering(RecordedRobot.joint(PIVOT)))
+        .isEqualTo("pivot isn't answering: its motor controllers are silent");
+  }
+
+  /** A record names a sensor by where it is among every sensor, which is the model's own order. */
+  @Test
+  void everySensorIsTheListTheRobotsMathReads() {
+    assertThat(ROBOT.everySensor())
+        .containsExactly(RecordedRobot.PIVOT_DOWN, RecordedRobot.CLAW_BEAM)
+        .isEqualTo(ROBOT.math().sensors());
   }
 
   private static String refused(

@@ -30,9 +30,8 @@
  * <p>What a definition means for a program is worked out here too, as plain functions of its values
  * and of readings handed in: where a joint is driven and where it stops braking ({@link
  * com.michaelgrundvig.frc.world.robot.Travel}), how far its encoder and its motor's count may
- * disagree ({@link com.michaelgrundvig.frc.world.robot.EncoderGap}), what its place names read
- * ({@link com.michaelgrundvig.frc.world.robot.PlaceNames}), whether a limit switch reads as it
- * should ({@link com.michaelgrundvig.frc.world.robot.SwitchDoubt}), which limits its motor
+ * disagree ({@link com.michaelgrundvig.frc.world.robot.EncoderGap}), whether a limit switch reads
+ * as it should ({@link com.michaelgrundvig.frc.world.robot.SwitchDoubt}), which limits its motor
  * controller reads ({@link com.michaelgrundvig.frc.world.robot.ControllerPins}), and the volts that
  * hold it from its encoder ({@link com.michaelgrundvig.frc.world.robot.EncoderLoop}). None keeps
  * anything between calls, and none reads a clock: what to remember from one loop to the next is the
