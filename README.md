@@ -75,6 +75,16 @@ something between two heights runs into, so a robot's bumpers meet a trench's co
 bar it drives under. The walls around the field are the field's own `outline()`, not elements. None
 of it needs the simulator: a path that must go around a hub reads the same footprints.
 
+Elements also block sight. `field.hides(...)` says whether anything stands between two points, in
+3D: the line is cut against each block's outline seen from above, and then held against the
+block's heights over that stretch, so a line passes under a trench's bar and over a low panel.
+`field.hidesOnAFace(eye, point, outOfTheFace)` asks it for a point on a face, such as a corner of
+an AprilTag from a camera. A tag hangs on its own element, a few millimeters proud of the face or
+sunk into it as the layout has it, so that line ends 3 cm in front of the face. The tag's own
+element then hides it from behind and never from in front, and a view along the face doesn't
+flicker. A simulated camera asks this of every tag before it takes an image. Terrain doesn't block
+sight: nothing a robot drives over is tall enough to matter.
+
 A block stands straight up. What slopes or leans (a subwoofer's inclined panels, a reef's angled
 branches, a stage's chains) is left out, and each season's field says what it left out. Elements
 are nominal geometry from the manual: a venue's file surveys tags, not elements, just as it doesn't
