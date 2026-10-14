@@ -34,10 +34,11 @@ import java.util.TreeMap;
  *
  * <p><b>What it drops</b> ({@link #DROPPED}; a test pins the list): everything that isn't drawn.
  * The mass, its inertia and the center of gravity; the drivetrain's motors, gearing, coupling, grip
- * and inertias; each camera's noise, frame rate and latency; a camera that rides a mechanism, whose
- * cone would need posing with its joint. The mechanisms themselves aren't drawn yet. How the
- * drivetrain is driven (its limits and gains), the robot's vision and estimator settings, its
- * wiring, the backup IMU, and the gyro's orientation and accelerometer check never reach it.
+ * and inertias; each camera's noise, frame rate, latency and mount tolerance; a camera that rides a
+ * mechanism, whose cone would need posing with its joint. The mechanisms themselves aren't drawn
+ * yet. How the drivetrain is driven (its limits and gains), the robot's vision and estimator
+ * settings, its wiring, the backup IMU, and the gyro's orientation and accelerometer check never
+ * reach it.
  *
  * <p><b>Two models a robot.</b> {@code Robot_<name>/} is the robot with its cameras' fields of
  * view; {@code Robot_<name>_NoCones/} is the same without them, for a second copy drawn beside it
@@ -111,6 +112,7 @@ public final class AdvantageScopeAssets {
           "DrivetrainGeometry.control",
           "CameraConfig.noiseScale",
           "CameraConfig.joint",
+          "CameraConfig.mountTolerance",
           "CameraConfig.Sensor.frameRate",
           "CameraConfig.Sensor.latency");
 

@@ -6,11 +6,14 @@ import static com.michaelgrundvig.frc.world.config.Rules.nonNegative;
 import static com.michaelgrundvig.frc.world.config.Rules.notBlank;
 import static com.michaelgrundvig.frc.world.config.Rules.positive;
 import static org.wpilib.units.Units.Degrees;
+import static org.wpilib.units.Units.Meters;
+import static org.wpilib.units.Units.Millimeters;
 import static org.wpilib.units.Units.Radians;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
 import com.michaelgrundvig.frc.world.config.Rule;
+import io.soabase.recordbuilder.core.RecordBuilder;
 import java.util.Locale;
 import java.util.Optional;
 import org.wpilib.math.geometry.Rotation3d;
@@ -43,6 +46,8 @@ import org.wpilib.units.measure.Time;
  *     2 to trust it half as much. Fit it from the camera's logged residuals.
  * @param joint the joint whose link it rides on, which its mount is measured from; empty for a
  *     camera on the chassis
+ * @param mountTolerance how far the camera may really sit from where the values above say: {@link
+ *     MountTolerance#MEASURED} unless given, for a mount measured from CAD and checked
  */
 @ConfigRecord
 public record CameraConfig(
@@ -55,7 +60,9 @@ public record CameraConfig(
     Angle yaw,
     Sensor sensor,
     double noiseScale,
-    Optional<Joint> joint) {
+    Optional<Joint> joint,
+    @RecordBuilder.Initializer(value = "MEASURED", source = MountTolerance.class)
+        MountTolerance mountTolerance) {
   /**
    * The most characters a camera's {@link #id()} may have: Pitwall's World view names what it draws
    * for a camera by it, in ids of at most 64 characters, the longest twelve more ({@code
@@ -195,6 +202,59 @@ public record CameraConfig(
           2
               * StrictMath.atan(
                   StrictMath.tan(fieldOfView.in(Radians) / 2) * diagonal / widthPixels));
+    }
+  }
+
+  /**
+   * How far a camera may really sit from its configured mount: the most its lens may be off along
+   * each of the robot's axes, and the most it may be turned about each. Whatever uses the mount
+   * allows for that much, and no more: the localizer starts each camera's turn on its mount as
+   * unsure as this, and learns the rest from the camera's images.
+   *
+   * <p>An error drawn evenly within a bound has a third of the bound's square as its variance
+   * ({@link #turnStdDevRadians}, {@link #offsetStdDevMeters}).
+   *
+   * @param along the most the lens may sit off its configured place, along each axis
+   * @param about the most the camera may be turned off its configured angles, about each axis
+   */
+  @ConfigRecord
+  public record MountTolerance(Distance along, Angle about) {
+    /**
+     * A mount measured from CAD and checked with the camera calibration (docs/calibration.md): it
+     * lands within a few millimeters and a fraction of a degree of the real one, so 5 mm and 1° at
+     * the end of that range. A bumped camera, or one never checked, may be off by a degree or more.
+     */
+    public static final MountTolerance MEASURED =
+        new MountTolerance(Millimeters.of(5), Degrees.of(1));
+
+    public MountTolerance {
+      Checks.on(MountTolerance.class)
+          .field("along", along, nonNegative())
+          .field("along", along, finite())
+          .field("about", about, nonNegative())
+          .field("about", about, below(Degrees.of(90)))
+          .orThrow();
+    }
+
+    /** Starts building a mount tolerance, one named value at a time. */
+    public static CameraConfigMountToleranceBuilder.AlongStage builder() {
+      return CameraConfigMountToleranceBuilder.builder();
+    }
+
+    /**
+     * The standard deviation of a turn drawn evenly within the bound about an axis, in radians: the
+     * bound over the square root of three.
+     */
+    public double turnStdDevRadians() {
+      return about.in(Radians) / Math.sqrt(3);
+    }
+
+    /**
+     * The standard deviation of an offset drawn evenly within the bound along an axis, in meters:
+     * the bound over the square root of three.
+     */
+    public double offsetStdDevMeters() {
+      return along.in(Meters) / Math.sqrt(3);
     }
   }
 

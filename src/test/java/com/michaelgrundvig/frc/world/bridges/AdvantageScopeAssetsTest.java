@@ -326,6 +326,7 @@ class AdvantageScopeAssetsTest {
             "DrivetrainGeometry.control",
             "CameraConfig.noiseScale",
             "CameraConfig.joint",
+            "CameraConfig.mountTolerance",
             "CameraConfig.Sensor.frameRate",
             "CameraConfig.Sensor.latency");
     Set<String> values = new TreeSet<>();

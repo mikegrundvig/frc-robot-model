@@ -10,6 +10,7 @@ import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.Hertz;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.Meters;
+import static org.wpilib.units.Units.Millimeters;
 import static org.wpilib.units.Units.Milliseconds;
 import static org.wpilib.units.Units.Radians;
 
@@ -115,6 +116,55 @@ class CameraConfigTest {
         Math.atan(Math.tan(horizontal.diagonalFieldOfView().in(Radians) / 2) * 1280 / diagonal);
     assertThat(Math.toDegrees(2 * half)).isCloseTo(82, within(1e-9));
     assertThat(sensor().diagonalFieldOfView()).isEqualTo(sensor().fieldOfView());
+  }
+
+  @Test
+  void aCameraLeftWithoutAToleranceIsAsSureAsAMeasuredMount() {
+    CameraConfig.MountTolerance measured = camera("front", new Translation3d()).mountTolerance();
+    CameraConfig.MountTolerance calibrated =
+        change()
+            .mountTolerance(
+                CameraConfig.MountTolerance.builder()
+                    .along(Millimeters.of(2))
+                    .about(Degrees.of(0.3))
+                    .build())
+            .build()
+            .mountTolerance();
+
+    assertThat(measured).isEqualTo(CameraConfig.MountTolerance.MEASURED);
+    assertThat(measured.along().in(Millimeters)).isCloseTo(5, within(1e-9));
+    assertThat(measured.about().in(Degrees)).isCloseTo(1, within(1e-9));
+    // An error drawn evenly within a bound b has a standard deviation of b over the root of 3.
+    assertThat(measured.offsetStdDevMeters()).isCloseTo(0.005 / Math.sqrt(3), within(1e-12));
+    assertThat(measured.turnStdDevRadians())
+        .isCloseTo(Math.toRadians(1) / Math.sqrt(3), within(1e-12));
+    assertThat(calibrated.turnStdDevRadians())
+        .isCloseTo(Math.toRadians(0.3) / Math.sqrt(3), within(1e-12));
+  }
+
+  @Test
+  void rejectsAnImpossibleMountTolerance() {
+    assertRejected(
+        "MountTolerance.along",
+        () ->
+            CameraConfig.MountTolerance.builder()
+                .along(Millimeters.of(-1))
+                .about(Degrees.of(1))
+                .build());
+    assertRejected(
+        "MountTolerance.about",
+        () ->
+            CameraConfig.MountTolerance.builder()
+                .along(Millimeters.of(1))
+                .about(Degrees.of(-1))
+                .build());
+    assertRejected(
+        "MountTolerance.about: 90 ° must be below 90 °",
+        () ->
+            CameraConfig.MountTolerance.builder()
+                .along(Millimeters.of(1))
+                .about(Degrees.of(90))
+                .build());
   }
 
   @Test
