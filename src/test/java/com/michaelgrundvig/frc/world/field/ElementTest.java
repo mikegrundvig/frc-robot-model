@@ -90,6 +90,72 @@ class ElementTest {
     assertThat(bare.outline()).isEqualTo(model.outline());
   }
 
+  /** Whether one point can be seen from another. */
+  enum Sight {
+    HIDDEN,
+    CLEAR
+  }
+
+  /** A row: two points, and whether the hub stands between them. */
+  private static Arguments sight(String label, Translation3d from, Translation3d to, Sight sight) {
+    return Arguments.argumentSet(label, from, to, sight);
+  }
+
+  private static Translation3d point(double x, double y, double z) {
+    return new Translation3d(x, y, z);
+  }
+
+  static Stream<Arguments> sightLines() {
+    return Stream.of(
+        sight("straight through the body", point(2, 4, 1), point(7, 4, 1), Sight.HIDDEN),
+        sight("the same line the other way", point(7, 4, 1), point(2, 4, 1), Sight.HIDDEN),
+        sight("past the body, beside it", point(2, 3, 1), point(7, 3, 1), Sight.CLEAR),
+        sight("over the body", point(2, 4, 2.5), point(7, 4, 2.5), Sight.CLEAR),
+        sight("down across the body's top edge", point(2, 4, 3), point(4.5, 4, 1), Sight.HIDDEN),
+        sight("under the bar", point(2, 5, 1), point(7, 5, 1), Sight.CLEAR),
+        sight("through the bar", point(2, 5, 1.7), point(7, 5, 1.7), Sight.HIDDEN),
+        sight(
+            "rising under the bar and clearing it",
+            point(4.5, 5, 0.2),
+            point(5.5, 5, 1.6),
+            Sight.CLEAR),
+        sight("stopping short of the body", point(2, 4, 1), point(3.9, 4, 1), Sight.CLEAR),
+        sight("along the body's face, touching it", point(4, 2, 1), point(4, 6, 1), Sight.CLEAR),
+        sight("grazing its corner", point(3, 3.5, 1), point(5, 5.5, 1), Sight.CLEAR),
+        sight("straight down onto it", point(4.5, 4, 5), point(4.5, 4, 1), Sight.HIDDEN),
+        sight("straight down beside it", point(3.5, 4, 5), point(3.5, 4, 1), Sight.CLEAR));
+  }
+
+  @ParameterizedTest
+  @MethodSource("sightLines")
+  void anElementHidesWhatIsBehindItAndNothingElse(
+      Translation3d from, Translation3d to, Sight sight) {
+    FieldModel model = field().elements(List.of(HUB)).build();
+
+    assertThat(model.hides(from.getX(), from.getY(), from.getZ(), to.getX(), to.getY(), to.getZ()))
+        .isEqualTo(sight == Sight.HIDDEN);
+  }
+
+  /**
+   * Tag 2 hangs on the hub's face toward blue's wall, facing it. From in front it is seen, however
+   * steeply, and along the face too; from behind the hub it is hidden, and so is tag 3 on the far
+   * face from where tag 2 is seen.
+   */
+  @Test
+  void aTagIsSeenFromInFrontOfItsOwnElementAndHiddenFromBehind() {
+    FieldModel model = field().elements(List.of(HUB)).build();
+    Translation3d tag2 = model.tag(2).orElseThrow().getTranslation();
+    Translation3d tag3 = model.tag(3).orElseThrow().getTranslation();
+    Translation3d towardBlue = point(-1, 0, 0);
+    Translation3d towardRed = point(1, 0, 0);
+
+    assertThat(model.hidesOnAFace(point(1, 4, 0.5), tag2, towardBlue)).as("square on").isFalse();
+    assertThat(model.hidesOnAFace(point(3.9, 0.5, 0.5), tag2, towardBlue)).as("steeply").isFalse();
+    assertThat(model.hidesOnAFace(point(4, 1, 1), tag2, towardBlue)).as("along the face").isFalse();
+    assertThat(model.hidesOnAFace(point(8, 4, 0.5), tag2, towardBlue)).as("from behind").isTrue();
+    assertThat(model.hidesOnAFace(point(1, 4, 0.5), tag3, towardRed)).as("the far face").isTrue();
+  }
+
   static Stream<Arguments> refusals() {
     Polygon2d onTheHub = square(4, 3.5, 5, 4.5);
     return Stream.of(

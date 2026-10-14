@@ -61,4 +61,59 @@ public record Block(Polygon2d outline, double bottomMeters, double topMeters, Ma
     double aboveIt = Math.max(point.getZ() - topMeters, 0);
     return Math.hypot(acrossTheFloor, Math.max(belowIt, aboveIt));
   }
+
+  /**
+   * Whether it stands between two points in the field frame, so that one can't be seen from the
+   * other: whether the straight line between them passes through it.
+   *
+   * <p>Seen from above, the line crosses the outline over one stretch at most, because the outline
+   * has no corner pointing in. The stretch is found a side at a time: each side of the outline cuts
+   * the line where the line crosses it, and what is left after every side has cut is the part
+   * inside. The line's height changes evenly along it, so over that stretch it runs between its
+   * heights at the stretch's two ends, and the block is in the way if those reach into its own
+   * heights.
+   *
+   * <p>A line that only touches it, along a face or at a corner, is not blocked. It makes nothing
+   * new as it answers.
+   */
+  public boolean standsBetween(
+      double fromX, double fromY, double fromZ, double toX, double toY, double toZ) {
+    double alongX = toX - fromX;
+    double alongY = toY - fromY;
+    // The stretch of the line inside the outline, as shares of the way from one point to the other.
+    double enters = 0;
+    double leaves = 1;
+    int sides = outline.corners().size();
+    for (int side = 0; side < sides; side++) {
+      Translation2d corner = outline.corner(side);
+      Translation2d next = outline.corner(side + 1);
+      double sideX = next.getX() - corner.getX();
+      double sideY = next.getY() - corner.getY();
+      // How far inside this side the line's start is, and how fast the line moves inward of it:
+      // each a cross product with the side, positive on the side's left, which is the inside.
+      double startInside = sideX * (fromY - corner.getY()) - sideY * (fromX - corner.getX());
+      double movesInside = sideX * alongY - sideY * alongX;
+      if (movesInside == 0) {
+        // The line runs along this side's direction: outside it, or on it, it never gets in.
+        if (startInside <= 0) {
+          return false;
+        }
+        continue;
+      }
+      double crossesAt = -startInside / movesInside;
+      if (movesInside > 0) {
+        enters = Math.max(enters, crossesAt);
+      } else {
+        leaves = Math.min(leaves, crossesAt);
+      }
+      if (enters >= leaves) {
+        return false;
+      }
+    }
+    double heightEntering = fromZ + enters * (toZ - fromZ);
+    double heightLeaving = fromZ + leaves * (toZ - fromZ);
+    double lowest = Math.min(heightEntering, heightLeaving);
+    double highest = Math.max(heightEntering, heightLeaving);
+    return highest > bottomMeters && lowest < topMeters;
+  }
 }

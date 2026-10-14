@@ -13,6 +13,7 @@ import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Translation2d;
+import org.wpilib.math.geometry.Translation3d;
 
 /**
  * One season's field: its size, AprilTags, and symmetry, the start positions, places, and zones
@@ -291,6 +292,51 @@ public final class FieldModel {
    */
   public List<Element> elements() {
     return elements;
+  }
+
+  /**
+   * How far out of a face a sight line to something on that face is taken to end, in meters. A tag
+   * hangs on the face of the element that carries it, and as the layout and the manual have them it
+   * may sit a few millimeters proud of the face or sunk into it. A line drawn to the tag itself
+   * would then be cut by the tag's own element, or not, by those millimeters. Drawn to a point this
+   * far in front of the face, it clears the face from anywhere the face can be seen from, and a
+   * view along the face neither catches on it nor flickers.
+   */
+  public static final double SIGHT_STANDOFF_METERS = 0.03;
+
+  /**
+   * Whether an element stands between two points in the field frame, so that one can't be seen from
+   * the other. It makes nothing new as it answers.
+   */
+  public boolean hides(
+      double fromX, double fromY, double fromZ, double toX, double toY, double toZ) {
+    for (int element = 0; element < elements.size(); element++) {
+      if (elements.get(element).standsBetween(fromX, fromY, fromZ, toX, toY, toZ)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Whether an element hides a point on a face from an eye: a corner of an AprilTag from a camera.
+   * The sight line ends {@link #SIGHT_STANDOFF_METERS} in front of the face, which says why. So the
+   * element a tag hangs on hides it from behind and from beyond its other blocks, and never from in
+   * front.
+   *
+   * @param eye where it is looked at from, in the field frame
+   * @param onTheFace the point looked at
+   * @param outOfTheFace the way the face looks, as a unit vector: an AprilTag's pose's x axis
+   */
+  public boolean hidesOnAFace(
+      Translation3d eye, Translation3d onTheFace, Translation3d outOfTheFace) {
+    return hides(
+        eye.getX(),
+        eye.getY(),
+        eye.getZ(),
+        onTheFace.getX() + SIGHT_STANDOFF_METERS * outOfTheFace.getX(),
+        onTheFace.getY() + SIGHT_STANDOFF_METERS * outOfTheFace.getY(),
+        onTheFace.getZ() + SIGHT_STANDOFF_METERS * outOfTheFace.getZ());
   }
 
   /**

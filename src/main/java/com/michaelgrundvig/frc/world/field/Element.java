@@ -113,4 +113,18 @@ public record Element(String name, List<Block> blocks, List<Integer> tags) {
   public boolean contains(Translation3d point) {
     return distance(point) == 0;
   }
+
+  /**
+   * Whether it stands between two points in the field frame, so that one can't be seen from the
+   * other: whether any of its blocks does ({@link Block#standsBetween}).
+   */
+  public boolean standsBetween(
+      double fromX, double fromY, double fromZ, double toX, double toY, double toZ) {
+    for (int block = 0; block < blocks.size(); block++) {
+      if (blocks.get(block).standsBetween(fromX, fromY, fromZ, toX, toY, toZ)) {
+        return true;
+      }
+    }
+    return false;
+  }
 }
