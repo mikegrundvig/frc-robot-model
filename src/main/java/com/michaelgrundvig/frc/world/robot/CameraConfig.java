@@ -225,7 +225,10 @@ public record CameraConfig(
      * the end of that range. A bumped camera, or one never checked, may be off by a degree or more.
      */
     public static final MountTolerance MEASURED =
-        new MountTolerance(Millimeters.of(5), Degrees.of(1));
+        CameraConfigMountToleranceBuilder.builder()
+            .along(Millimeters.of(5))
+            .about(Degrees.of(1))
+            .build();
 
     public MountTolerance {
       Checks.on(MountTolerance.class)
