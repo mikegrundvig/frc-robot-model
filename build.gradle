@@ -103,8 +103,7 @@ ext.published = [
     name: "FRC robot model",
     description: "What an FRC field and robot are, as data a robot program, a simulator and its tools all read: the validation kit, the field, and the robot's definition.",
     repository: "frc-robot-model",
-    // The repository has no LICENSE file yet, so the POM names none.
-    license: null,
+    license: "BSD 3-Clause License",
 ]
 apply from: file("gradle/publishing.gradle")
 

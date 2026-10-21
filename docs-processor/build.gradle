@@ -53,6 +53,6 @@ ext.published = [
     name: "FRC configuration docs processor",
     description: "An annotation processor that writes each configuration record's Javadoc into the jar as the project compiles, so Pitwall's page can say what each value means.",
     repository: "frc-robot-model",
-    license: null,
+    license: "BSD 3-Clause License",
 ]
 apply from: rootProject.file("gradle/publishing.gradle")

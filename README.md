@@ -148,3 +148,7 @@ Java 25, which Gradle downloads if it's missing.
 | `./gradlew test --tests '*InterlockTest'` | Some of the tests. |
 | `./gradlew pitest` | Mutation testing: changes the compiled code a little at a time and runs the tests that cover each change, to find lines the tests run without checking. About six minutes; the report is `build/reports/pitest/index.html`. |
 | `./gradlew pitest -PpitClasses='com.michaelgrundvig.frc.world.robot.Interlock*'` | The same for one class, in well under a minute. |
+
+## License
+
+[BSD 3-Clause](LICENSE).
