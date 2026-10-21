@@ -13,8 +13,8 @@ plugins {
     alias(libs.plugins.pitest)
 }
 
-// What a build that includes this one asks for (settings.gradle, includeBuild): the model is
-// com.michaelgrundvig.frc:world, and its processor com.michaelgrundvig.frc:docs-processor.
+// Published as com.michaelgrundvig.frc:frc-robot-model (gradle/publishing.gradle, at the end), and
+// its processor as com.michaelgrundvig.frc:frc-docs-processor.
 group = "com.michaelgrundvig.frc"
 
 java {
@@ -24,7 +24,7 @@ java {
 }
 
 base {
-    archivesName = "world"
+    archivesName = "frc-robot-model"
 }
 
 // WPILib publishes its libraries to its own repository; everything else is on Maven Central.
@@ -43,13 +43,27 @@ dependencies {
     // The model's own vocabulary: poses, transforms, and measures in its records' signatures, and
     // the season's official tag layouts, with what they're built on (WPILib's utilities, the matrix
     // library under its math, and the readers of its formats).
-    api libs.wpilib.math
-    api libs.wpilib.units
-    api libs.wpilib.util
-    api libs.wpilib.fields
-    api libs.ejml.simple
-    api libs.quickbuf.runtime
-    api libs.avaje.jsonb
+    //
+    // All of them are WPILib's, or come with WPILib, and a robot program has them already, at the
+    // version its GradleRIO decides. So the model compiles against them, and a build that reads the
+    // model compiles against them with it (compileOnlyApi), but the model never brings them to a
+    // program that runs: it can't put a second WPILib version beside the program's own. The
+    // published POM says the same, with the scope "provided". The tests have them as any program
+    // does.
+    compileOnlyApi libs.wpilib.math
+    compileOnlyApi libs.wpilib.units
+    compileOnlyApi libs.wpilib.util
+    compileOnlyApi libs.wpilib.fields
+    compileOnlyApi libs.ejml.simple
+    compileOnlyApi libs.quickbuf.runtime
+    compileOnlyApi libs.avaje.jsonb
+    testImplementation libs.wpilib.math
+    testImplementation libs.wpilib.units
+    testImplementation libs.wpilib.util
+    testImplementation libs.wpilib.fields
+    testImplementation libs.ejml.simple
+    testImplementation libs.quickbuf.runtime
+    testImplementation libs.avaje.jsonb
     api libs.jspecify
 
     // Configuration records are built by name, through builders generated as they compile.
@@ -83,6 +97,16 @@ tasks.named("test") {
 }
 
 apply from: file("gradle/quality.gradle")
+
+ext.published = [
+    artifactId: "frc-robot-model",
+    name: "FRC robot model",
+    description: "What an FRC field and robot are, as data a robot program, a simulator and its tools all read: the validation kit, the field, and the robot's definition.",
+    repository: "frc-robot-model",
+    // The repository has no LICENSE file yet, so the POM names none.
+    license: null,
+]
+apply from: file("gradle/publishing.gradle")
 
 // Mutation testing: PIT changes the model's compiled code a little at a time (a comparison turned
 // round, a returned value emptied, a call removed) and runs the tests that cover each change. A

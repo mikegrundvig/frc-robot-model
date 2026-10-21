@@ -21,9 +21,9 @@ java {
     }
 }
 
-// Named for what it would be published as, beside Pitwall's own jar.
+// Named for what it's published as: com.michaelgrundvig.frc:frc-docs-processor.
 base {
-    archivesName = "docs-processor"
+    archivesName = "frc-docs-processor"
 }
 
 repositories {
@@ -47,3 +47,12 @@ tasks.named("test") {
 }
 
 apply from: rootProject.file("gradle/quality.gradle")
+
+ext.published = [
+    artifactId: "frc-docs-processor",
+    name: "FRC configuration docs processor",
+    description: "An annotation processor that writes each configuration record's Javadoc into the jar as the project compiles, so Pitwall's page can say what each value means.",
+    repository: "frc-robot-model",
+    license: null,
+]
+apply from: rootProject.file("gradle/publishing.gradle")

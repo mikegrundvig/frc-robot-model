@@ -96,26 +96,47 @@ words the code already has.
 
 ## Using it
 
-It isn't published anywhere. A build takes it as source, as a git submodule built as part of that
-build (a Gradle composite build), so there is no version to bump:
-
-```
-git submodule add https://github.com/mikegrundvig/frc-robot-model.git model
-```
+It is published to the FRC libraries' Maven repository,
+[mikegrundvig.github.io/frc-maven](https://mikegrundvig.github.io/frc-maven/), as
+`com.michaelgrundvig.frc:frc-robot-model`, with its processor as
+`com.michaelgrundvig.frc:frc-docs-processor`. Versions are dated releases (`2026.10.20`), shared by
+all the FRC libraries; they are pre-release, with no promise of compatibility from one to the next.
 
 ```groovy
-// settings.gradle
-includeBuild("model")
-
 // build.gradle
+repositories {
+    exclusiveContent {
+        forRepository {
+            maven { url = "https://mikegrundvig.github.io/frc-maven/" }
+        }
+        filter { includeGroup "com.michaelgrundvig.frc" }
+    }
+}
 dependencies {
-    implementation "com.michaelgrundvig.frc:frc-robot-model"
-    annotationProcessor "com.michaelgrundvig.frc:docs-processor"
+    implementation "com.michaelgrundvig.frc:frc-robot-model:2026.10.20"
+    annotationProcessor "com.michaelgrundvig.frc:frc-docs-processor:2026.10.20"
 }
 ```
 
-A change to the model is made in that folder and committed there, then the build that uses it
-commits the submodule's new commit.
+WPILib's libraries (its math, units, utilities and field layouts, with EJML, QuickBuffers and
+avaje-jsonb, which come with them) are compiled against and never brought along: a robot program
+has them already, from GradleRIO, at its own version. A build that isn't a robot program adds them
+itself, as this one's tests do.
+
+## Developing it with the libraries that read it
+
+Localization, Pitwall, the runtime and the robot template read the model by its published version.
+To try a change to the model in one of them before it's published, give that build
+`-PlocalLibs=<folder>`, a folder holding this repository's clone as `model/` (and any of
+`localization/`, `pitwall/`, `runtime/` beside it): it builds what it finds there from source, in
+place of the published versions. Without it, nothing local is used.
+
+## Publishing it
+
+`./gradlew publishToFrcMaven` runs every check, then writes this release (the catalog's `frc-libs`
+version) into `../frc-maven`, a clone of [frc-maven](https://github.com/mikegrundvig/frc-maven)
+beside this one (`-PfrcMavenDir=<folder>` names another). That repository's `release.sh` publishes
+all the libraries in order and commits; its README says how a release goes.
 
 ## Building it
 
