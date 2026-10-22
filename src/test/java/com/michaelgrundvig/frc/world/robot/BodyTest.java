@@ -29,8 +29,9 @@ class BodyTest {
     assertThat(body.frameLength().in(Inches)).isCloseTo(28, within(1e-9));
     assertThat(body.frameWidth().in(Inches)).isCloseTo(24, within(1e-9));
     assertThat(body.overallHeight().in(Inches)).isCloseTo(30, within(1e-9));
-    assertThat(body.bumperEnds().in(Inches)).isCloseTo(3.5, within(1e-9));
-    assertThat(body.bumperSides().in(Inches)).isCloseTo(3.5, within(1e-9));
+    assertThat(body.bumperThickness().in(Inches)).isCloseTo(3.5, within(1e-9));
+    assertThat(body.bumperThicknessLeftRight()).isEmpty();
+    assertThat(body.bumperThicknessLeftRightOrDefault().in(Inches)).isCloseTo(3.5, within(1e-9));
     assertThat(body.bumperBottom().in(Inches)).isCloseTo(2.5, within(1e-9));
     assertThat(body.bumperTop().in(Inches)).isCloseTo(5.75, within(1e-9));
     assertThat(body.weight().orElseThrow().in(Kilograms)).isCloseTo(60, within(1e-9));
@@ -46,7 +47,8 @@ class BodyTest {
     assertThat(body.bumperWidth().in(Inches)).isCloseTo(31, within(1e-9));
     assertThat(body.framePerimeter().in(Inches)).isCloseTo(104, within(1e-9));
     // Square bumpers around this frame, as a top team's: thicker at the sides than at the ends.
-    Body square = change().bumperEnds(Inches.of(3.5)).bumperSides(Inches.of(5.5)).build();
+    Body square = change().bumperThicknessLeftRight(Inches.of(5.5)).build();
+    assertThat(square.bumperThicknessLeftRightOrDefault().in(Inches)).isCloseTo(5.5, within(1e-9));
     assertThat(square.bumperLength().in(Inches)).isCloseTo(35, within(1e-9));
     assertThat(square.bumperWidth().in(Inches)).isCloseTo(35, within(1e-9));
     assertThat(square.contains(new Translation3d(0, Inches.of(17.4).in(Meters), 0.1))).isTrue();
@@ -60,8 +62,9 @@ class BodyTest {
     assertRejected("frameLength", () -> change().frameLength(zero).build());
     assertRejected("frameWidth", () -> change().frameWidth(zero).build());
     assertRejected("overallHeight", () -> change().overallHeight(zero).build());
-    assertRejected("bumperEnds", () -> change().bumperEnds(zero).build());
-    assertRejected("bumperSides", () -> change().bumperSides(zero).build());
+    assertRejected("bumperThickness", () -> change().bumperThickness(zero).build());
+    assertRejected(
+        "bumperThicknessLeftRight", () -> change().bumperThicknessLeftRight(zero).build());
     assertRejected("bumperBottom", () -> change().bumperBottom(Inches.of(-1)).build());
   }
 

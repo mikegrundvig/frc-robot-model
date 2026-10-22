@@ -110,8 +110,8 @@ final class RobotSchematic {
   private static Mesh bumpers(Body body) {
     double frontOfFrame = body.frameLength().in(Meters) / 2;
     double leftOfFrame = body.frameWidth().in(Meters) / 2;
-    double frontOfBumpers = frontOfFrame + body.bumperEnds().in(Meters);
-    double leftOfBumpers = leftOfFrame + body.bumperSides().in(Meters);
+    double frontOfBumpers = frontOfFrame + body.bumperThickness().in(Meters);
+    double leftOfBumpers = leftOfFrame + body.bumperThicknessLeftRightOrDefault().in(Meters);
     double bottom = body.bumperBottom().in(Meters);
     double top = body.bumperTop().in(Meters);
     return new Mesh("bumpers", BUMPERS)

@@ -40,11 +40,14 @@ import org.wpilib.units.measure.MomentOfInertia;
  * @param frameLength front to back, across the outside of the frame
  * @param frameWidth side to side, across the outside of the frame
  * @param overallHeight the robot's tallest point above the floor in its starting configuration
- * @param bumperEnds how far the bumpers stick out beyond the frame at the front and the back
- * @param bumperSides how far they stick out at the left and the right: the same as at the ends,
- *     often, but bumpers square around a frame that isn't are thicker on its shorter sides
+ * @param bumperThickness how far the bumpers stick out past the frame, all the way round. When the
+ *     left and right stick out a different amount, this is the front and back
  * @param bumperBottom how high the bumpers' bottom edge is above the floor
  * @param bumperTop how high their top edge is
+ * @param bumperThicknessLeftRight how far the bumpers stick out past the frame at the left and the
+ *     right, given only when that differs from the front and back: bumpers squared around a frame
+ *     that isn't square are thicker on its shorter sides. None given, the same as {@code
+ *     bumperThickness} ({@link #bumperThicknessLeftRightOrDefault})
  * @param weight everything that moves, robot, bumpers, and battery, with every mechanism stowed, as
  *     weighed; none until it is
  * @param cg its center of mass from the robot's origin, every mechanism stowed; none given, the
@@ -58,25 +61,25 @@ public record Body(
     Distance frameLength,
     Distance frameWidth,
     Distance overallHeight,
-    Distance bumperEnds,
-    Distance bumperSides,
+    Distance bumperThickness,
     Distance bumperBottom,
     Distance bumperTop,
+    Optional<Distance> bumperThicknessLeftRight,
     Optional<Mass> weight,
     Optional<Translation3d> cg,
     Optional<Turning> inertia) {
   public Body {
-    Distance length = frameLength.plus(bumperEnds.times(2));
-    Distance width = frameWidth.plus(bumperSides.times(2));
+    Distance length = frameLength.plus(bumperThickness.times(2));
+    Distance width = frameWidth.plus(bumperThicknessLeftRight.orElse(bumperThickness).times(2));
     Distance height = overallHeight;
     Checks.on(Body.class)
         .field("frameLength", frameLength, positive())
         .field("frameWidth", frameWidth, positive())
         .field("overallHeight", overallHeight, positive())
-        .field("bumperEnds", bumperEnds, positive())
-        .field("bumperSides", bumperSides, positive())
+        .field("bumperThickness", bumperThickness, positive())
         .field("bumperBottom", bumperBottom, nonNegative())
         .field("bumperTop", bumperTop, positive())
+        .field("bumperThicknessLeftRight", bumperThicknessLeftRight, given(positive()))
         .field("weight", weight, given(positive()))
         .whyNot("bumperTop", () -> whyBumperTopIsMisplaced(bumperTop, bumperBottom, height))
         // Against a box of the weight given. Until the robot is weighed, whoever takes a mass for
@@ -297,14 +300,22 @@ public record Body(
     return BodyBuilder.builder();
   }
 
+  /**
+   * How far the bumpers stick out past the frame at the left and the right: as given, or when it
+   * isn't, the same as at the front and the back ({@link #bumperThickness}).
+   */
+  public Distance bumperThicknessLeftRightOrDefault() {
+    return bumperThicknessLeftRight.orElse(bumperThickness);
+  }
+
   /** Front to back, across the outside of the bumpers. */
   public Distance bumperLength() {
-    return frameLength.plus(bumperEnds.times(2));
+    return frameLength.plus(bumperThickness.times(2));
   }
 
   /** Side to side, across the outside of the bumpers. */
   public Distance bumperWidth() {
-    return frameWidth.plus(bumperSides.times(2));
+    return frameWidth.plus(bumperThicknessLeftRightOrDefault().times(2));
   }
 
   /** The bumpers seen from above: what the field stands the robot on a start with. */
