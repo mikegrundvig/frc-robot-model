@@ -18,6 +18,7 @@ import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
+import org.wpilib.units.measure.Mass;
 
 /**
  * What can be worked out about a robot's mechanisms from their definition. There are two kinds of
@@ -317,14 +318,16 @@ public final class RobotMath {
   }
 
   /**
-   * What the robot's mass is without its links: the body as weighed, less every link where its
+   * What the robot's mass is without its links: the body at its mass, less every link where its
    * joint rests. The simulator's chassis.
    *
+   * @param robot the whole robot's mass: as weighed, or until it is, the one taken in its place
+   *     ({@code SeasonLimits.robotMass})
    * @throws IllegalArgumentException if nothing's left, or what's left turns more easily than any
    *     body could
    */
-  public MassProperties chassis() {
-    MassProperties chassis = body.massProperties();
+  public MassProperties chassis(Mass robot) {
+    MassProperties chassis = body.massProperties(robot);
     Pose3d[] frames = tree.frames(tree.positions(Map.of()));
     for (int number = 0; number < tree.size(); number++) {
       chassis = chassis.minus(tree.linkInRobotFrame(number, frames));
@@ -731,7 +734,7 @@ public final class RobotMath {
   /**
    * The highest any link reaches at a set of positions, above the floor; zero without links. The
    * starting height limit is checked against it with the joints where they rest, and against the
-   * body's height.
+   * body's overall height.
    */
   public double top(Map<Joint, Double> positions) {
     double top = 0;

@@ -11,25 +11,30 @@ import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.Pounds;
 
 import com.michaelgrundvig.frc.world.physical.Inertia;
+import com.michaelgrundvig.frc.world.physical.MassProperties;
 import java.util.Optional;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.wpilib.math.geometry.Translation3d;
+import org.wpilib.units.measure.Mass;
 
 class BodyTest {
+  /** The fixture's weight. */
+  private static final Mass SIXTY = Kilograms.of(60);
+
   @Test
   void keepsItsMeasurements() {
     Body body = body();
 
     assertThat(body.frameLength().in(Inches)).isCloseTo(28, within(1e-9));
     assertThat(body.frameWidth().in(Inches)).isCloseTo(24, within(1e-9));
-    assertThat(body.height().in(Inches)).isCloseTo(30, within(1e-9));
+    assertThat(body.overallHeight().in(Inches)).isCloseTo(30, within(1e-9));
     assertThat(body.bumperEnds().in(Inches)).isCloseTo(3.5, within(1e-9));
     assertThat(body.bumperSides().in(Inches)).isCloseTo(3.5, within(1e-9));
     assertThat(body.bumperBottom().in(Inches)).isCloseTo(2.5, within(1e-9));
     assertThat(body.bumperTop().in(Inches)).isCloseTo(5.75, within(1e-9));
-    assertThat(body.mass().in(Kilograms)).isCloseTo(60, within(1e-9));
-    assertThat(body.yawMomentOfInertia().in(KilogramSquareMeters)).isCloseTo(6, within(1e-9));
+    assertThat(body.weight().orElseThrow().in(Kilograms)).isCloseTo(60, within(1e-9));
+    assertThat(body.yawMomentOfInertia(SIXTY).in(KilogramSquareMeters)).isCloseTo(6, within(1e-9));
     assertThat(body.cgHeight().in(Meters)).isCloseTo(0.2, within(1e-9));
   }
 
@@ -54,7 +59,7 @@ class BodyTest {
 
     assertRejected("frameLength", () -> change().frameLength(zero).build());
     assertRejected("frameWidth", () -> change().frameWidth(zero).build());
-    assertRejected("height", () -> change().height(zero).build());
+    assertRejected("overallHeight", () -> change().overallHeight(zero).build());
     assertRejected("bumperEnds", () -> change().bumperEnds(zero).build());
     assertRejected("bumperSides", () -> change().bumperSides(zero).build());
     assertRejected("bumperBottom", () -> change().bumperBottom(Inches.of(-1)).build());
@@ -76,42 +81,43 @@ class BodyTest {
     assertRejected("bumperTop", () -> change().bumperTop(Inches.of(31)).build());
   }
 
-  /** Its mass properties together give the yaw inertia and the center of gravity's height. */
+  /**
+   * Its mass properties at its mass together give the yaw inertia and the center of gravity's
+   * height.
+   */
   @Test
   void itsMassPropertiesGiveTheYawInertiaAndTheCenterOfGravitysHeight() {
     Body body = body();
 
-    assertThat(body.massProperties().mass().in(Kilograms)).isCloseTo(60, within(1e-9));
-    assertThat(body.weight().weighed()).isTrue();
-    assertThat(body.inertia()).isInstanceOf(Body.Turning.Tensor.class);
-    assertThat(body.yawMomentOfInertia().in(KilogramSquareMeters))
-        .isEqualTo(body.massProperties().inertia().izz());
-    assertThat(body.cgHeight().in(Meters)).isEqualTo(body.massProperties().cg().getZ());
+    assertThat(body.massProperties(SIXTY).mass().in(Kilograms)).isCloseTo(60, within(1e-9));
+    assertThat(body.inertia()).containsInstanceOf(Body.Turning.Tensor.class);
+    assertThat(body.yawMomentOfInertia(SIXTY).in(KilogramSquareMeters))
+        .isEqualTo(body.massProperties(SIXTY).inertia().izz());
+    assertThat(body.cgHeight().in(Meters)).isEqualTo(body.massProperties(SIXTY).cg().getZ());
   }
 
   /**
-   * Until CAD gives its inertia, a robot is a solid box of its mass, bumpers and height: flagged as
-   * approximated, and never zero. Until it's weighed, it's what it's given as the season's most.
+   * Neither weighed nor its inertia given, a robot is a solid box of whatever mass it's taken at,
+   * its bumpers and overall height: never zero. Its weight and inertia are simply left out.
    */
   @Test
-  void anUnmeasuredRobotIsABoxOfTheSeasonsMost() {
-    Body body =
-        change().weight(Body.Weight.unweighed(Pounds.of(149.5))).inertia(Body.Turning.BOX).build();
+  void anUnmeasuredRobotIsABoxOfTheMassItIsTakenAt() {
+    Body body = change().weight(Optional.empty()).inertia(Optional.empty()).build();
     Inertia box = Inertia.box(Pounds.of(149.5), inches(35, 31, 30));
+    MassProperties taken = body.massProperties(Pounds.of(149.5));
 
-    assertThat(body.weight().weighed()).isFalse();
-    assertThat(body.mass().in(Pounds)).isEqualTo(149.5);
-    assertThat(body.massProperties().inertia().izz()).isCloseTo(box.izz(), within(1e-12));
-    assertThat(body.massProperties().inertia().ixx()).isCloseTo(box.ixx(), within(1e-12));
-    assertThat(body.massProperties().inertia().whyNotSolid()).isNull();
+    assertThat(body.weight()).isEmpty();
+    assertThat(body.inertia()).isEmpty();
+    assertThat(taken.mass().in(Pounds)).isEqualTo(149.5);
+    assertThat(taken.inertia().izz()).isCloseTo(box.izz(), within(1e-12));
+    assertThat(taken.inertia().ixx()).isCloseTo(box.ixx(), within(1e-12));
+    assertThat(taken.inertia().whyNotSolid()).isNull();
   }
 
   /** A whole robot can't weigh nothing, nor turn freely: its drivetrain couldn't move it. */
   @Test
   void aRobotHasMassAndTakesEffortToTurn() {
-    assertThatIllegalArgumentException()
-        .isThrownBy(() -> Body.Weight.weighed(Kilograms.of(0)))
-        .withMessageStartingWith("Weight.mass: 0 Kg must be positive");
+    assertRejected("weight", () -> change().weight(Kilograms.of(0)).build());
     assertRejected("inertia", () -> change().inertia(Body.Turning.tensor(Inertia.ZERO)).build());
   }
 
@@ -125,9 +131,9 @@ class BodyTest {
   void aYawAloneTakesItsPitchAndRollFromTheBox() {
     Body yawOnly = change().inertia(Body.Turning.yaw(KilogramSquareMeters.of(5))).build();
     Inertia box = Inertia.box(Kilograms.of(60), inches(35, 31, 30));
-    Inertia resolved = yawOnly.massProperties().inertia();
+    Inertia resolved = yawOnly.massProperties(SIXTY).inertia();
 
-    assertThat(yawOnly.yawMomentOfInertia().in(KilogramSquareMeters)).isEqualTo(5);
+    assertThat(yawOnly.yawMomentOfInertia(SIXTY).in(KilogramSquareMeters)).isEqualTo(5);
     assertThat(resolved.ixx()).isCloseTo(box.ixx(), within(1e-12));
     assertThat(resolved.iyy()).isCloseTo(box.iyy(), within(1e-12));
     assertThat(resolved.ixy() + resolved.ixz() + resolved.iyz()).isZero();
@@ -146,6 +152,24 @@ class BodyTest {
         .withMessageStartingWith("Yaw.yaw");
   }
 
+  /**
+   * Not weighed, a yaw can't be checked against the box until a mass is taken for the robot, so the
+   * body is built, and says at a mass whether it fits: the box of the season's most, 149.5 lb,
+   * rolls at 6.78 kg m² and pitches at 7.75, too much for a yaw of 0.5 to stand beside.
+   */
+  @Test
+  void anUnweighedYawIsCheckedAtTheMassTakenForTheRobot() {
+    Body unweighed =
+        change()
+            .weight(Optional.empty())
+            .inertia(Body.Turning.yaw(KilogramSquareMeters.of(0.5)))
+            .build();
+
+    assertThat(unweighed.whyInertiaDoesNotFit(Pounds.of(149.5)))
+        .hasValueSatisfying(why -> assertThat(why).startsWith("a yaw of 0.5 kg m²"));
+    assertThat(body().whyInertiaDoesNotFit(SIXTY)).isEmpty();
+  }
+
   @Test
   void centerOfGravityMustBeInsideTheFrameAndBelowTheTop() {
     assertRejected("cg", () -> change().cg(new Translation3d(0, 0, 0.8)).build());
@@ -154,8 +178,8 @@ class BodyTest {
   }
 
   /**
-   * A center of mass nobody gave is the frame's center, a third of the robot's height up: inside
-   * any body, so it's never refused, and what its mass properties and height read.
+   * A center of mass nobody gave is the frame's center, a third of the robot's overall height up:
+   * inside any body, so it's never refused, and what its mass properties and height read.
    */
   @Test
   void aCenterOfMassNotGivenIsTheFramesCenterAThirdOfItsHeightUp() {
@@ -164,7 +188,7 @@ class BodyTest {
     assertThat(body.cg()).isEmpty();
     assertThat(body.cgOrDefault()).isEqualTo(new Translation3d(0, 0, Inches.of(10).in(Meters)));
     assertThat(body.cgHeight().in(Inches)).isCloseTo(10, within(1e-9));
-    assertThat(body.massProperties().cg()).isEqualTo(body.cgOrDefault());
+    assertThat(body.massProperties(SIXTY).cg()).isEqualTo(body.cgOrDefault());
     assertThat(body().cgOrDefault()).as("as given").isEqualTo(new Translation3d(0, 0, 0.2));
   }
 

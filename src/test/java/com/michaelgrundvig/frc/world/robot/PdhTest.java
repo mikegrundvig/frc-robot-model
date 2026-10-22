@@ -298,7 +298,7 @@ class PdhTest {
             "roller's motor controller 32 has no PDH channel: which channel feeds each, and"
                 + " through what breaker, isn't checked: give each its own where it's wired,"
                 + " .pdh(channel, breaker)");
-    assertThat(robot.findings())
+    assertThat(MechanismFixtures.findings(robot))
         .filteredOn(finding -> finding.message().contains("PDH channel"))
         .allMatch(finding -> finding.scope() == Finding.Scope.ROBOT);
     assertThat(MechanismFixtures.notes(robot(Optional.of(Pdh.can(1)), none)))
@@ -330,7 +330,8 @@ class PdhTest {
                             .build()))
             .build();
 
-    assertThat(robot.findings()).noneMatch(finding -> finding.message().contains("PDH"));
+    assertThat(MechanismFixtures.findings(robot))
+        .noneMatch(finding -> finding.message().contains("PDH"));
     assertThat(robot.devices()).noneMatch(device -> device.feed().isPresent());
     assertThat(
             MechanismFixtures.notes(RobotDefinitionBuilder.builder(robot).pdh(Pdh.can(1)).build()))

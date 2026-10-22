@@ -4,6 +4,8 @@ import static com.michaelgrundvig.frc.world.game.FieldShapes.box;
 import static com.michaelgrundvig.frc.world.game.FieldShapes.cutOff;
 import static com.michaelgrundvig.frc.world.game.FieldShapes.post;
 import static com.michaelgrundvig.frc.world.game.Manuals.IN;
+import static org.wpilib.units.Units.Inches;
+import static org.wpilib.units.Units.Pounds;
 
 import com.michaelgrundvig.frc.world.field.Block;
 import com.michaelgrundvig.frc.world.field.Element;
@@ -33,6 +35,24 @@ import org.wpilib.math.geometry.Translation2d;
  */
 public final class Crescendo {
   private Crescendo() {}
+
+  /**
+   * What 2024's manual allows a robot: a 120 in frame perimeter and 4 ft tall at the start (R104),
+   * reaching 12 in beyond it (R105), bumpers within 7.5 in of the floor (R402), and 125.5 lb
+   * without bumpers or battery (R103), with bumpers of at most 15 lb (R407): 140.5 lb with them,
+   * the most the weight limit here can say, since it weighs a robot with its bumpers. A battery
+   * with its leads is 14.5 lb at most (R601).
+   */
+  public static final SeasonLimits LIMITS =
+      SeasonLimits.builder()
+          .framePerimeter(Inches.of(120))
+          .startingHeight(Inches.of(48))
+          .extension(Inches.of(12))
+          .bumperZoneBottom(Inches.of(0))
+          .bumperZoneTop(Inches.of(7.5))
+          .weight(Pounds.of(140.5))
+          .battery(Pounds.of(14.5))
+          .build();
 
   static final Fields LAYOUT = Fields.FRC_2024_CRESCENDO;
 
@@ -386,7 +406,7 @@ public final class Crescendo {
 
   /** The season's field: its one official layout. */
   public static final Game GAME =
-      new Game(LAYOUT.loadField(), List.of(LAYOUT.loadField()), SYMMETRY, Crescendo::field);
+      new Game(LAYOUT.loadField(), List.of(LAYOUT.loadField()), SYMMETRY, Crescendo::field, LIMITS);
 
   /** The field model on the official layout, with its starts ({@link #STARTS}). */
   public static FieldModel field() {

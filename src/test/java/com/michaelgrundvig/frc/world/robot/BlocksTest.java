@@ -574,8 +574,7 @@ class BlocksTest {
             .drives(List.of(MechanismFixtures.motors(bare, Motor.KRAKEN_X60, 1, Gearing.of(10))))
             .build();
 
-    assertThat(robot.findings())
-        .filteredOn(Finding::refused)
+    assertThat(robot.refusals())
         .extracting(Finding::subject, Finding::message)
         .containsExactly(
             tuple(

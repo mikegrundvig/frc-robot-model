@@ -1,5 +1,6 @@
 package com.michaelgrundvig.frc.world.game;
 
+import static com.michaelgrundvig.frc.world.config.Rules.nonNegative;
 import static com.michaelgrundvig.frc.world.config.Rules.positive;
 import static com.michaelgrundvig.frc.world.config.Rules.shown;
 import static org.wpilib.units.Units.Kilograms;
@@ -33,7 +34,8 @@ import org.wpilib.units.measure.Mass;
  * @param startingHeight the tallest the robot may be in its starting configuration: every joint
  *     where it rests
  * @param extension the farthest any part may reach beyond the frame perimeter, seen from above
- * @param bumperZoneBottom the lowest the bumpers may sit, above the floor
+ * @param bumperZoneBottom the lowest the bumpers may sit, above the floor: the floor itself, in a
+ *     season whose zone starts there
  * @param bumperZoneTop the highest they may reach
  * @param weight the most the robot may weigh, bumpers on and battery off
  * @param battery the battery's mass, with its leads: what the weight leaves out of a robot weighed
@@ -53,7 +55,7 @@ public record SeasonLimits(
         .field("framePerimeter", framePerimeter, positive())
         .field("startingHeight", startingHeight, positive())
         .field("extension", extension, positive())
-        .field("bumperZoneBottom", bumperZoneBottom, positive())
+        .field("bumperZoneBottom", bumperZoneBottom, nonNegative())
         .field("bumperZoneTop", bumperZoneTop, positive())
         .field("weight", weight, positive())
         .field("battery", battery, positive())
@@ -76,12 +78,21 @@ public record SeasonLimits(
   private static final double SLACK = 1e-9;
 
   /**
-   * A robot not yet weighed: the most the season allows it, with its battery. What a robot's body
-   * weighs until it's on a scale ({@code Body.weight}), flagged as not weighed in the robot's
-   * missing-data report.
+   * The most the season allows a robot to weigh with its battery in, in the rule's own unit: what a
+   * robot not weighed yet is taken to weigh ({@link #robotMass}).
    */
-  public Body.Weight unweighed() {
-    return Body.Weight.unweighed(weight.plus(battery));
+  public Mass maximumWithBattery() {
+    return weight.unit().of(weight.plus(battery).in(weight.unit()));
+  }
+
+  /**
+   * The robot's mass, bumpers and battery on, as everything that needs one takes it: as weighed
+   * ({@code Body.weight}), or until it is, the most the season allows ({@link
+   * #maximumWithBattery}), which the robot's missing-data report says. The one place a robot's mass
+   * is settled: the program that runs a robot on the season's field asks it once.
+   */
+  public Mass robotMass(Body body) {
+    return body.weight().orElseGet(this::maximumWithBattery);
   }
 
   /** Starts describing a season's limits, one named value at a time. */
@@ -93,7 +104,10 @@ public record SeasonLimits(
    * Everything about a robot's definition the rules don't allow, each in words; empty when it fits.
    * The robot is checked as it starts a match, every joint where it rests, and in each of its
    * configurations, the joints it doesn't name where they rest, against the extension limit. Only
-   * the links with shapes reach anywhere; collisions between links aren't checked yet.
+   * the links with shapes reach anywhere; collisions between links aren't checked yet. A robot
+   * that's weighed is checked against the weight limit; one that isn't yet is taken at the most the
+   * season allows, and its mass checked to add up at that ({@code RobotDefinition.massProblems}),
+   * as the definition checks a given weight's itself.
    */
   public List<String> problems(RobotDefinition definition) {
     Body body = definition.body();
@@ -108,8 +122,12 @@ public record SeasonLimits(
       found.add(whyItReachesTooFar(configuration, reach));
     }
     found.add(whyBumpersAreOutOfTheirZone(body));
-    found.add(whyItIsTooHeavy(body));
-    return found.stream().flatMap(Optional::stream).toList();
+    found.add(body.weight().flatMap(this::whyItIsTooHeavy));
+    List<String> problems = new ArrayList<>(found.stream().flatMap(Optional::stream).toList());
+    if (body.weight().isEmpty()) {
+      problems.addAll(definition.massProblems(maximumWithBattery()));
+    }
+    return problems;
   }
 
   private Optional<String> whyFrameIsTooBig(Body body) {
@@ -129,7 +147,7 @@ public record SeasonLimits(
    * @param topOfLinks how high the highest point of any link is as the robot starts, in meters
    */
   private Optional<String> whyItStartsTooTall(Body body, double topOfLinks) {
-    double tallest = Math.max(body.height().in(Meters), topOfLinks);
+    double tallest = Math.max(body.overallHeight().in(Meters), topOfLinks);
     boolean tooTall = tallest > startingHeight.in(Meters) + SLACK;
     if (!tooTall) {
       return Optional.empty();
@@ -195,11 +213,11 @@ public record SeasonLimits(
   }
 
   /**
-   * The robot's mass is given with its battery in, and the rule weighs it with the battery out, so
-   * the battery's mass is taken off first.
+   * The robot's weight is given with its battery in, and the rule weighs it with the battery out,
+   * so the battery's mass is taken off first.
    */
-  private Optional<String> whyItIsTooHeavy(Body body) {
-    Mass withoutBattery = body.mass().minus(battery);
+  private Optional<String> whyItIsTooHeavy(Mass weighed) {
+    Mass withoutBattery = weighed.minus(battery);
     boolean tooHeavy = withoutBattery.in(Kilograms) > weight.in(Kilograms) + SLACK;
     if (!tooHeavy) {
       return Optional.empty();

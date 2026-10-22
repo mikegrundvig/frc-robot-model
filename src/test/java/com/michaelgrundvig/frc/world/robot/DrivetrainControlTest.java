@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.within;
 import static org.wpilib.units.Units.Amps;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.KilogramSquareMeters;
+import static org.wpilib.units.Units.Kilograms;
 import static org.wpilib.units.Units.MetersPerSecond;
 import static org.wpilib.units.Units.RotationsPerSecond;
 import static org.wpilib.units.Units.Seconds;
@@ -101,7 +102,8 @@ class DrivetrainControlTest {
               .limits(changeLimits().driveStatorCurrent(Amps.of(row[0])).build())
               .build();
 
-      DrivetrainControl.Accelerations most = DrivetrainControl.accelerations(robot, control);
+      DrivetrainControl.Accelerations most =
+          DrivetrainControl.accelerations(robot, Kilograms.of(60), control);
 
       assertThat(most.linear()).as("%s A, linear", row[0]).isCloseTo(row[1], within(0.01));
       assertThat(most.angular()).as("%s A, angular", row[0]).isCloseTo(row[2], within(0.1));

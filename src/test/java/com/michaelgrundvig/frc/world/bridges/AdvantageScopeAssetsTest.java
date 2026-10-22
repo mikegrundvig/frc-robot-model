@@ -183,10 +183,10 @@ class AdvantageScopeAssetsTest {
         .containsExactly(new double[] {halfLength, halfWidth, 0.14605}, within(1e-6));
     assertThat(frame[1][0]).isCloseTo(body.frameLength().in(Meters) / 2, within(1e-6));
     assertThat(frame[1][1]).isCloseTo(body.frameWidth().in(Meters) / 2, within(1e-6));
-    assertThat(frame[1][2]).isCloseTo(body.height().in(Meters), within(1e-6));
+    assertThat(frame[1][2]).isCloseTo(body.overallHeight().in(Meters), within(1e-6));
     assertThat(front[0][2])
         .as("the arrow on the frame's top")
-        .isCloseTo(body.height().in(Meters), within(1e-6));
+        .isCloseTo(body.overallHeight().in(Meters), within(1e-6));
     assertThat(front[1][0]).as("pointing forward").isGreaterThan(-front[0][0]);
     assertThat(model.mesh("frame").color().get(3)).as("see-through").isLessThan(0.75);
     assertThat(model.mesh("bumpers").color().get(3)).isEqualTo(1.0);

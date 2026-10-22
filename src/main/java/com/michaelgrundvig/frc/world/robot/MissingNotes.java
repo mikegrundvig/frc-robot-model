@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import org.wpilib.units.measure.Mass;
 
 /**
  * What a robot's definition does not know: the values nobody has measured or written yet. None of
@@ -34,16 +35,23 @@ final class MissingNotes {
 
   private final RobotDefinition robot;
   private final RobotMath math;
+  private final Mass robotMass;
   private final List<Finding> notes = new ArrayList<>();
 
-  private MissingNotes(RobotDefinition robot, RobotMath math) {
+  private MissingNotes(RobotDefinition robot, RobotMath math, Mass robotMass) {
     this.robot = robot;
     this.math = math;
+    this.robotMass = robotMass;
   }
 
-  /** The notes about a robot: the robot's own first, then each joint's in order, then sensors'. */
-  static List<Finding> of(RobotDefinition robot, RobotMath math) {
-    MissingNotes missing = new MissingNotes(robot, math);
+  /**
+   * The notes about a robot: the robot's own first, then each joint's in order, then sensors'.
+   *
+   * @param robotMass the whole robot's mass as the program takes it: as weighed, or until it is,
+   *     the most the season allows
+   */
+  static List<Finding> of(RobotDefinition robot, RobotMath math, Mass robotMass) {
+    MissingNotes missing = new MissingNotes(robot, math, robotMass);
     missing.addTheBodys();
     missing.addTheDrivetrains();
     for (Joint joint : robot.joints()) {
@@ -71,34 +79,34 @@ final class MissingNotes {
   /** The body's mass, how hard it is to turn, and how much of it is in no link. */
   private void addTheBodys() {
     Body body = robot.body();
-    if (!body.weight().weighed()) {
+    if (body.weight().isEmpty()) {
       note(
           robot.name(),
-          "the robot isn't weighed: its mass is the season's most, " + shown(body.mass()),
+          "the robot isn't weighed: it's taken at the season's maximum, "
+              + shown(robotMass)
+              + " with battery",
           "the drive's moves and feedforward, the simulator's acceleration and the links' mass"
               + " budget rest on the rules, not the robot",
           Finding.Scope.ROBOT);
     }
-    switch (body.inertia()) {
-      case Body.Turning.Box box ->
-          note(
-              robot.name(),
-              "the body's inertia is a box's, its mass spread through its bumpers' outline and"
-                  + " height",
-              "how fast the drive's moves turn, its turning feedforward, and how the simulator"
-                  + " tips and turns the robot are approximate",
-              Finding.Scope.ROBOT);
-      case Body.Turning.Yaw yaw ->
-          note(
-              robot.name(),
-              "the body's pitch and roll are a box's, beside its given yaw",
-              "how the simulator tips the robot is approximate",
-              Finding.Scope.SIMULATOR);
-      case Body.Turning.Tensor tensor -> {}
+    if (body.inertia().isEmpty()) {
+      note(
+          robot.name(),
+          "the body's inertia is a box's, its mass spread through its bumpers' outline and"
+              + " overall height",
+          "how fast the drive's moves turn, its turning feedforward, and how the simulator"
+              + " tips and turns the robot are approximate",
+          Finding.Scope.ROBOT);
+    } else if (body.inertia().get() instanceof Body.Turning.Yaw) {
+      note(
+          robot.name(),
+          "the body's pitch and roll are a box's, beside its given yaw",
+          "how the simulator tips the robot is approximate",
+          Finding.Scope.SIMULATOR);
     }
     // A center of mass that is not given gets no note: nothing reads it but the mass model's own
     // check.
-    double robotKilograms = body.mass().in(Kilograms);
+    double robotKilograms = robotMass.in(Kilograms);
     double inNoLink = robotKilograms - math.linksKilograms();
     note(
         robot.name(),

@@ -3,6 +3,7 @@ package com.michaelgrundvig.frc.world.game;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.within;
+import static org.assertj.core.api.InstanceOfAssertFactories.STRING;
 import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.KilogramSquareMeters;
@@ -30,6 +31,7 @@ import com.michaelgrundvig.frc.world.robot.Range;
 import com.michaelgrundvig.frc.world.robot.RobotDefinition;
 import com.michaelgrundvig.frc.world.robot.RobotDefinitionBuilder;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
@@ -78,7 +80,7 @@ class SeasonLimitsTest {
                   .frameWidth(Inches.of(27.5))
                   .bumperEnds(Inches.of(4))
                   .bumperSides(Inches.of(4))
-                  .weight(LIMITS.unweighed())
+                  .weight(Optional.empty())
                   .inertia(Body.Turning.yaw(KilogramSquareMeters.of(6.7)))
                   .build())
           .build();
@@ -119,17 +121,23 @@ class SeasonLimitsTest {
   }
 
   /**
-   * A robot not yet weighed is the most the season allows, with its battery: the base robot's own,
-   * which fits exactly.
+   * A robot not yet weighed is taken at the most the season allows, with its battery, and one
+   * weighed as weighed. Unweighed, its mass is checked to add up at the season's most: the base
+   * robot's does, and a yaw more than that box's pitch and roll together, 7.88 kg m² each, is told.
    */
   @Test
-  void anUnweighedRobotIsTheSeasonsMostWithABattery() {
-    Body.Weight unweighed = LIMITS.unweighed();
+  void anUnweighedRobotIsTakenAtTheSeasonsMostWithABattery() {
+    RobotDefinition tooMuchYaw =
+        withBody(body -> body.inertia(Body.Turning.yaw(KilogramSquareMeters.of(16))));
 
-    assertThat(unweighed.weighed()).isFalse();
-    assertThat(unweighed.mass().in(Pounds)).isCloseTo(149.5, within(1e-9));
-    assertThat(BASE.body().weight()).isEqualTo(unweighed);
+    assertThat(LIMITS.maximumWithBattery().in(Pounds)).isCloseTo(149.5, within(1e-9));
+    assertThat(LIMITS.robotMass(BASE.body())).isEqualTo(LIMITS.maximumWithBattery());
+    assertThat(LIMITS.robotMass(ConfigFixtures.body()).in(Kilograms)).isEqualTo(60);
     assertThat(LIMITS.problems(BASE)).isEmpty();
+    assertThat(LIMITS.problems(tooMuchYaw))
+        .singleElement(STRING)
+        .startsWith(
+            "a yaw of 16 kg m² can't stand beside the box's roll and pitch, 7.876 and 7.876");
   }
 
   /** Everything wrong is told at once. */
@@ -139,9 +147,9 @@ class SeasonLimitsTest {
     Body big =
         BodyBuilder.builder(weighed)
             .frameLength(Inches.of(30))
-            .height(Inches.of(31))
+            .overallHeight(Inches.of(31))
             .bumperBottom(Inches.of(2))
-            .weight(Body.Weight.weighed(Pounds.of(155)))
+            .weight(Pounds.of(155))
             .build();
     RobotDefinition robot = RobotDefinitionBuilder.builder(withArm(arm(0.7, 0))).body(big).build();
 
@@ -252,9 +260,9 @@ class SeasonLimitsTest {
             () -> LIMITS.problems(withBody(body -> body.frameLength(Inches.of(27.51)).frameWidth(Inches.of(27.5)))),
             List.of("its frame is 110 in around, more than the 110 in allowed")),
         answers("a robot a rounding over the starting height fits",
-            () -> LIMITS.problems(withBody(body -> body.height(Inches.of(30.0000000001)))), List.of()),
+            () -> LIMITS.problems(withBody(body -> body.overallHeight(Inches.of(30.0000000001)))), List.of()),
         answers("a robot a little taller does not",
-            () -> LIMITS.problems(withBody(body -> body.height(Inches.of(30.01)))),
+            () -> LIMITS.problems(withBody(body -> body.overallHeight(Inches.of(30.01)))),
             List.of("it starts 0.762 m tall, more than the 0.762 m allowed")),
         answers("bumpers a rounding below the bumper zone fit",
             () -> LIMITS.problems(withBody(body -> body.bumperBottom(Inches.of(2.4999999999)))), List.of()),
@@ -267,15 +275,15 @@ class SeasonLimitsTest {
             () -> LIMITS.problems(withBody(body -> body.bumperTop(Inches.of(5.76)))),
             List.of("its bumpers, 2.5 in to 5.76 in up, aren't within the bumper zone, 2.5 in to 5.75 in")),
         answers("a robot a rounding over the weight fits",
-            () -> LIMITS.problems(withBody(body -> body.weight(Body.Weight.weighed(Pounds.of(149.5000000001))))), List.of()),
+            () -> LIMITS.problems(withBody(body -> body.weight(Pounds.of(149.5000000001)))), List.of()),
         answers("a robot a little heavier does not",
-            () -> LIMITS.problems(withBody(body -> body.weight(Body.Weight.weighed(Pounds.of(149.6))))),
+            () -> LIMITS.problems(withBody(body -> body.weight(Pounds.of(149.6)))),
             List.of("it weighs 135.1 lb. without its battery, more than the 135 lb. allowed: lighten it, or weigh it again")),
         answers("a frame over the perimeter by exactly the rounding allowed fits",
             () -> metric().problems(withBody(body -> body.frameLength(Meters.of((4 + 1e-9) / 4)).frameWidth(Meters.of((4 + 1e-9) / 4)))),
             List.of()),
         answers("a robot over the starting height by exactly the rounding allowed fits",
-            () -> metric().problems(withBody(body -> body.height(Meters.of(1 + 1e-9)))), List.of()),
+            () -> metric().problems(withBody(body -> body.overallHeight(Meters.of(1 + 1e-9)))), List.of()),
         answers("bumpers below the bumper zone by exactly the rounding allowed fit",
             () -> metric().problems(withBody(body -> body.bumperBottom(Meters.of(0.0625 - 1e-9)))), List.of()),
         answers("bumpers above the bumper zone by exactly the rounding allowed fit",

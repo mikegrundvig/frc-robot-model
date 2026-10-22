@@ -17,6 +17,7 @@ import java.util.Optional;
 import org.wpilib.units.measure.AngularVelocity;
 import org.wpilib.units.measure.Current;
 import org.wpilib.units.measure.LinearVelocity;
+import org.wpilib.units.measure.Mass;
 import org.wpilib.units.measure.Time;
 
 /**
@@ -169,10 +170,16 @@ public record DrivetrainControl(Limits limits, Gains gains) {
    */
   public record Accelerations(double linear, double angular) {}
 
-  /** The robot's accelerations by its model, with this drivetrain's current limit. */
-  public static Accelerations accelerations(RobotDefinition robot, DrivetrainControl control) {
+  /**
+   * The robot's accelerations by its model, with this drivetrain's current limit.
+   *
+   * @param robotMass the whole robot's mass: as weighed, or until it is, the one taken in its place
+   *     ({@code SeasonLimits.robotMass})
+   */
+  public static Accelerations accelerations(
+      RobotDefinition robot, Mass robotMass, DrivetrainControl control) {
     List<DrivetrainGeometry.Corner> corners = robot.drivetrain().corners();
-    double mass = robot.body().mass().in(Kilograms);
+    double mass = robotMass.in(Kilograms);
     double amps = control.limits().driveStatorCurrent().in(Amps);
     double force = 0;
     double torque = 0;
@@ -193,7 +200,7 @@ public record DrivetrainControl(Limits limits, Gains gains) {
       torque += wheel * corner.position().getNorm();
     }
     return new Accelerations(
-        force / mass, torque / robot.body().yawMomentOfInertia().in(KilogramSquareMeters));
+        force / mass, torque / robot.body().yawMomentOfInertia(robotMass).in(KilogramSquareMeters));
   }
 
   /** Standard gravity, in meters a second squared. */

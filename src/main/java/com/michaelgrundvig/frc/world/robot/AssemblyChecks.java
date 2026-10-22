@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.wpilib.math.geometry.Translation3d;
+import org.wpilib.units.measure.Mass;
 
 /**
  * The definition's checks of what a robot's parts make once they are put together: that the links
@@ -44,7 +45,12 @@ final class AssemblyChecks {
     }
     RobotMath math = RobotMath.ofSoundParts(body, joints, couplings, drives, sensors);
     List<Finding> problems = new ArrayList<>();
-    whyMassDoesNotAddUp(math, body).ifPresent(why -> problems.add(Finding.refused(robot, why)));
+    // A weight given is checked here; until the robot is weighed, whoever takes a mass for it
+    // checks
+    // at that mass ({@code RobotDefinition.massProblems}).
+    body.weight()
+        .flatMap(weight -> whyMassDoesNotAddUp(math, body, weight))
+        .ifPresent(why -> problems.add(Finding.refused(robot, why)));
     for (Joint joint : joints) {
       EncoderChecks.whyNotReadAllAlong(joint, sensors)
           .ifPresent(why -> problems.add(Finding.refused(joint.label(), why)));
@@ -64,17 +70,19 @@ final class AssemblyChecks {
   }
 
   /**
-   * Why the masses given do not make a robot, if they do not. The links must weigh less than the
-   * whole robot, and what is left once they are taken away, the chassis, must be something that
-   * could exist. The chassis is only looked at when the links fit, and a robot with no joints has
-   * no links to take away.
+   * Why the masses given do not make a robot of a mass, if they do not. The links must weigh less
+   * than the whole robot, and what is left once they are taken away, the chassis, must be something
+   * that could exist. The chassis is only looked at when the links fit, and a robot with no joints
+   * has no links to take away.
+   *
+   * @param robot the whole robot's mass: as weighed, or the one taken in its place until it is
    */
-  private static Optional<String> whyMassDoesNotAddUp(RobotMath math, Body body) {
-    Optional<String> overBudget = whyLinksWeighTooMuch(math, body);
+  static Optional<String> whyMassDoesNotAddUp(RobotMath math, Body body, Mass robot) {
+    Optional<String> overBudget = whyLinksWeighTooMuch(math, body, robot);
     if (overBudget.isPresent() || math.joints().isEmpty()) {
       return overBudget;
     }
-    return whyChassisIsNotABody(math);
+    return whyChassisIsNotABody(math, robot);
   }
 
   /**
@@ -82,15 +90,15 @@ final class AssemblyChecks {
    * the robot weighs, and they must leave some of it for the chassis, which carries the drivetrain,
    * the electronics, the bumpers and the battery.
    */
-  private static Optional<String> whyLinksWeighTooMuch(RobotMath math, Body body) {
+  private static Optional<String> whyLinksWeighTooMuch(RobotMath math, Body body, Mass mass) {
     double links = math.linksKilograms();
-    double robot = body.mass().in(Kilograms);
+    double robot = mass.in(Kilograms);
     if (links < robot) {
       return Optional.empty();
     }
     String comparedWithTheRobot = links > robot ? "more than" : "as much as";
     String howTheRobotsMassIsKnown =
-        body.weight().weighed() ? " as weighed" : ", the season's most";
+        body.weight().isPresent() ? " as weighed" : ", the season's most";
     return Optional.of(
         String.format(
             Locale.ROOT,
@@ -108,10 +116,10 @@ final class AssemblyChecks {
    * far out, for the body they were measured as part of leaves something with no mass or an inertia
    * no solid has.
    */
-  private static Optional<String> whyChassisIsNotABody(RobotMath math) {
+  private static Optional<String> whyChassisIsNotABody(RobotMath math, Mass robot) {
     String whyNot;
     try {
-      whyNot = math.chassis().inertia().whyNotSolid();
+      whyNot = math.chassis(robot).inertia().whyNotSolid();
     } catch (IllegalArgumentException e) {
       whyNot = String.valueOf(e.getMessage()).replace('\n', ' ');
     }

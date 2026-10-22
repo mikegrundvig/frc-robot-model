@@ -4,6 +4,8 @@ import static com.michaelgrundvig.frc.world.game.FieldShapes.box;
 import static com.michaelgrundvig.frc.world.game.FieldShapes.cutOff;
 import static com.michaelgrundvig.frc.world.game.FieldShapes.post;
 import static com.michaelgrundvig.frc.world.game.Manuals.IN;
+import static org.wpilib.units.Units.Inches;
+import static org.wpilib.units.Units.Pounds;
 
 import com.michaelgrundvig.frc.world.field.Block;
 import com.michaelgrundvig.frc.world.field.Element;
@@ -34,6 +36,23 @@ import org.wpilib.math.geometry.Translation2d;
  */
 public final class Reefscape {
   private Reefscape() {}
+
+  /**
+   * What 2025's manual allows a robot: a 120 in perimeter and 3 ft 6 in tall at the start (R104),
+   * reaching 18 in beyond it (R105), bumpers filling 2.5 to 5.75 in above the floor (R405), and 135
+   * lb with bumpers and without its battery (R408), a battery with its leads 14.5 lb at most
+   * (R601).
+   */
+  public static final SeasonLimits LIMITS =
+      SeasonLimits.builder()
+          .framePerimeter(Inches.of(120))
+          .startingHeight(Inches.of(42))
+          .extension(Inches.of(18))
+          .bumperZoneBottom(Inches.of(2.5))
+          .bumperZoneTop(Inches.of(5.75))
+          .weight(Pounds.of(135))
+          .battery(Pounds.of(14.5))
+          .build();
 
   /** The welded field. The AndyMark build is 1 cm narrower, with its own layout. */
   static final Fields LAYOUT = Fields.FRC_2025_REEFSCAPE_WELDED;
@@ -348,7 +367,8 @@ public final class Reefscape {
               Fields.FRC_2025_REEFSCAPE_WELDED.loadField(),
               Fields.FRC_2025_REEFSCAPE_ANDY_MARK.loadField()),
           SYMMETRY,
-          Reefscape::field);
+          Reefscape::field,
+          LIMITS);
 
   /** The field model on the welded field, with its starts ({@link #STARTS}). */
   public static FieldModel field() {

@@ -84,13 +84,13 @@ final class RobotSchematic {
 
   /**
    * The frame: a see-through box as long and wide as the frame, from the bumpers' bottom up to the
-   * robot's height. A robot no taller than its bumpers' bottom has nothing to draw, and gets an
-   * empty mesh.
+   * robot's overall height. A robot no taller than its bumpers' bottom has nothing to draw, and
+   * gets an empty mesh.
    */
   private static Mesh frame(Body body) {
     double length = body.frameLength().in(Meters);
     double width = body.frameWidth().in(Meters);
-    double height = body.height().in(Meters);
+    double height = body.overallHeight().in(Meters);
     double bottom = body.bumperBottom().in(Meters);
     Mesh frame = new Mesh("frame", FRAME);
     if (height > bottom) {
@@ -137,7 +137,7 @@ final class RobotSchematic {
   private static Mesh frontArrow(Body body) {
     double length = body.frameLength().in(Meters);
     double width = body.frameWidth().in(Meters);
-    double height = body.height().in(Meters);
+    double height = body.overallHeight().in(Meters);
     Mesh.Arrow arrow =
         new Mesh.Arrow(
             -0.3 * length,

@@ -4,6 +4,7 @@ import static org.wpilib.units.Units.Kilograms;
 import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.config.Finding;
+import com.michaelgrundvig.frc.world.game.Rebuilt;
 import com.michaelgrundvig.frc.world.physical.Inertia;
 import com.michaelgrundvig.frc.world.physical.MassProperties;
 import com.michaelgrundvig.frc.world.physical.Material;
@@ -175,9 +176,17 @@ final class MechanismFixtures {
         .build();
   }
 
+  /**
+   * What a robot's definition says about itself, its mass taken as a program on this season's field
+   * takes it: as weighed, or the season's most.
+   */
+  static List<Finding> findings(RobotDefinition robot) {
+    return robot.findings(Rebuilt.LIMITS.robotMass(robot.body()));
+  }
+
   /** What a robot's definition says it doesn't know: its notes, each its message. */
   static List<String> notes(RobotDefinition robot) {
-    return robot.findings().stream()
+    return findings(robot).stream()
         .filter(finding -> finding.level() == Finding.Level.NOTE)
         .map(Finding::message)
         .toList();
@@ -185,7 +194,7 @@ final class MechanismFixtures {
 
   /** What a robot's definition doubts, each its message. */
   static List<String> doubts(RobotDefinition robot) {
-    return robot.findings().stream()
+    return findings(robot).stream()
         .filter(finding -> finding.level() == Finding.Level.DOUBT)
         .map(Finding::message)
         .toList();
@@ -193,7 +202,7 @@ final class MechanismFixtures {
 
   /** The scope of each note, in order. */
   static List<Finding.Scope> noteScopes(RobotDefinition robot) {
-    return robot.findings().stream()
+    return findings(robot).stream()
         .filter(finding -> finding.level() == Finding.Level.NOTE)
         .map(Finding::scope)
         .toList();

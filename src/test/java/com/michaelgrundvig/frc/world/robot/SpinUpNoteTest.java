@@ -79,7 +79,7 @@ class SpinUpNoteTest {
 
   /** The note a robot says about a joint's link having no mass, if it says one. */
   private static List<String> massNotes(Joint joint) {
-    return robot(joint).findings().stream()
+    return MechanismFixtures.findings(robot(joint)).stream()
         .filter(finding -> finding.level() == Finding.Level.NOTE)
         .map(Finding::message)
         .filter(message -> message.contains(" has no mass"))

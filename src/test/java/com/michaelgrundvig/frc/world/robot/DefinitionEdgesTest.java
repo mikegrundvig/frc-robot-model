@@ -40,7 +40,7 @@ class DefinitionEdgesTest {
   private static final Body BODY = ConfigFixtures.body();
   private static final double HALF_LENGTH = BODY.frameLength().in(Meters) / 2;
   private static final double HALF_WIDTH = BODY.frameWidth().in(Meters) / 2;
-  private static final double HEIGHT = BODY.height().in(Meters);
+  private static final double HEIGHT = BODY.overallHeight().in(Meters);
 
   /** The test robot's body with its center of mass here. */
   private static String centerOfMassAt(double x, double y, double z) {

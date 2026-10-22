@@ -471,7 +471,8 @@ public final class Rebuilt {
               Fields.FRC_2026_REBUILT_WELDED.loadField(),
               Fields.FRC_2026_REBUILT_ANDY_MARK.loadField()),
           SYMMETRY,
-          Rebuilt::field);
+          Rebuilt::field,
+          LIMITS);
 
   /**
    * The field model on the welded field.

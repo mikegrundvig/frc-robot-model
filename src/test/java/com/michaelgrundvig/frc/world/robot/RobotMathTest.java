@@ -832,7 +832,7 @@ class RobotMathTest {
             link("arm", 4, point(0.3, 0, 0), point(0.6, 0.05, 0.05)));
     RobotDefinition robot = definition(List.of(arm), List.of(), List.of(), List.of());
 
-    var chassis = robot.math().chassis();
+    var chassis = robot.math().chassis(Kilograms.of(60));
     assertThat(chassis.mass().in(Kilograms)).isCloseTo(56, within(1e-9));
     // 60 kg centered over the origin, less 4 kg 0.4 m forward: the rest 0.4 * 4 / 56 behind.
     assertThat(chassis.cg().getX()).isCloseTo(-0.4 * 4 / 56, within(1e-12));
@@ -917,7 +917,8 @@ class RobotMathTest {
         .isEqualTo(new RobotMath.GravityFit(0, 0, 0, -Math.toRadians(10)));
     assertThat(math.inertia(arm, Map.of())).isCloseTo(rotors, within(1e-12));
     assertThat(gains.kA()).isCloseTo(rotors * KRAKEN.R / (2 * KRAKEN.Kt * 60 * 0.9), within(1e-12));
-    assertThat(math.chassis()).isEqualTo(robot.body().massProperties());
+    assertThat(math.chassis(Kilograms.of(60)))
+        .isEqualTo(robot.body().massProperties(Kilograms.of(60)));
   }
 
   /**
@@ -980,9 +981,9 @@ class RobotMathTest {
 
   /**
    * What a definition doesn't know, each with its cost: the test robot weighed and its inertia
-   * given, so only the share of its mass no link holds; then the same robot unweighed, its inertia
-   * a box's, its center of mass not given, with an arm nobody weighed, a roller weighed but not
-   * spun, and a joint nothing moves.
+   * given, so only the share of its mass no link holds; then the same robot unweighed, taken at the
+   * season's most, its inertia a box's, its center of mass not given, with an arm nobody weighed, a
+   * roller weighed but not spun, and a joint nothing moves.
    */
   @Test
   void theMissingDataReportSaysWhatIsntKnownAndWhatItCosts() {
@@ -1023,9 +1024,9 @@ class RobotMathTest {
         RobotDefinitionBuilder.builder(weighed)
             .body(
                 BodyBuilder.builder(weighed.body())
-                    .weight(Body.Weight.unweighed(Kilograms.of(68)))
+                    .weight(Optional.empty())
                     .cg(Optional.empty())
-                    .inertia(Body.Turning.BOX)
+                    .inertia(Optional.empty())
                     .build())
             .build();
 
@@ -1040,17 +1041,17 @@ class RobotMathTest {
         .extracting(Finding::message, Finding::scope)
         .containsExactly(
             tuple(
-                "the robot isn't weighed: its mass is the season's most, 68 Kg: the drive's moves"
-                    + " and feedforward, the simulator's acceleration and the links' mass budget"
-                    + " rest on the rules, not the robot",
+                "the robot isn't weighed: it's taken at the season's maximum, 149.5 lb. with"
+                    + " battery: the drive's moves and feedforward, the simulator's acceleration"
+                    + " and the links' mass budget rest on the rules, not the robot",
                 ROBOT),
             tuple(
                 "the body's inertia is a box's, its mass spread through its bumpers' outline and"
-                    + " height: how fast the drive's moves turn, its turning feedforward, and how"
+                    + " overall height: how fast the drive's moves turn, its turning feedforward, and how"
                     + " the simulator tips and turns the robot are approximate",
                 ROBOT),
             tuple(
-                "67.50 kg of the robot's 68.00 kg is in no link: the chassis, its electronics,"
+                "67.31 kg of the robot's 67.81 kg is in no link: the chassis, its electronics,"
                     + " bumpers and battery: carried as one rigid body",
                 SIMULATOR),
             tuple(
@@ -1228,7 +1229,7 @@ class RobotMathTest {
     }
     RobotDefinition robot = definition(joints, List.of(), drives, List.of());
 
-    assertThat(robot.findings())
+    assertThat(MechanismFixtures.findings(robot))
         .filteredOn(finding -> finding.scope() == ROBOT && finding.message().contains("kG"))
         .extracting(Finding::message, Finding::scope)
         .containsExactly(
@@ -1283,7 +1284,7 @@ class RobotMathTest {
 
   /** What a definition says it doesn't know. */
   private static List<Finding> notes(RobotDefinition robot) {
-    return robot.findings().stream()
+    return MechanismFixtures.findings(robot).stream()
         .filter(finding -> finding.level() == Finding.Level.NOTE)
         .toList();
   }

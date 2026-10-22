@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Translation2d;
+import org.wpilib.units.measure.Mass;
 
 /**
  * What one robot is: its body, its drivetrain, where its cameras and IMUs are mounted, and its
@@ -372,8 +373,8 @@ public record RobotDefinition(
    * ({@link Finding.Scope#ROBOT}):
    *
    * <ul>
-   *   <li>the robot not weighed, its mass the season's most, or its inertia a box's: the drive's
-   *       moves and feedforward read them;
+   *   <li>the robot not weighed, taken at the mass given here, the season's most, or its inertia a
+   *       box's: the drive's moves and feedforward read them;
    *   <li>the tread's grip not measured, PathPlanner's default: the drive's moves plan on it, and
    *       the slip check judges by it;
    *   <li>a joint gravity acts on, held at positions, with no kG written: none, or one seeded from
@@ -390,9 +391,41 @@ public record RobotDefinition(
    * the simulator reads it: the body's pitch and roll a box's beside a given yaw; its center of
    * mass not given; the share of its mass in no link; the modules' drive or steering inertia not
    * measured; a link with no mass, or mass but no inertia.
+   *
+   * @param robotMass the whole robot's mass as the program takes it: as weighed, or until it is,
+   *     the most the season allows ({@code SeasonLimits.robotMass}), which the notes then name
    */
-  public List<Finding> findings() {
+  public List<Finding> findings(Mass robotMass) {
     RobotMath math = math();
+    List<Finding> found = judged(math);
+    found.addAll(MissingNotes.of(this, math, robotMass));
+    return found;
+  }
+
+  /**
+   * What the program can't drive, of what the definition says about itself ({@link #findings}):
+   * none of it reads the robot's mass, so a program refuses it before it knows its season.
+   */
+  public List<Finding> refusals() {
+    return judged(math()).stream().filter(Finding::refused).toList();
+  }
+
+  /**
+   * Everything wrong with the robot's mass at a mass, each in words; empty when it adds up: a given
+   * yaw that can't stand beside a box's pitch and roll ({@code Body.whyInertiaDoesNotFit}), links
+   * that leave nothing of it for the chassis, a chassis that turns more easily than any body. The
+   * definition refuses these itself at the weight given; until the robot is weighed, whoever takes
+   * a mass for it asks at that ({@code SeasonLimits.problems}).
+   */
+  public List<String> massProblems(Mass robotMass) {
+    List<Optional<String>> found = new ArrayList<>();
+    found.add(body.whyInertiaDoesNotFit(robotMass));
+    found.add(AssemblyChecks.whyMassDoesNotAddUp(math(), body, robotMass));
+    return found.stream().flatMap(Optional::stream).toList();
+  }
+
+  /** What can't be driven and what's doubtful: the findings that aren't notes of what's missing. */
+  private List<Finding> judged(RobotMath math) {
     List<Finding> found = new ArrayList<>();
     if (drivetrain.control().isEmpty()) {
       found.add(
@@ -404,7 +437,6 @@ public record RobotDefinition(
     found.addAll(Blocks.uncontrolled(math));
     found.addAll(JointSpeedChecks.doubts(math));
     found.addAll(InterlockChecks.startDoubts(math, everyInterlock()));
-    found.addAll(MissingNotes.of(this, math));
     return found;
   }
 

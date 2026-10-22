@@ -21,7 +21,7 @@ import java.util.TreeMap;
  *
  * <ul>
  *   <li>the frame, a see-through box at the frame's length and width, from the bumpers' bottom to
- *       the robot's height, so what's inside it shows;
+ *       the robot's overall height, so what's inside it shows;
  *   <li>the bumpers, a ring as thick as they are, from their bottom to their top;
  *   <li>an arrow on the frame's top pointing forward;
  *   <li>each camera, a small box at its lens with an arrow along its optical axis, and its field of
@@ -71,7 +71,7 @@ public final class AdvantageScopeAssets {
       List.of(
           "Body.frameLength",
           "Body.frameWidth",
-          "Body.height",
+          "Body.overallHeight",
           "Body.bumperEnds",
           "Body.bumperSides",
           "Body.bumperBottom",
