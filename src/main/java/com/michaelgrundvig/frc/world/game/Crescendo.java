@@ -4,18 +4,17 @@ import static com.michaelgrundvig.frc.world.game.FieldShapes.box;
 import static com.michaelgrundvig.frc.world.game.FieldShapes.cutOff;
 import static com.michaelgrundvig.frc.world.game.FieldShapes.post;
 import static com.michaelgrundvig.frc.world.game.Manuals.IN;
-import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.field.Block;
 import com.michaelgrundvig.frc.world.field.Element;
 import com.michaelgrundvig.frc.world.field.FieldModel;
 import com.michaelgrundvig.frc.world.field.Place;
+import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Symmetry;
 import com.michaelgrundvig.frc.world.field.TagLayout;
 import com.michaelgrundvig.frc.world.field.Zone;
 import com.michaelgrundvig.frc.world.physical.Material;
 import com.michaelgrundvig.frc.world.physical.Polygon2d;
-import com.michaelgrundvig.frc.world.robot.Body;
 import java.util.ArrayList;
 import java.util.List;
 import org.wpilib.fields.Fields;
@@ -366,27 +365,38 @@ public final class Crescendo {
   }
 
   /**
-   * The field model for a robot of this size, which sets where it stands in the starting zone.
-   *
-   * <p>Starts, facing the field: back to the alliance wall beside the amp zone, back to the
-   * subwoofer's front face, and centered across the field with the front bumper on the starting
+   * Where a robot starts, facing the field: back to the alliance wall beside the amp zone, back to
+   * the subwoofer's front face, and centered across the field with the front bumper on the starting
    * zone's line.
    */
-  public static FieldModel field(Body body) {
-    double halfLength = body.bumperLength().in(Meters) / 2;
-    double halfWidth = body.bumperWidth().in(Meters) / 2;
-    return FieldModel.builder(TagLayout.of(LAYOUT.loadField()), SYMMETRY)
-        .starts(
-            List.of(
-                Place.at(
-                    "Amp side",
-                    new Pose2d(halfLength, WIDTH - AMP_ZONE_WIDTH - halfWidth, Rotation2d.ZERO)),
-                Place.at(
-                    "Subwoofer",
-                    new Pose2d(SUBWOOFER_DEPTH + halfLength, SPEAKER_Y, Rotation2d.ZERO)),
-                Place.at(
-                    "Center",
-                    new Pose2d(STARTING_ZONE_DEPTH - halfLength, WIDTH / 2, Rotation2d.ZERO))))
+  public static final List<Start> STARTS =
+      List.of(
+          new Start(
+              "Amp side",
+              new Pose2d(0, WIDTH - AMP_ZONE_WIDTH, Rotation2d.ZERO),
+              Start.Anchor.BACK_LEFT_CORNER),
+          new Start(
+              "Subwoofer",
+              new Pose2d(SUBWOOFER_DEPTH, SPEAKER_Y, Rotation2d.ZERO),
+              Start.Anchor.BACK_BUMPER),
+          new Start(
+              "Center",
+              new Pose2d(STARTING_ZONE_DEPTH, WIDTH / 2, Rotation2d.ZERO),
+              Start.Anchor.FRONT_BUMPER));
+
+  /** The season's field: its one official layout. */
+  public static final Game GAME =
+      new Game(LAYOUT.loadField(), List.of(LAYOUT.loadField()), SYMMETRY, Crescendo::field);
+
+  /** The field model on the official layout, with its starts ({@link #STARTS}). */
+  public static FieldModel field() {
+    return field(TagLayout.of(LAYOUT.loadField()));
+  }
+
+  /** The field model on the field's tags: the official layout's, or a venue's, as surveyed. */
+  public static FieldModel field(TagLayout tags) {
+    return FieldModel.builder(tags, SYMMETRY)
+        .starts(STARTS)
         .places(List.of(STAGE))
         .zones(List.of(STARTING_ZONE, AMP_ZONE, SOURCE_ZONE, STAGE_ZONE))
         .elements(elements())

@@ -280,16 +280,17 @@ class FieldEdgesTest {
             () -> Heading.field(Rotation2d.ZERO).equals("field 0°"), false));
   }
 
-  private static Placement placed(Pose2d robot, @Nullable Place expected, double toleranceMeters, double toleranceDegrees) {
-    Place near = Place.at("Near", pose(1, 3, 0));
-    Place far = Place.at("Far", pose(1, 5, 0));
+  private static Placement placed(Pose2d robot, @Nullable Start expected, double toleranceMeters, double toleranceDegrees) {
+    Start near = Start.at("Near", pose(1, 3, 0));
+    Start far = Start.at("Far", pose(1, 5, 0));
     FieldModel field = TestFields.model(List.of(near, far), List.of(), List.of());
-    return Placement.check(field, Optional.of(Alliance.BLUE), robot, expected, toleranceMeters, toleranceDegrees);
+    return Placement.check(
+        field, TestFields.BUMPERS, Optional.of(Alliance.BLUE), robot, expected, toleranceMeters, toleranceDegrees);
   }
 
   /** Starts at (1, 3) and (1, 5), and a robot on, between and beside them. */
   static Stream<Arguments> placements() {
-    Place near = Place.at("Near", pose(1, 3, 0));
+    Start near = Start.at("Near", pose(1, 3, 0));
     return Stream.of(
         answers("exactly on a start, with no tolerance at all, is on it",
             () -> placed(pose(1, 3, 0), near, 0, 0), new Placement(Placement.Status.READY, "Near", 0, 0)),

@@ -8,8 +8,8 @@ import java.util.function.Function;
 import org.wpilib.fields.Field;
 
 /**
- * What a game says about its field. A season's class, such as {@link Rebuilt}, makes one for a
- * robot of a given size. A program that needs a field the model doesn't have yet can make its own.
+ * What a game says about its field, the same for every robot: a season's class has its own, such as
+ * {@link Rebuilt#GAME}. A program that needs a field the model doesn't have yet can make its own.
  *
  * @param official the official layout the robot uses with no venue: the game's default variant
  * @param variants every official layout a venue may be measured against, the default included

@@ -26,8 +26,8 @@ import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Rotation3d;
 
 class FieldModelTest {
-  private static Place start() {
-    return Place.at("Center", Pose2d.ZERO);
+  private static Start start() {
+    return Start.at("Center", Pose2d.ZERO);
   }
 
   private static Zone zone() {
@@ -125,7 +125,9 @@ class FieldModelTest {
             "Goal: the layout has no tag 77"),
         refused(
             "a start and a place of one name",
-            () -> TestFields.model(List.of(start()), List.of(start()), List.of()),
+            () ->
+                TestFields.model(
+                    List.of(start()), List.of(Place.at("Center", Pose2d.ZERO)), List.of()),
             "two places are named Center"),
         refused(
             "two zones of one name",

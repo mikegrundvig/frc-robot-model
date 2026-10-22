@@ -13,15 +13,15 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.wpilib.math.geometry.Pose2d;
 
 class PlacementTest {
-  private static final Place LEFT = Place.at("Left", pose(1, 6, 0));
-  private static final Place CENTER = Place.at("Center", pose(1, 4, 0));
+  private static final Start LEFT = Start.at("Left", pose(1, 6, 0));
+  private static final Start CENTER = Start.at("Center", pose(1, 4, 0));
 
   /** An auto's start needn't be one of the field's: the check reads the one it's given too. */
-  private static final Place WALL = Place.at("By the wall", pose(2, 7, 0));
+  private static final Start WALL = Start.at("By the wall", pose(2, 7, 0));
 
   private static final FieldModel FIELD =
       TestFields.model(List.of(LEFT, CENTER), List.of(), List.of());
-  private static final Map<String, Place> PLACES = Map.of("Center", CENTER, "By the wall", WALL);
+  private static final Map<String, Start> PLACES = Map.of("Center", CENTER, "By the wall", WALL);
 
   /**
    * A robot off its alliance's center start by (dx, dy, degrees), checked against the start
@@ -61,6 +61,7 @@ class PlacementTest {
     Placement placement =
         Placement.check(
             FIELD,
+            TestFields.BUMPERS,
             Optional.ofNullable(alliance),
             robot,
             expected == null ? null : PLACES.get(expected),
@@ -75,7 +76,13 @@ class PlacementTest {
   void aFieldWithoutStartsSaysSo() {
     Placement placement =
         Placement.check(
-            TestFields.FIELD, Optional.of(Alliance.RED), pose(15, 4, 180), null, 0.1, 5);
+            TestFields.FIELD,
+            TestFields.BUMPERS,
+            Optional.of(Alliance.RED),
+            pose(15, 4, 180),
+            null,
+            0.1,
+            5);
 
     assertThat(placement.describe()).isEqualTo("No start positions");
   }

@@ -6,7 +6,8 @@ import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.field.Alliance;
 import com.michaelgrundvig.frc.world.field.FieldModel;
-import com.michaelgrundvig.frc.world.field.Place;
+import com.michaelgrundvig.frc.world.field.Start;
+import com.michaelgrundvig.frc.world.physical.Bumpers;
 import com.michaelgrundvig.frc.world.robot.ConfigFixtures;
 import java.util.Arrays;
 import java.util.List;
@@ -25,14 +26,16 @@ import org.wpilib.math.geometry.Translation3d;
  * tag for tag, and places derived from tags land where the tags say.
  */
 class RebuiltTest {
-  private final FieldModel field = Rebuilt.field(ConfigFixtures.body());
+  private static final Bumpers BUMPERS = ConfigFixtures.body().bumpers();
+
+  private final FieldModel field = Rebuilt.field();
 
   @ParameterizedTest
   @EnumSource(
       value = Fields.class,
       names = {"FRC_2026_REBUILT_WELDED", "FRC_2026_REBUILT_ANDY_MARK"})
   void everyTagLandsOnAPartnerUnderTheDeclaredSymmetry(Fields layout) {
-    FieldModel model = Rebuilt.field(ConfigFixtures.body(), layout);
+    FieldModel model = Rebuilt.field(layout);
 
     assertThat(model.tags()).hasSize(32);
     assertThat(model.symmetryError()).as("meters, worst tag").isLessThan(0.01);
@@ -67,10 +70,10 @@ class RebuiltTest {
   @Test
   void startsAreInTheAllianceZoneWithBumpersOnTheStartingLineFacingTheField() {
     double halfLength = ConfigFixtures.body().bumperLength().in(Meters) / 2;
-    assertThat(field.starts()).extracting(Place::name).containsExactly("Left", "Center", "Right");
-    for (Place start : field.starts()) {
+    assertThat(field.starts()).extracting(Start::name).containsExactly("Left", "Center", "Right");
+    for (Start start : field.starts()) {
       for (Alliance alliance : Alliance.values()) {
-        Pose2d pose = start.on(field, alliance);
+        Pose2d pose = start.on(field, alliance, BUMPERS);
 
         assertThat(Rebuilt.ALLIANCE_ZONE.contains(field, alliance, pose.getTranslation()))
             .as(start.name() + " for " + alliance)
@@ -78,7 +81,7 @@ class RebuiltTest {
         assertThat(Rebuilt.ALLIANCE_ZONE.distance(field, alliance, pose.getTranslation())).isZero();
         assertThat(pose.getRotation()).isEqualTo(FieldModel.driverForward(alliance));
       }
-      Pose2d blue = start.on(field, Alliance.BLUE);
+      Pose2d blue = start.on(field, Alliance.BLUE, BUMPERS);
       assertThat(blue.getX() + halfLength).isCloseTo(Rebuilt.STARTING_LINE_X, within(1e-9));
     }
   }

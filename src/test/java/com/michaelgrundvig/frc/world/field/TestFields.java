@@ -2,7 +2,9 @@ package com.michaelgrundvig.frc.world.field;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
+import static org.wpilib.units.Units.Meters;
 
+import com.michaelgrundvig.frc.world.physical.Bumpers;
 import com.michaelgrundvig.frc.world.physical.Polygon2d;
 import com.michaelgrundvig.frc.world.physical.TriangleMesh;
 import java.util.ArrayList;
@@ -62,7 +64,10 @@ final class TestFields {
         id, new Pose3d(new Translation3d(x, y, 1), new Rotation3d(0, 0, Math.toRadians(degrees))));
   }
 
-  static FieldModel model(List<Place> starts, List<Place> places, List<Zone> zones) {
+  /** A robot's bumpers, for what stands a robot on a start. */
+  static final Bumpers BUMPERS = new Bumpers(Meters.of(0.9), Meters.of(0.8));
+
+  static FieldModel model(List<Start> starts, List<Place> places, List<Zone> zones) {
     return new FieldModel(layout(), Symmetry.ROTATED, starts, places, zones);
   }
 

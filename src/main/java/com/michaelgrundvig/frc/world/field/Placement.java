@@ -1,5 +1,6 @@
 package com.michaelgrundvig.frc.world.field;
 
+import com.michaelgrundvig.frc.world.physical.Bumpers;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -36,15 +37,17 @@ public record Placement(
    * Checks the robot's pose against the field's starts for its alliance, and against the expected
    * start, which needn't be one of the field's: an auto may start anywhere it says.
    *
+   * @param bumpers the robot's, which stand it on each start ({@link Start#poseFor})
    * @param expected the start the robot should be on (the selected auto's), or null for any
    * @param toleranceMeters how far from a start still counts as on it
    * @param toleranceDegrees how far turned from a start's heading still counts as on it
    */
   public static Placement check(
       FieldModel field,
+      Bumpers bumpers,
       Optional<Alliance> alliance,
       Pose2d pose,
-      @Nullable Place expected,
+      @Nullable Start expected,
       double toleranceMeters,
       double toleranceDegrees) {
     if (alliance.isEmpty()) {
@@ -54,8 +57,8 @@ public record Placement(
     // robot is on its start: that is decided below, against the tolerances.
     Optional<Placement> fromNearest = Optional.empty();
     Optional<Placement> fromExpected = Optional.empty();
-    for (Place start : startsToJudge(field, expected)) {
-      Placement fromStart = offsetFrom(start, start.on(field, alliance.get()), pose);
+    for (Start start : startsToJudge(field, expected)) {
+      Placement fromStart = offsetFrom(start, start.on(field, alliance.get(), bumpers), pose);
       if (start.equals(expected)) {
         fromExpected = Optional.of(fromStart);
       }
@@ -89,8 +92,8 @@ public record Placement(
    * The starts the robot might be on: the field's, and the expected one too when it is not one of
    * the field's.
    */
-  private static List<Place> startsToJudge(FieldModel field, @Nullable Place expected) {
-    List<Place> starts = new ArrayList<>(field.starts());
+  private static List<Start> startsToJudge(FieldModel field, @Nullable Start expected) {
+    List<Start> starts = new ArrayList<>(field.starts());
     if (expected != null && !starts.contains(expected)) {
       starts.add(expected);
     }
@@ -103,7 +106,7 @@ public record Placement(
    *
    * @param spot where the start is for the robot's alliance
    */
-  private static Placement offsetFrom(Place start, Pose2d spot, Pose2d pose) {
+  private static Placement offsetFrom(Start start, Pose2d spot, Pose2d pose) {
     double distanceMeters = pose.getTranslation().getDistance(spot.getTranslation());
     double turnedDegrees = Math.abs(pose.getRotation().minus(spot.getRotation()).getDegrees());
     return new Placement(Status.NOT_ON_A_START, start.name(), distanceMeters, turnedDegrees);

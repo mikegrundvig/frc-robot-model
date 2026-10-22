@@ -3,7 +3,6 @@ package com.michaelgrundvig.frc.world.game;
 import static com.michaelgrundvig.frc.world.game.FieldShapes.box;
 import static com.michaelgrundvig.frc.world.game.Manuals.IN;
 import static org.wpilib.units.Units.Inches;
-import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.Pounds;
 
 import com.michaelgrundvig.frc.world.field.Block;
@@ -12,13 +11,13 @@ import com.michaelgrundvig.frc.world.field.Element;
 import com.michaelgrundvig.frc.world.field.FieldModel;
 import com.michaelgrundvig.frc.world.field.Place;
 import com.michaelgrundvig.frc.world.field.Platform;
+import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Surface;
 import com.michaelgrundvig.frc.world.field.Symmetry;
 import com.michaelgrundvig.frc.world.field.TagLayout;
 import com.michaelgrundvig.frc.world.field.Zone;
 import com.michaelgrundvig.frc.world.physical.Material;
 import com.michaelgrundvig.frc.world.physical.Polygon2d;
-import com.michaelgrundvig.frc.world.robot.Body;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -438,68 +437,69 @@ public final class Rebuilt {
   }
 
   /**
-   * Where a robot of this size starts, left to right as the drivers see them: bumpers on the
-   * starting line and facing the field, before each trench and before the hub. An auto starts on
-   * one ({@code Rebuilt.starts(robot.body()).left()}), and the placement check reads whether the
-   * robot stands on it.
+   * Where a robot starts, left to right as the drivers see them: front bumper on the starting line
+   * and facing the field, before each trench and before the hub. An auto starts on one ({@code
+   * Rebuilt.STARTS.left()}), and the placement check reads whether the robot stands on it.
    */
-  public record Starts(Place left, Place center, Place right) {
+  public record Starts(Start left, Start center, Start right) {
     /** All three, left to right: the order of Driver Station locations 1, 2, and 3. */
-    public List<Place> all() {
+    public List<Start> all() {
       return List.of(left, center, right);
     }
   }
 
-  /** The starts for a robot of this size, written for blue. */
-  public static Starts starts(Body body) {
-    double x = STARTING_LINE_X - body.bumperLength().in(Meters) / 2;
-    return new Starts(
-        Place.at("Left", new Pose2d(x, WIDTH - TRENCH_OPENING / 2, Rotation2d.ZERO)),
-        Place.at("Center", new Pose2d(x, WIDTH / 2, Rotation2d.ZERO)),
-        Place.at("Right", new Pose2d(x, TRENCH_OPENING / 2, Rotation2d.ZERO)));
-  }
+  /** The starts, written for blue. */
+  public static final Starts STARTS =
+      new Starts(
+          onTheStartingLine("Left", WIDTH - TRENCH_OPENING / 2),
+          onTheStartingLine("Center", WIDTH / 2),
+          onTheStartingLine("Right", TRENCH_OPENING / 2));
 
-  /**
-   * The field model for a robot of this size, which sets where it stands on the starting line.
-   *
-   * <p>Starts, left to right as the drivers see them ({@link #starts}). Driver Station locations 1,
-   * 2, and 3 choose them when no auto is chosen; a chosen auto names its own.
-   */
-  public static FieldModel field(Body body) {
-    return field(body, LAYOUT);
+  private static Start onTheStartingLine(String name, double y) {
+    return new Start(
+        name, new Pose2d(STARTING_LINE_X, y, Rotation2d.ZERO), Start.Anchor.FRONT_BUMPER);
   }
 
   /**
    * The season's field and its venues: the welded field by default, either build a venue may be
    * measured against, and the field model on any layout.
    */
-  public static Game game(Body body) {
-    return new Game(
-        LAYOUT.loadField(),
-        List.of(
-            Fields.FRC_2026_REBUILT_WELDED.loadField(),
-            Fields.FRC_2026_REBUILT_ANDY_MARK.loadField()),
-        SYMMETRY,
-        layout -> field(body, layout));
+  public static final Game GAME =
+      new Game(
+          LAYOUT.loadField(),
+          List.of(
+              Fields.FRC_2026_REBUILT_WELDED.loadField(),
+              Fields.FRC_2026_REBUILT_ANDY_MARK.loadField()),
+          SYMMETRY,
+          Rebuilt::field);
+
+  /**
+   * The field model on the welded field.
+   *
+   * <p>Starts, left to right as the drivers see them ({@link #STARTS}). Driver Station locations 1,
+   * 2, and 3 choose them when no auto is chosen; a chosen auto names its own.
+   */
+  public static FieldModel field() {
+    return field(LAYOUT);
   }
 
   /** The field model on another of the season's layouts: the AndyMark build, say. */
-  static FieldModel field(Body body, Fields layout) {
-    return field(body, layout.loadField());
+  static FieldModel field(Fields layout) {
+    return field(layout.loadField());
   }
 
   /** The field model on a WPILib layout, its tags where it puts them. */
-  public static FieldModel field(Body body, Field layout) {
-    return field(body, TagLayout.of(layout));
+  public static FieldModel field(Field layout) {
+    return field(TagLayout.of(layout));
   }
 
   /**
    * The field model on the field's tags: one of the season's official layouts, or a venue's, its
    * tags as surveyed.
    */
-  public static FieldModel field(Body body, TagLayout layout) {
+  public static FieldModel field(TagLayout layout) {
     return FieldModel.builder(layout, SYMMETRY)
-        .starts(starts(body).all())
+        .starts(STARTS.all())
         .places(List.of(HUB, TOWER))
         .zones(List.of(ALLIANCE_ZONE, TRENCH))
         .surfaces(surfaces())

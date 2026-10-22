@@ -5,13 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.michaelgrundvig.frc.world.field.FieldModel;
 import com.michaelgrundvig.frc.world.field.Symmetry;
 import com.michaelgrundvig.frc.world.field.TagLayout;
-import com.michaelgrundvig.frc.world.robot.ConfigFixtures;
 import org.junit.jupiter.api.Test;
 import org.wpilib.fields.Fields;
 
 /** What a game says about its field, as the season's class makes it. */
 class GameTest {
-  private final Game game = Rebuilt.game(ConfigFixtures.body());
+  private final Game game = Rebuilt.GAME;
 
   @Test
   void theSeasonsGameOffersBothBuildsOfTheFieldAndStartsOnTheWelded() {

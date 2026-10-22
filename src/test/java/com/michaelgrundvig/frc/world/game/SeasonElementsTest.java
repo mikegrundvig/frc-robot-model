@@ -9,8 +9,9 @@ import com.michaelgrundvig.frc.world.field.Alliance;
 import com.michaelgrundvig.frc.world.field.Block;
 import com.michaelgrundvig.frc.world.field.Element;
 import com.michaelgrundvig.frc.world.field.FieldModel;
-import com.michaelgrundvig.frc.world.field.Place;
+import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Surface;
+import com.michaelgrundvig.frc.world.physical.Bumpers;
 import com.michaelgrundvig.frc.world.physical.Polygon2d;
 import com.michaelgrundvig.frc.world.robot.Body;
 import com.michaelgrundvig.frc.world.robot.ConfigFixtures;
@@ -30,10 +31,12 @@ import org.wpilib.math.geometry.Translation3d;
  * measured face is in the element while a point just outside it is in none.
  */
 class SeasonElementsTest {
+  private static final Bumpers BUMPERS = ConfigFixtures.body().bumpers();
+
   private static final Body BODY = ConfigFixtures.body();
-  private static final FieldModel REBUILT = Rebuilt.field(BODY);
-  private static final FieldModel REEFSCAPE = Reefscape.field(BODY);
-  private static final FieldModel CRESCENDO = Crescendo.field(BODY);
+  private static final FieldModel REBUILT = Rebuilt.field();
+  private static final FieldModel REEFSCAPE = Reefscape.field();
+  private static final FieldModel CRESCENDO = Crescendo.field();
 
   static Stream<Arguments> fields() {
     return Stream.of(
@@ -100,9 +103,9 @@ class SeasonElementsTest {
     // Bumpers a millimeter smaller all round: a start may touch what it backs up to.
     double length = BODY.bumperLength().in(Meters) - 0.002;
     double width = BODY.bumperWidth().in(Meters) - 0.002;
-    for (Place start : field.starts()) {
+    for (Start start : field.starts()) {
       for (Alliance alliance : Alliance.values()) {
-        Pose2d pose = start.on(field, alliance);
+        Pose2d pose = start.on(field, alliance, BUMPERS);
         Polygon2d bumpers = Polygon2d.rectangle(pose, length, width);
         for (Element element : field.elements()) {
           assertThat(element.inTheWayOf(lowest, highest))

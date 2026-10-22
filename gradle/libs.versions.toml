@@ -4,7 +4,7 @@
 [versions]
 # This release of the FRC libraries (the model, localization, Pitwall, the runtime): what this build
 # publishes as (gradle/publishing.gradle). All of them share it, so a release is one change, here.
-frc-libs = "2026.10.20"
+frc-libs = "2026.10.21"
 # WPILib's math, units, utilities and field layouts, and what they're built on, each at the version
 # WPILib's own release uses: a robot program's GradleRIO brings the same.
 wpilib = "2027.0.0-alpha-7"

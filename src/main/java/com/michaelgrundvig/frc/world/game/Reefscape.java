@@ -4,18 +4,17 @@ import static com.michaelgrundvig.frc.world.game.FieldShapes.box;
 import static com.michaelgrundvig.frc.world.game.FieldShapes.cutOff;
 import static com.michaelgrundvig.frc.world.game.FieldShapes.post;
 import static com.michaelgrundvig.frc.world.game.Manuals.IN;
-import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.field.Block;
 import com.michaelgrundvig.frc.world.field.Element;
 import com.michaelgrundvig.frc.world.field.FieldModel;
 import com.michaelgrundvig.frc.world.field.Place;
+import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Symmetry;
 import com.michaelgrundvig.frc.world.field.TagLayout;
 import com.michaelgrundvig.frc.world.field.Zone;
 import com.michaelgrundvig.frc.world.physical.Material;
 import com.michaelgrundvig.frc.world.physical.Polygon2d;
-import com.michaelgrundvig.frc.world.robot.Body;
 import java.util.ArrayList;
 import java.util.List;
 import org.wpilib.fields.Fields;
@@ -325,28 +324,49 @@ public final class Reefscape {
   }
 
   /**
-   * The field model for a robot of this size, which sets where it stands on the starting line.
-   *
-   * <p>Starts, left to right as the drivers see them, front bumpers on the starting line's far edge
-   * so the bumpers overlap it: in line with each middle cage, and between them.
+   * Where a robot starts, left to right as the drivers see them, front bumper on the starting
+   * line's far edge so the bumpers overlap it: in line with each middle cage, and between them.
    */
-  public static FieldModel field(Body body) {
-    return field(body, LAYOUT);
+  public static final List<Start> STARTS =
+      List.of(
+          onTheStartingLine("Left", WIDTH / 2 + CAGES.get(1)),
+          onTheStartingLine("Center", WIDTH / 2),
+          onTheStartingLine("Right", WIDTH / 2 - CAGES.get(1)));
+
+  private static Start onTheStartingLine(String name, double y) {
+    return new Start(
+        name,
+        new Pose2d(STARTING_LINE_X + TAPE_WIDTH, y, Rotation2d.ZERO),
+        Start.Anchor.FRONT_BUMPER);
+  }
+
+  /** The season's field and its venues: the welded field by default, or the AndyMark build. */
+  public static final Game GAME =
+      new Game(
+          LAYOUT.loadField(),
+          List.of(
+              Fields.FRC_2025_REEFSCAPE_WELDED.loadField(),
+              Fields.FRC_2025_REEFSCAPE_ANDY_MARK.loadField()),
+          SYMMETRY,
+          Reefscape::field);
+
+  /** The field model on the welded field, with its starts ({@link #STARTS}). */
+  public static FieldModel field() {
+    return field(LAYOUT);
   }
 
   /** The field model on another of the season's layouts: the AndyMark build, say. */
-  static FieldModel field(Body body, Fields layout) {
-    // The robot's center is half its length back from its front bumper, which is on the far edge
-    // of the starting line's tape.
-    double x = STARTING_LINE_X + TAPE_WIDTH - body.bumperLength().in(Meters) / 2;
-    double cage = CAGES.get(1);
-    TagLayout tags = TagLayout.of(layout.loadField());
+  static FieldModel field(Fields layout) {
+    return field(TagLayout.of(layout.loadField()));
+  }
+
+  /**
+   * The field model on the field's tags: one of the season's official layouts, or a venue's, its
+   * tags as surveyed.
+   */
+  public static FieldModel field(TagLayout tags) {
     return FieldModel.builder(tags, SYMMETRY)
-        .starts(
-            List.of(
-                Place.at("Left", new Pose2d(x, WIDTH / 2 + cage, Rotation2d.ZERO)),
-                Place.at("Center", new Pose2d(x, WIDTH / 2, Rotation2d.ZERO)),
-                Place.at("Right", new Pose2d(x, WIDTH / 2 - cage, Rotation2d.ZERO))))
+        .starts(STARTS)
         .places(List.of(REEF))
         .zones(List.of(REEF_ZONE, BARGE_ZONE))
         .elements(elements())

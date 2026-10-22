@@ -7,9 +7,10 @@ import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.field.Alliance;
 import com.michaelgrundvig.frc.world.field.FieldModel;
-import com.michaelgrundvig.frc.world.field.Place;
+import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Symmetry;
 import com.michaelgrundvig.frc.world.field.TagLayout;
+import com.michaelgrundvig.frc.world.physical.Bumpers;
 import com.michaelgrundvig.frc.world.robot.ConfigFixtures;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -24,14 +25,16 @@ import org.wpilib.math.geometry.Translation2d;
  * model, so these check that it can say what the field is, on both halves.
  */
 class ReefscapeTest {
-  private final FieldModel field = Reefscape.field(ConfigFixtures.body());
+  private static final Bumpers BUMPERS = ConfigFixtures.body().bumpers();
+
+  private final FieldModel field = Reefscape.field();
 
   @ParameterizedTest
   @EnumSource(
       value = Fields.class,
       names = {"FRC_2025_REEFSCAPE_WELDED", "FRC_2025_REEFSCAPE_ANDY_MARK"})
   void everyTagLandsOnAPartnerTurnedHalfATurn(Fields layout) {
-    FieldModel model = Reefscape.field(ConfigFixtures.body(), layout);
+    FieldModel model = Reefscape.field(layout);
 
     assertThat(model.tags()).hasSize(22);
     assertThat(model.symmetryError()).as("meters, worst tag").isLessThan(0.01);
@@ -83,13 +86,13 @@ class ReefscapeTest {
   @Test
   void startsOverlapTheStartingLineFacingTheField() {
     double halfLength = ConfigFixtures.body().bumperLength().in(Meters) / 2;
-    assertThat(field.starts()).extracting(Place::name).containsExactly("Left", "Center", "Right");
-    for (Place start : field.starts()) {
-      Pose2d blue = start.on(field, Alliance.BLUE);
+    assertThat(field.starts()).extracting(Start::name).containsExactly("Left", "Center", "Right");
+    for (Start start : field.starts()) {
+      Pose2d blue = start.on(field, Alliance.BLUE, BUMPERS);
 
       assertThat(blue.getX() + halfLength)
           .isCloseTo(Reefscape.STARTING_LINE_X + Reefscape.TAPE_WIDTH, within(1e-9));
-      assertThat(start.on(field, Alliance.RED).getRotation()).isEqualTo(Rotation2d.PI);
+      assertThat(start.on(field, Alliance.RED, BUMPERS).getRotation()).isEqualTo(Rotation2d.PI);
     }
   }
 

@@ -6,9 +6,10 @@ import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.field.Alliance;
 import com.michaelgrundvig.frc.world.field.FieldModel;
-import com.michaelgrundvig.frc.world.field.Place;
+import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Symmetry;
 import com.michaelgrundvig.frc.world.field.TagLayout;
+import com.michaelgrundvig.frc.world.physical.Bumpers;
 import com.michaelgrundvig.frc.world.robot.ConfigFixtures;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +22,9 @@ import org.wpilib.math.geometry.Translation2d;
  * model, a mirrored one, so these check that it can say what the field is, on both halves.
  */
 class CrescendoTest {
-  private final FieldModel field = Crescendo.field(ConfigFixtures.body());
+  private static final Bumpers BUMPERS = ConfigFixtures.body().bumpers();
+
+  private final FieldModel field = Crescendo.field();
 
   @Test
   void everyTagLandsOnAPartnerReflectedAcrossTheCenterLine() {
@@ -42,11 +45,11 @@ class CrescendoTest {
     double halfLength = ConfigFixtures.body().bumperLength().in(Meters) / 2;
     double halfWidth = ConfigFixtures.body().bumperWidth().in(Meters) / 2;
     assertThat(field.starts())
-        .extracting(Place::name)
+        .extracting(Start::name)
         .containsExactly("Amp side", "Subwoofer", "Center");
-    for (Place start : field.starts()) {
+    for (Start start : field.starts()) {
       for (Alliance alliance : Alliance.values()) {
-        Pose2d pose = start.on(field, alliance);
+        Pose2d pose = start.on(field, alliance, BUMPERS);
 
         // Bumpers within the zone, its edges included: a start backs up to them.
         for (Translation2d corner : corners(pose, halfLength, halfWidth)) {

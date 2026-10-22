@@ -45,7 +45,7 @@ public final class FieldModel {
   private final Symmetry symmetry;
   private final Map<Integer, Tag> tags;
   private final TagPartners partners;
-  private final List<Place> starts;
+  private final List<Start> starts;
   private final List<Place> places;
   private final List<Zone> zones;
   private final Terrain terrain;
@@ -57,14 +57,14 @@ public final class FieldModel {
    *
    * @param layout the field's size and AprilTags; the model keeps its own copy
    * @param symmetry how red's half relates to blue's
-   * @param starts where robots start a match
+   * @param starts where robots start a match, without the robot
    * @param places other named places on the floor: spots to line up on, to score or load from
    * @param zones named areas of the field
    * @throws IllegalArgumentException if a place or zone doesn't fit the layout (a tag that isn't in
    *     it, or has no partner on the other half), or two share a name
    */
   public FieldModel(
-      Field layout, Symmetry symmetry, List<Place> starts, List<Place> places, List<Zone> zones) {
+      Field layout, Symmetry symmetry, List<Start> starts, List<Place> places, List<Zone> zones) {
     this(layout, symmetry, starts, places, zones, List.of());
   }
 
@@ -78,7 +78,7 @@ public final class FieldModel {
   public FieldModel(
       Field layout,
       Symmetry symmetry,
-      List<Place> starts,
+      List<Start> starts,
       List<Place> places,
       List<Zone> zones,
       List<? extends Surface> surfaces) {
@@ -105,7 +105,7 @@ public final class FieldModel {
   public static final class Builder {
     private final TagLayout layout;
     private final Symmetry symmetry;
-    private List<Place> starts = List.of();
+    private List<Start> starts = List.of();
     private List<Place> places = List.of();
     private List<Zone> zones = List.of();
     private List<? extends Surface> surfaces = List.of();
@@ -118,7 +118,7 @@ public final class FieldModel {
     }
 
     /** Where robots start a match. */
-    public Builder starts(List<Place> starts) {
+    public Builder starts(List<Start> starts) {
       this.starts = List.copyOf(starts);
       return this;
     }
@@ -266,8 +266,11 @@ public final class FieldModel {
     return Optional.ofNullable(tags.get(id)).map(Tag::pose);
   }
 
-  /** Where robots start a match, in the order they were given. */
-  public List<Place> starts() {
+  /**
+   * Where robots start a match, in the order they were given: without the robot, which {@link
+   * Start#poseFor} stands on one.
+   */
+  public List<Start> starts() {
     return starts;
   }
 

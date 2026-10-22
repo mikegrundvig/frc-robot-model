@@ -1,9 +1,7 @@
 package com.michaelgrundvig.frc.world.field;
 
 import com.michaelgrundvig.frc.world.physical.Polygon2d;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -27,19 +25,17 @@ final class FieldChecks {
   }
 
   /**
-   * Every start and every other place has a name of its own, and can be found for both alliances: a
-   * place found from a tag needs the tag to be in the layout, and to have a partner on the red
-   * alliance's half.
+   * Every start and every other place has a name of its own, and every place can be found for both
+   * alliances: a place found from a tag needs the tag to be in the layout, and to have a partner on
+   * the red alliance's half. A start is written as a pose, so it can always be found.
    */
   private static void requirePlacesCanBeFound(FieldModel field) {
-    List<Place> startsAndPlaces = new ArrayList<>(field.starts());
-    startsAndPlaces.addAll(field.places());
     Set<String> names = new HashSet<>();
-    for (Place place : startsAndPlaces) {
-      boolean nameIsNew = names.add(place.name());
-      if (!nameIsNew) {
-        throw new IllegalArgumentException("two places are named " + place.name());
-      }
+    for (Start start : field.starts()) {
+      requireNewName(names, start.name());
+    }
+    for (Place place : field.places()) {
+      requireNewName(names, place.name());
       for (Alliance alliance : Alliance.values()) {
         try {
           place.on(field, alliance);
@@ -47,6 +43,13 @@ final class FieldChecks {
           throw new IllegalArgumentException(place.name() + ": " + e.getMessage(), e);
         }
       }
+    }
+  }
+
+  private static void requireNewName(Set<String> names, String name) {
+    boolean nameIsNew = names.add(name);
+    if (!nameIsNew) {
+      throw new IllegalArgumentException("two places are named " + name);
     }
   }
 

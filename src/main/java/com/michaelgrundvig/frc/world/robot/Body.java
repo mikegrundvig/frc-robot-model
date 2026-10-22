@@ -8,6 +8,7 @@ import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import com.michaelgrundvig.frc.world.physical.Bumpers;
 import com.michaelgrundvig.frc.world.physical.Inertia;
 import com.michaelgrundvig.frc.world.physical.MassProperties;
 import java.util.Optional;
@@ -324,6 +325,11 @@ public record Body(
   /** Side to side, across the outside of the bumpers. */
   public Distance bumperWidth() {
     return frameWidth.plus(bumperSides.times(2));
+  }
+
+  /** The bumpers seen from above: what the field stands the robot on a start with. */
+  public Bumpers bumpers() {
+    return new Bumpers(bumperLength(), bumperWidth());
   }
 
   /** Around the outside of the frame. The game rules limit it. */
