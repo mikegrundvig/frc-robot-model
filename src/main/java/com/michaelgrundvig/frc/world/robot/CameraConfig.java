@@ -2,7 +2,6 @@ package com.michaelgrundvig.frc.world.robot;
 
 import static com.michaelgrundvig.frc.world.config.Rules.below;
 import static com.michaelgrundvig.frc.world.config.Rules.finite;
-import static com.michaelgrundvig.frc.world.config.Rules.given;
 import static com.michaelgrundvig.frc.world.config.Rules.nonNegative;
 import static com.michaelgrundvig.frc.world.config.Rules.notBlank;
 import static com.michaelgrundvig.frc.world.config.Rules.positive;
@@ -79,8 +78,9 @@ public record CameraConfig(
     Software PHOTONVISION = new PhotonVision();
 
     /**
-     * Visor, with nothing said of its coprocessor: enough for the robot program and the simulator.
-     * A deploy that puts Visor on the coprocessors needs its board and device ({@link #visor()}).
+     * Visor, with nothing said of its device: enough for the simulator. On a robot, the robot
+     * configures Visor on whichever coprocessor the camera is plugged into, found by its device
+     * ({@link #visor()}).
      */
     Visor VISOR = CameraConfigSoftwareVisorBuilder.builder().build();
 
@@ -89,7 +89,7 @@ public record CameraConfig(
 
     /**
      * Starts describing a camera on Visor, one named value at a time: {@code
-     * Software.visor().coprocessor("vision-a").device("/dev/v4l/by-id/...").build()}.
+     * Software.visor().device("/dev/v4l/by-id/...").build()}.
      */
     static CameraConfigSoftwareVisorBuilder.CameraConfigSoftwareVisorBuilderStage visor() {
       return CameraConfigSoftwareVisorBuilder.builder();
@@ -101,13 +101,12 @@ public record CameraConfig(
     /**
      * Visor: frames over UDP, through Visor's robot client. The camera's place in the robot's list
      * of cameras, from 0, is its index in Visor's configuration. What's here goes into that
-     * configuration, which the robot's deploy writes for each coprocessor; the robot program and
-     * the simulator need none of it.
+     * configuration, which the robot writes for each coprocessor as it starts, from the cameras
+     * each one reports plugged in; the simulator needs none of it.
      *
-     * @param coprocessor the board the camera plugs into, by the name the build's {@code visor}
-     *     block gives it (its address is there); needed to deploy
-     * @param device the camera's V4L2 device on that board: its {@code /dev/v4l/by-id/} path, which
-     *     finds the same camera after a replug; needed to deploy
+     * @param device the camera's V4L2 device: its {@code /dev/v4l/by-id/} path, which names the
+     *     camera itself (its USB serial), so the robot finds which coprocessor it's plugged into,
+     *     and the same camera after a replug; needed on a robot
      * @param controls camera settings by the names {@code v4l2-ctl --list-ctrls} prints, set in
      *     this order (manual exposure before the exposure); none unless given, so the camera's own
      * @param timeOffset added to every capture time: the spin test's result; none unless given
@@ -116,7 +115,6 @@ public record CameraConfig(
      */
     @ConfigRecord
     record Visor(
-        Optional<String> coprocessor,
         Optional<String> device,
         @RecordBuilder.Initializer(value = "of", source = List.class) List<Control> controls,
         Optional<Time> timeOffset,
@@ -125,7 +123,6 @@ public record CameraConfig(
       public Visor {
         controls = List.copyOf(controls);
         Checks.on(Visor.class)
-            .field("coprocessor", coprocessor, given(notBlank()))
             .field("device", device, Rule.of(Visor::whyNotADevice))
             .field("controls", controls, Rule.of(Visor::whyControlsRepeat))
             .orThrow();

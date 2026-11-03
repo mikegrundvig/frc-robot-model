@@ -144,7 +144,6 @@ class CameraConfigTest {
   void aVisorCameraCarriesWhatItsDeployNeeds() {
     CameraConfig.Software.Visor visor =
         CameraConfig.Software.visor()
-            .coprocessor("vision-a")
             .device("/dev/v4l/by-id/usb-cam-video-index0")
             .controls(
                 List.of(
@@ -156,12 +155,12 @@ class CameraConfigTest {
     CameraConfig camera = change().software(visor).build();
 
     assertThat(camera.software()).isEqualTo(visor);
-    assertThat(visor.coprocessor()).contains("vision-a");
+    assertThat(visor.device()).contains("/dev/v4l/by-id/usb-cam-video-index0");
     assertThat(visor.controls())
         .extracting(CameraConfig.Software.Control::name)
         .containsExactly("auto_exposure", "exposure_time_absolute");
-    // Visor alone, for the robot program and the simulator: nothing for a deploy.
-    assertThat(CameraConfig.Software.VISOR.coprocessor()).isEmpty();
+    // Visor alone, for the simulator: nothing for a robot to configure.
+    assertThat(CameraConfig.Software.VISOR.device()).isEmpty();
     assertThat(CameraConfig.Software.VISOR.controls()).isEmpty();
     assertThat(CameraConfig.Software.VISOR.lens()).isEmpty();
   }
@@ -177,8 +176,6 @@ class CameraConfigTest {
                     change()
                         .software(CameraConfig.Software.visor().lens(lens(1600, 1304)).build())
                         .build()),
-            new Case(
-                "Visor.coprocessor", () -> CameraConfig.Software.visor().coprocessor(" ").build()),
             new Case(
                 "Visor.device: is \"video0\", not a device",
                 () -> CameraConfig.Software.visor().device("video0").build()),
