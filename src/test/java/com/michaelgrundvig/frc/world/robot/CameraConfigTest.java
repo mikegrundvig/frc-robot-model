@@ -14,6 +14,7 @@ import static org.wpilib.units.Units.Millimeters;
 import static org.wpilib.units.Units.Milliseconds;
 import static org.wpilib.units.Units.Radians;
 
+import java.util.List;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.wpilib.math.geometry.Rotation3d;
@@ -124,6 +125,86 @@ class CameraConfigTest {
         .isEqualTo(CameraConfig.Software.PHOTONVISION);
     assertThat(change().software(CameraConfig.Software.VISOR).build().software())
         .isEqualTo(CameraConfig.Software.VISOR);
+  }
+
+  /** A lens at a frame size, as calibrate.py prints one. */
+  private static CameraConfig.Software.Lens lens(int width, int height) {
+    return CameraConfig.Software.Lens.builder()
+        .width(width)
+        .height(height)
+        .fx(905.2)
+        .fy(905.6)
+        .cx(641.3)
+        .cy(398.8)
+        .distortion(List.of(-0.31, 0.12, 0.0004, -0.0002, -0.02))
+        .build();
+  }
+
+  @Test
+  void aVisorCameraCarriesWhatItsDeployNeeds() {
+    CameraConfig.Software.Visor visor =
+        CameraConfig.Software.visor()
+            .coprocessor("vision-a")
+            .device("/dev/v4l/by-id/usb-cam-video-index0")
+            .controls(
+                List.of(
+                    CameraConfig.Software.Control.of("auto_exposure", 1),
+                    CameraConfig.Software.Control.of("exposure_time_absolute", 10)))
+            .timeOffset(Milliseconds.of(-1.5))
+            .lens(lens(1280, 800))
+            .build();
+    CameraConfig camera = change().software(visor).build();
+
+    assertThat(camera.software()).isEqualTo(visor);
+    assertThat(visor.coprocessor()).contains("vision-a");
+    assertThat(visor.controls())
+        .extracting(CameraConfig.Software.Control::name)
+        .containsExactly("auto_exposure", "exposure_time_absolute");
+    // Visor alone, for the robot program and the simulator: nothing for a deploy.
+    assertThat(CameraConfig.Software.VISOR.coprocessor()).isEmpty();
+    assertThat(CameraConfig.Software.VISOR.controls()).isEmpty();
+    assertThat(CameraConfig.Software.VISOR.lens()).isEmpty();
+  }
+
+  @Test
+  void visorSettingsThatCantBeAreRefused() {
+    record Case(String says, ThrowingCallable build) {}
+    List<Case> cases =
+        List.of(
+            new Case(
+                "CameraConfig[front].software: has a lens calibrated at 1600x1304, but the camera runs at 1280x800",
+                () ->
+                    change()
+                        .software(CameraConfig.Software.visor().lens(lens(1600, 1304)).build())
+                        .build()),
+            new Case(
+                "Visor.coprocessor", () -> CameraConfig.Software.visor().coprocessor(" ").build()),
+            new Case(
+                "Visor.device: is \"video0\", not a device",
+                () -> CameraConfig.Software.visor().device("video0").build()),
+            new Case(
+                "Visor.controls: sets gain twice",
+                () ->
+                    CameraConfig.Software.visor()
+                        .controls(
+                            List.of(
+                                CameraConfig.Software.Control.of("gain", 1),
+                                CameraConfig.Software.Control.of("gain", 2)))
+                        .build()),
+            new Case(
+                "Control[Exposure].name", () -> CameraConfig.Software.Control.of("Exposure", 10)),
+            new Case(
+                "Lens.distortion: has 3 coefficients",
+                () ->
+                    CameraConfigSoftwareLensBuilder.builder(lens(1280, 800))
+                        .distortion(List.of(0.1, 0.2, 0.3))
+                        .build()),
+            new Case(
+                "Lens.fx",
+                () -> CameraConfigSoftwareLensBuilder.builder(lens(1280, 800)).fx(0).build()));
+    for (Case c : cases) {
+      assertRejected(c.says(), c.build());
+    }
   }
 
   @Test
