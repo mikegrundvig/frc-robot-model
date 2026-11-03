@@ -113,6 +113,7 @@ public final class AdvantageScopeAssets {
           "CameraConfig.noiseScale",
           "CameraConfig.joint",
           "CameraConfig.mountTolerance",
+          "CameraConfig.software",
           "CameraConfig.Sensor.frameRate",
           "CameraConfig.Sensor.latency");
 

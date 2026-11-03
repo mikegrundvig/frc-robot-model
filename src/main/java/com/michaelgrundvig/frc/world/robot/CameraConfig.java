@@ -48,6 +48,8 @@ import org.wpilib.units.measure.Time;
  *     camera on the chassis
  * @param mountTolerance how far the camera may really sit from where the values above say: {@link
  *     MountTolerance#MEASURED} unless given, for a mount measured from CAD and checked
+ * @param software the vision program on the camera's coprocessor: {@link Software#PHOTONVISION}
+ *     unless given
  */
 @ConfigRecord
 public record CameraConfig(
@@ -62,7 +64,22 @@ public record CameraConfig(
     double noiseScale,
     Optional<Joint> joint,
     @RecordBuilder.Initializer(value = "MEASURED", source = MountTolerance.class)
-        MountTolerance mountTolerance) {
+        MountTolerance mountTolerance,
+    @RecordBuilder.Initializer(value = "UNLESS_GIVEN", source = Software.class) Software software) {
+  /** The vision program a camera's coprocessor runs, which decides how the robot reads it. */
+  public enum Software {
+    /** PhotonVision: results over NetworkTables, through PhotonLib. */
+    PHOTONVISION,
+    /**
+     * Visor: frames over UDP, through Visor's robot client. The camera's place in the robot's list
+     * of cameras, from 0, is its index in Visor's configuration.
+     */
+    VISOR;
+
+    /** A camera's software unless its definition says. */
+    public static final Software UNLESS_GIVEN = PHOTONVISION;
+  }
+
   /**
    * The most characters a camera's {@link #id()} may have: Pitwall's World view names what it draws
    * for a camera by it, in ids of at most 64 characters, the longest twelve more ({@code

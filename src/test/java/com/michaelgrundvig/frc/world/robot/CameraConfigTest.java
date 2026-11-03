@@ -119,6 +119,14 @@ class CameraConfigTest {
   }
 
   @Test
+  void aCameraRunsPhotonVisionUnlessItSaysVisor() {
+    assertThat(camera("front", new Translation3d()).software())
+        .isEqualTo(CameraConfig.Software.PHOTONVISION);
+    assertThat(change().software(CameraConfig.Software.VISOR).build().software())
+        .isEqualTo(CameraConfig.Software.VISOR);
+  }
+
+  @Test
   void aCameraLeftWithoutAToleranceIsAsSureAsAMeasuredMount() {
     CameraConfig.MountTolerance measured = camera("front", new Translation3d()).mountTolerance();
     CameraConfig.MountTolerance calibrated =
