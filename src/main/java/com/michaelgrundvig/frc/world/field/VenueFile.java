@@ -18,7 +18,7 @@ import org.wpilib.fields.Field;
  * {
  *   "format": 1,
  *   "name": "Practice field, October",
- *   "kind": "practice",                       // practice, event or official
+ *   "kind": "practice",                       // practice, shop, event or official
  *   "base": "2026 FRC Rebuilt Welded",        // the official layout it was measured against
  *   "layout": { ... },                        // WPILib's layout, either format, as WPILib writes it
  *   "moved": {"14": "the panel was rehung after the survey"},   // optional
@@ -229,7 +229,7 @@ public final class VenueFile {
     try {
       return Optional.of(Venue.Kind.valueOf(written.get().toUpperCase(Locale.ROOT)));
     } catch (IllegalArgumentException e) {
-      reading.problem("kind \"" + written.get() + "\" (practice, event or official)");
+      reading.problem("kind \"" + written.get() + "\" (practice, shop, event or official)");
       return Optional.empty();
     }
   }

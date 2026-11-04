@@ -69,11 +69,20 @@ public final class VenueCheck {
     check.itWasMeasuredAgainstThisLayout();
     check.theFieldIsTheSameSize();
     check.itHasTheSameTags();
+    boolean shop = venue.kind() == Venue.Kind.SHOP;
     for (int id : new TreeSet<>(check.measured.keySet())) {
-      check.theTagIsNearItsOfficialPlace(id);
+      if (shop) {
+        check.theTagIsOnTheField(id);
+      } else {
+        check.theTagIsNearItsOfficialPlace(id);
+      }
     }
     check.movedNamesOnlyTagsItHas();
-    check.tagsStillPairUp(symmetry);
+    if (!shop) {
+      // A shop's tags hang wherever they fit, so they can't be paired by where they are. The
+      // robot pairs them by their official places anyway (TagPartners).
+      check.tagsStillPairUp(symmetry);
+    }
     return check.problems;
   }
 
@@ -167,6 +176,38 @@ public final class VenueCheck {
               id,
               shiftMeters,
               turnDegrees));
+    }
+  }
+
+  /**
+   * A shop's tag is within the field's walls, on the floor: the shop is laid out in the field's
+   * coordinates, and the robot refuses an image that puts it off the field.
+   */
+  private void theTagIsOnTheField(int id) {
+    Pose3d pose = measured.get(id);
+    if (pose == null) {
+      return;
+    }
+    double length = base.getFieldLength();
+    double width = base.getFieldWidth();
+    double x = pose.getX();
+    double y = pose.getY();
+    boolean inside =
+        x >= -FIELD_SIZE_METERS
+            && x <= length + FIELD_SIZE_METERS
+            && y >= -FIELD_SIZE_METERS
+            && y <= width + FIELD_SIZE_METERS;
+    if (!inside) {
+      problems.add(
+          String.format(
+              Locale.ROOT,
+              "tag %d sits at x %.2f m, y %.2f m, off the %.2f x %.2f m field: lay the shop out"
+                  + " in the field's coordinates, inside it",
+              id,
+              x,
+              y,
+              length,
+              width));
     }
   }
 

@@ -291,7 +291,21 @@ class VenueTest {
         argumentSet(
             "a reason for a tag the layout lacks",
             file(TestFields.tags(), ", \"moved\": {\"78\": \"why\"}"),
-            List.of("moved names tags the layout doesn't have: [78]")));
+            List.of("moved names tags the layout doesn't have: [78]")),
+        argumentSet(
+            "a shop hangs its tags where they fit, with no reasons and no partners",
+            file("shop", BASE, moved(14, -9, -3), true, ""),
+            List.of()),
+        argumentSet(
+            "...within the field's walls",
+            file("shop", BASE, moved(4, -0.5, 0), true, ""),
+            List.of(
+                "tag 4 sits at x -0.50 m, y 2.00 m, off the 16.00 x 8.00 m field: lay the shop out"
+                    + " in the field's coordinates, inside it")),
+        argumentSet(
+            "...and with the game's tags",
+            file("shop", BASE, withoutTagThreeButWithNinetyNine(), true, ""),
+            List.of("the layout is missing tags [3]", "the official layout has no tags [99]")));
   }
 
   private static List<FieldTag> withoutTagThreeButWithNinetyNine() {

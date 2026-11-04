@@ -20,7 +20,7 @@ import org.wpilib.math.geometry.Pose3d;
  * gives its {@link Tag}s ({@link #tags}), which a {@link FieldModel} is built on.
  *
  * @param name what people call it, such as "Practice field, October"
- * @param kind a practice field, an event, or the official layout itself
+ * @param kind a practice field, a shop, an event, or the official layout itself
  * @param base the name of the official layout it was measured against (WPILib's, such as "2026 FRC
  *     Rebuilt Welded")
  * @param layout every tag where the survey found it, in WPILib's field frame: the file's layout,
@@ -49,10 +49,21 @@ public record Venue(
   public enum Kind {
     /** The team's practice field: never valid with the field management system attached. */
     PRACTICE,
+    /**
+     * A team's shop: some of the game's tags hung wherever they fit, in the field's coordinates.
+     * Its tags aren't judged against their official places, and it's never valid with the field
+     * management system attached.
+     */
+    SHOP,
     /** An event's field, surveyed there. */
     EVENT,
     /** The official layout, as WPILib ships it. */
-    OFFICIAL
+    OFFICIAL;
+
+    /** Whether a venue of this kind is set aside while the field management system is attached. */
+    public boolean offTheFieldOnly() {
+      return this == PRACTICE || this == SHOP;
+    }
   }
 
   public Venue {
