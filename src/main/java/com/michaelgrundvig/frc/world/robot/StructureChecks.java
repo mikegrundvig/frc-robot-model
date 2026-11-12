@@ -191,15 +191,15 @@ final class StructureChecks {
    */
   private static void addRestsOffTheirCouplings(List<Coupling> couplings, List<String> problems) {
     for (Coupling each : couplings) {
-      double whereCouplingPutsIt = each.followerAt(each.leader().restPosition());
-      double off = Math.abs(whereCouplingPutsIt - each.follower().restPosition());
+      double whereCouplingPutsIt = each.followerAt(RobotMath.restPosition(each.leader()));
+      double off = Math.abs(whereCouplingPutsIt - RobotMath.restPosition(each.follower()));
       if (off > REST_TOLERANCE) {
         problems.add(
             String.format(
                 Locale.ROOT,
                 "%s's rest (%.4g) isn't where its coupling puts it with %s at its own (%.4g)",
                 each.follower().label(),
-                each.follower().restPosition(),
+                RobotMath.restPosition(each.follower()),
                 each.leader().label(),
                 whereCouplingPutsIt));
       }

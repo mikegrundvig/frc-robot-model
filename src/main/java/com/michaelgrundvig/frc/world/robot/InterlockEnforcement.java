@@ -198,7 +198,7 @@ public final class InterlockEnforcement {
    */
   private OptionalDouble runsOnlyWhenHold(
       InterlockState previous, JointMotion motion, List<ConditionReading> conditions) {
-    if (!travel.joint().holdsPositions() || !aRunsOnlyWhenRestricts(conditions)) {
+    if (!RobotMath.holdsPositions(travel.joint()) || !aRunsOnlyWhenRestricts(conditions)) {
       return OptionalDouble.empty();
     }
     if (previous.runsOnlyWhenHeldAt().isPresent()) {

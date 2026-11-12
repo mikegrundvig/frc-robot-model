@@ -43,7 +43,7 @@ final class EncoderChecks {
       return Optional.of(String.valueOf(e.getMessage()));
     }
     boolean isTheJointsOwnAlone =
-        encoders.size() == 1 && joint.ownSensors().contains(encoders.get(0));
+        encoders.size() == 1 && JointParts.sensors(joint).contains(encoders.get(0));
     if (isTheJointsOwnAlone) {
       return new OwnEncoder(joint, range, encoders.get(0)).whyNotReadAllAlong();
     }
@@ -55,8 +55,8 @@ final class EncoderChecks {
               Locale.ROOT,
               "%s's absolute encoders tell %s of its %s apart: gear one differently, or add one",
               joint.label(),
-              joint.shown(span),
-              joint.shown(range.width())));
+              Position.Kind.of(joint).shown(span),
+              Position.Kind.of(joint).shown(range.width())));
     }
 
     Range window = AbsoluteEncoders.window(encoders);
@@ -70,10 +70,10 @@ final class EncoderChecks {
               "%s's absolute encoders read it from %s to %s, and its range, %s to %s, crosses where"
                   + " they wrap",
               joint.label(),
-              joint.shown(window.lower()),
-              joint.shown(window.upper()),
-              joint.shown(range.lower()),
-              joint.shown(range.upper())));
+              Position.Kind.of(joint).shown(window.lower()),
+              Position.Kind.of(joint).shown(window.upper()),
+              Position.Kind.of(joint).shown(range.lower()),
+              Position.Kind.of(joint).shown(range.upper())));
     }
 
     double margin = WRAP_MARGIN * span;
@@ -89,11 +89,11 @@ final class EncoderChecks {
                   + " %s of where they wrap, a fortieth of their turn: a reading a hair past the"
                   + " wrap reads a turn away",
               joint.label(),
-              joint.shown(window.lower()),
-              joint.shown(window.upper()),
-              joint.shown(range.lower()),
-              joint.shown(range.upper()),
-              joint.shown(Math.min(clearBelow, clearAbove))));
+              Position.Kind.of(joint).shown(window.lower()),
+              Position.Kind.of(joint).shown(window.upper()),
+              Position.Kind.of(joint).shown(range.lower()),
+              Position.Kind.of(joint).shown(range.upper()),
+              Position.Kind.of(joint).shown(Math.min(clearBelow, clearAbove))));
     }
     return Optional.empty();
   }
@@ -247,8 +247,8 @@ final class EncoderChecks {
       return String.format(
           Locale.ROOT,
           "its travel, %s to %s",
-          joint.shown(range.lower()),
-          joint.shown(range.upper()));
+          Position.Kind.of(joint).shown(range.lower()),
+          Position.Kind.of(joint).shown(range.upper()));
     }
 
     /** What has to cover the travel: the encoder's turn, or a potentiometer's signal range. */
@@ -262,7 +262,7 @@ final class EncoderChecks {
 
     /** What the encoder's ratio is per: a turn of the joint, or of a sliding joint's drum. */
     private String perWhatOfTheJoint() {
-      if (joint instanceof Joint.Revolute) {
+      if (joint instanceof RevoluteJoint) {
         return "of " + possessive(joint.label()) + " turns";
       }
       return "turn of " + possessive(joint.label()) + " drum";

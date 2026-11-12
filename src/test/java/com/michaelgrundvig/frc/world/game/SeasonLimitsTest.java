@@ -10,26 +10,29 @@ import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Kilograms;
 import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.Pounds;
+import static org.wpilib.units.Units.Radians;
 
 import com.michaelgrundvig.frc.world.physical.Inertia;
 import com.michaelgrundvig.frc.world.physical.MassProperties;
 import com.michaelgrundvig.frc.world.physical.Material;
-import com.michaelgrundvig.frc.world.physical.Shape;
+import com.michaelgrundvig.frc.world.physical.Solid;
 import com.michaelgrundvig.frc.world.physical.Vector3;
 import com.michaelgrundvig.frc.world.robot.Body;
 import com.michaelgrundvig.frc.world.robot.BodyBuilder;
 import com.michaelgrundvig.frc.world.robot.ConfigFixtures;
-import com.michaelgrundvig.frc.world.robot.Configuration;
 import com.michaelgrundvig.frc.world.robot.Coupling;
 import com.michaelgrundvig.frc.world.robot.Joint;
-import com.michaelgrundvig.frc.world.robot.JointRevoluteBuilder;
 import com.michaelgrundvig.frc.world.robot.Link;
 import com.michaelgrundvig.frc.world.robot.LinkBuilder;
 import com.michaelgrundvig.frc.world.robot.Part;
 import com.michaelgrundvig.frc.world.robot.Position;
+import com.michaelgrundvig.frc.world.robot.Preset;
 import com.michaelgrundvig.frc.world.robot.Range;
+import com.michaelgrundvig.frc.world.robot.RevoluteJoint;
+import com.michaelgrundvig.frc.world.robot.RevoluteJointBuilder;
 import com.michaelgrundvig.frc.world.robot.RobotDefinition;
 import com.michaelgrundvig.frc.world.robot.RobotDefinitionBuilder;
+import com.michaelgrundvig.frc.world.robot.RobotMath;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -41,7 +44,6 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Pose3d;
 import org.wpilib.math.geometry.Rotation3d;
-import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation3d;
 
 /**
@@ -97,9 +99,9 @@ class SeasonLimitsTest {
    */
   @Test
   void aRobotWithACoupledJointIsCheckedStowed() {
-    Joint.Revolute arm = arm(0.7, UPRIGHT);
-    Joint.Revolute forearm =
-        JointRevoluteBuilder.builder(arm)
+    RevoluteJoint arm = arm(0.7, UPRIGHT);
+    RevoluteJoint forearm =
+        RevoluteJointBuilder.builder(arm)
             .label("forearm")
             .link(LinkBuilder.builder(arm.link()).label("forearm").build())
             .build();
@@ -172,14 +174,14 @@ class SeasonLimitsTest {
   }
 
   /**
-   * Each configuration is checked against the extension limit, with the joints it doesn't name at
-   * their references: the arm laid flat reaches 0.351 m out, more than the 12 in allowed, and
-   * raised halfway, it's inside.
+   * Each preset is checked against the extension limit, with the joints it doesn't name at their
+   * references: the arm laid flat reaches 0.351 m out, more than the 12 in allowed, and raised
+   * halfway, it's inside.
    */
   @Test
-  void eachConfigurationIsCheckedAgainstTheExtensionLimit() {
-    Joint.Revolute arm =
-        JointRevoluteBuilder.builder(arm(0.7, UPRIGHT))
+  void eachPresetIsCheckedAgainstTheExtensionLimit() {
+    RevoluteJoint arm =
+        RevoluteJointBuilder.builder(arm(0.7, UPRIGHT))
             .positions(
                 List.of(
                     Position.degrees("flat", 0),
@@ -188,15 +190,15 @@ class SeasonLimitsTest {
             .build();
     RobotDefinition robot =
         RobotDefinitionBuilder.builder(withArm(arm))
-            .configurations(
+            .presets(
                 List.of(
-                    Configuration.of("flat", arm.at(arm.position("flat"))),
-                    Configuration.of("halfway", arm.at(arm.position("halfway")))))
+                    Preset.of("flat", arm.at(RobotMath.position(arm, "flat"))),
+                    Preset.of("halfway", arm.at(RobotMath.position(arm, "halfway")))))
             .build();
 
     assertThat(LIMITS.problems(robot))
         .containsExactly(
-            "configuration flat reaches 0.351 m beyond its frame perimeter, more than the 0.305 m"
+            "preset flat reaches 0.351 m beyond its frame perimeter, more than the 0.305 m"
                 + " allowed");
   }
 
@@ -213,14 +215,14 @@ class SeasonLimitsTest {
     return RobotDefinitionBuilder.builder(BASE).body(body).build();
   }
 
-  /** The base robot with an arm of a length that it lays flat, forward, in a configuration. */
+  /** The base robot with an arm of a length that it lays flat, forward, in a preset. */
   private static RobotDefinition layingFlat(double armLength) {
-    Joint.Revolute arm =
-        JointRevoluteBuilder.builder(arm(armLength, UPRIGHT))
+    RevoluteJoint arm =
+        RevoluteJointBuilder.builder(arm(armLength, UPRIGHT))
             .positions(List.of(Position.degrees("flat", 0)))
             .build();
     return RobotDefinitionBuilder.builder(withArm(arm))
-        .configurations(List.of(Configuration.of("flat", arm.at(arm.position("flat")))))
+        .presets(List.of(Preset.of("flat", arm.at(RobotMath.position(arm, "flat")))))
         .build();
   }
 
@@ -273,6 +275,8 @@ class SeasonLimitsTest {
         answers("bumpers a little higher do not",
             () -> LIMITS.problems(withBody(body -> body.bumperTop(Inches.of(5.76)))),
             List.of("its bumpers, 2.5 in to 5.76 in up, aren't within the bumper zone, 2.5 in to 5.75 in")),
+        answers("bumpers whose height isn't given aren't checked against the zone",
+            () -> LIMITS.problems(withBody(body -> body.bumperBottom(Optional.empty()).bumperTop(Optional.empty()))), List.of()),
         answers("a robot a rounding over the weight fits",
             () -> LIMITS.problems(withBody(body -> body.weight(Pounds.of(149.5000000001)))), List.of()),
         answers("a robot a little heavier does not",
@@ -291,7 +295,7 @@ class SeasonLimitsTest {
             () -> LIMITS.problems(layingFlat(reachesTheLimit)), List.of()),
         answers("an arm a little longer does not",
             () -> LIMITS.problems(layingFlat(reachesTheLimit + 0.001)),
-            List.of("configuration flat reaches 0.306 m beyond its frame perimeter, more than the 0.305 m allowed")));
+            List.of("preset flat reaches 0.306 m beyond its frame perimeter, more than the 0.305 m allowed")));
   }
 
   // spotless:on
@@ -311,33 +315,20 @@ class SeasonLimitsTest {
    * A 3 kg arm of a length, 5 cm wide and deep, pivoting 5 cm up at the robot's center, raised as
    * its position grows, from flat forward at 0 to straight up at a quarter turn.
    */
-  private static Joint.Revolute arm(double length, double reference) {
+  private static RevoluteJoint arm(double length, double reference) {
     Translation3d center = new Translation3d(length / 2, 0, 0);
     Translation3d size = new Translation3d(length, 0.05, 0.05);
-    return Joint.Revolute.builder()
-        .label("arm")
-        .parent(Part.CHASSIS)
-        .origin(new Transform3d(0, 0, 0.05, Rotation3d.ZERO))
-        .axis(new Vector3(0, -1, 0))
-        .link(
-            Link.builder()
-                .label("arm")
-                .mass(
-                    MassProperties.builder()
-                        .mass(Kilograms.of(3))
-                        .cg(center)
-                        .inertia(Inertia.box(Kilograms.of(3), size))
-                        .build())
+    return Joint.pivot("arm", Part.CHASSIS, new Vector3(0, -1, 0))
+        .at(Meters.of(0), Meters.of(0), Meters.of(0.05))
+        .range(Range.degrees(-10, 100))
+        .rest(Radians.of(reference))
+        .carries(
+            Link.of(
+                    "arm",
+                    MassProperties.of(Kilograms.of(3), center, Inertia.box(Kilograms.of(3), size)))
                 .shapes(
                     List.of(
-                        Shape.Box.builder()
-                            .pose(new Pose3d(center, Rotation3d.ZERO))
-                            .size(size)
-                            .material(Material.builder().name("aluminum").build())
-                            .build()))
-                .build())
-        .range(Range.degrees(-10, 100))
-        .rest(reference)
-        .build();
+                        Solid.Box.of(
+                            new Pose3d(center, Rotation3d.ZERO), size, Material.of("aluminum")))));
   }
 }

@@ -2,7 +2,7 @@
  * What the field and the robot are both made of: how much a part weighs and how hard it is to turn
  * ({@link com.michaelgrundvig.frc.world.physical.MassProperties}, {@link
  * com.michaelgrundvig.frc.world.physical.Inertia}), its {@link
- * com.michaelgrundvig.frc.world.physical.Shape} and {@link
+ * com.michaelgrundvig.frc.world.physical.Solid} and {@link
  * com.michaelgrundvig.frc.world.physical.Material}, and the plain geometry they're written in where
  * WPILib's math has none: a point or a direction in 3D ({@link
  * com.michaelgrundvig.frc.world.physical.Vector3}), a polygon ({@link

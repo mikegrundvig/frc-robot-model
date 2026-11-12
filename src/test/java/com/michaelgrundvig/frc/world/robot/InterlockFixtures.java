@@ -20,14 +20,14 @@ final class InterlockFixtures {
   static final double LOOP_SECONDS = 0.5;
 
   /** A rail 16 m long, which holds positions. */
-  static final Joint.Prismatic RAIL =
+  static final PrismaticJoint RAIL =
       StandardRobot.lightSlide("rail", new Vector3(1, 0, 0), Range.meters(0, 16));
 
   /** The rail brakes at 2 m/s², and a full battery runs it at 8 m/s, so 3 V runs it at 2 m/s. */
   static final Travel RAIL_TRAVEL = new Travel(RAIL, 0, 16, Travel.Taking.AS_IT_IS, 4, 2, 8);
 
   /** A wheel that turns freely: it has no range and no named positions, so it holds none. */
-  static final Joint.Revolute WHEEL = StandardRobot.lightPivot("wheel", Optional.empty());
+  static final RevoluteJoint WHEEL = StandardRobot.lightPivot("wheel", Optional.empty());
 
   /** The wheel brakes at 2 rad/s², and takes a goal the short way round. */
   static final Travel WHEEL_TRAVEL =

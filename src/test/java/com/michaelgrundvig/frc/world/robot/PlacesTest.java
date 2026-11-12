@@ -40,10 +40,10 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * Named positions and outputs, configurations and interlocks, and the definition's checks of them,
- * on the intake and stacked arm of {@link StandardRobot}. What is refused or taken is a table of
- * attempts and the exact messages; what the model answers, a table of questions and answers. A row
- * holds its question as a lambda, so the model runs inside the test and not as the table is built.
+ * Named positions and outputs, presets and interlocks, and the definition's checks of them, on the
+ * intake and stacked arm of {@link StandardRobot}. What is refused or taken is a table of attempts
+ * and the exact messages; what the model answers, a table of questions and answers. A row holds its
+ * question as a lambda, so the model runs inside the test and not as the table is built.
  */
 class PlacesTest {
   // spotless:off
@@ -59,9 +59,9 @@ class PlacesTest {
   private static final Interlock ROLLER_NEEDS_PIVOT_AT_125 = Interlock.that(ROLLER).runsOnlyWhen(PIVOT.atLeast(Degrees.of(125)));
   private static final Interlock ARM_KEEP_OUT_IN_A_LIST = Interlock.that(ARM).keepsOut(Range.degrees(40, 80)).when(ELEVATOR.atMost(Inches.of(10)));
 
-  private static final Configuration ROLLING = Configuration.of("rolling", ROLLER.at(ROLLER_INTAKING));
-  private static final Configuration LOW = Configuration.of("low", ARM.at(ARM_LEVEL));
-  private static final Configuration REACHING = Configuration.of("reaching", ELEVATOR.at(ELEVATOR_DOWN), ARM.at(ARM_UP));
+  private static final Preset ROLLING = Preset.of("rolling", ROLLER.at(ROLLER_INTAKING));
+  private static final Preset LOW = Preset.of("low", ARM.at(ARM_LEVEL));
+  private static final Preset REACHING = Preset.of("reaching", ELEVATOR.at(ELEVATOR_DOWN), ARM.at(ARM_UP));
 
   // The arm's "out", at 60°: not the pivot's, whose out is at 130°.
   private static final Position ARM_OUT = Position.degrees("out", 60);
@@ -72,25 +72,25 @@ class PlacesTest {
   // A shuttle along the chassis, in, half out and out, its outer part closed while the elevator is low.
   private static final Position SHUTTLE_HALF = Position.of("half", Meters.of(0.1));
   private static final Position SHUTTLE_OUT = Position.of("out", Meters.of(0.3));
-  private static final Joint.Prismatic SHUTTLE = named(lightSlide("shuttle", new Vector3(1, 0, 0), Range.meters(0, 0.3)),
+  private static final PrismaticJoint SHUTTLE = named(lightSlide("shuttle", new Vector3(1, 0, 0), Range.meters(0, 0.3)),
       List.of(Position.of("in", Meters.of(0)), SHUTTLE_HALF, SHUTTLE_OUT), List.of());
   private static final Interlock SHUTTLE_IN_WHILE_ELEVATOR_LOW = Interlock.that(SHUTTLE).keepsOut(Range.meters(0.1, 0.3)).when(ELEVATOR.atMost(Meters.of(0.35)));
 
   // A stage on the elevator's lift, with a place of its own it may not have.
-  private static final Joint.Prismatic STAGE = lightSlide("stage", Vector3.UP, Range.meters(0, 0.6));
-  private static final Joint.Prismatic STAGE_WITH_A_PLACE = named(STAGE, List.of(Position.of("half", Inches.of(10))), List.of());
+  private static final PrismaticJoint STAGE = lightSlide("stage", Vector3.UP, Range.meters(0, 0.6));
+  private static final PrismaticJoint STAGE_WITH_A_PLACE = named(STAGE, List.of(Position.of("half", Inches.of(10))), List.of());
 
   // Rollers named at 2.5 times what their motor turns them at, and at 13 V, past the battery's 12.
-  private static final Joint.Revolute TOO_FAST = named(ROLLER, List.of(), List.of(Output.rpm("intaking", 5000), Output.rpm("feeding", 1900)));
-  private static final Joint.Revolute PUSHING = named(ROLLER, List.of(), List.of(Output.volts("pushing", 13), Output.dutyCycle("eject", -0.8)));
-  private static final Joint.Revolute GEARED_PIVOT = PIVOT.motors(Motor.KRAKEN_X60.through(Gearing.of(25)));
-  private static final Joint.Revolute COASTING = named(lightPivot("coasting", Optional.empty()), List.of(), List.of(Output.rpm("spinning", 100)));
+  private static final RevoluteJoint TOO_FAST = named(ROLLER, List.of(), List.of(Output.rpm("intaking", 5000), Output.rpm("feeding", 1900)));
+  private static final RevoluteJoint PUSHING = named(ROLLER, List.of(), List.of(Output.volts("pushing", 13), Output.dutyCycle("eject", Percent.of(-80))));
+  private static final RevoluteJoint GEARED_PIVOT = PIVOT.motors(Motor.KRAKEN_X60.through(Gearing.of(25)));
+  private static final RevoluteJoint COASTING = named(lightPivot("coasting", Optional.empty()), List.of(), List.of(Output.rpm("spinning", 100)));
 
   // A joint that rests above the low place it is at most, and a pivot that rests out, past its run.
   private static final Position HANGING_LOW = Position.degrees("low", -60);
-  private static final Joint.Revolute HANGING = named(lightPivot("hanging", Optional.of(Range.degrees(-90, 0))),
+  private static final RevoluteJoint HANGING = named(lightPivot("hanging", Optional.of(Range.degrees(-90, 0))),
       List.of(HANGING_LOW, Position.degrees("top", 0)), List.of());
-  private static final Joint.Revolute PIVOT_RESTING_OUT = JointRevoluteBuilder.builder(PIVOT).rest(inRadians(120)).build();
+  private static final RevoluteJoint PIVOT_RESTING_OUT = RevoluteJointBuilder.builder(PIVOT).rest(inRadians(120)).build();
 
   private static final String ROLLER_AT_FREE_SPEED =
       "roller's intaking, 2000 rpm, is 100% of its free speed, 2000 rpm: a velocity loop has"
@@ -133,12 +133,12 @@ class PlacesTest {
   }
 
   /** A practice robot's roller that unjams at -1 V and intakes at 1800 rpm. */
-  private static Joint.Revolute reValuedRoller() {
+  private static RevoluteJoint reValuedRoller() {
     return ROLLER.replaced(ROLLER_OUTTAKING, Volts.of(-1)).replaced(ROLLER_INTAKING, RPM.of(1800));
   }
 
   /** The arm with an interlock in its own block rather than the robot's list. */
-  private static Joint.Revolute armWithAKeepOut() {
+  private static RevoluteJoint armWithAKeepOut() {
     return ARM.keepsOut(Range.degrees(40, 80)).when(ELEVATOR.atMost(Inches.of(10)));
   }
 
@@ -155,17 +155,18 @@ class PlacesTest {
         List.of(ELEVATOR, STAGE), List.of(linear(ELEVATOR, STAGE, 0.5)), List.of(), List.of());
   }
 
-  private static RobotDefinition onShuttle(Configuration... configurations) {
+  private static RobotDefinition onShuttle(Preset... presets) {
     return RobotDefinitionBuilder.builder(robotOf(ELEVATOR, SHUTTLE))
-        .configurations(List.of(configurations))
+        .presets(List.of(presets))
         .interlocks(List.of(SHUTTLE_IN_WHILE_ELEVATOR_LOW))
-        .build();
+        .build()
+        .checked();
   }
 
-  /** A configuration and an interlock that both name the arm's "out" for the pivot. */
+  /** A preset and an interlock that both name the arm's "out" for the pivot. */
   private static RobotDefinition usingAnotherJointsOut() {
     return robot(
-        List.of(Configuration.of("out", PIVOT.at(ARM_OUT), ROLLER.at(ROLLER_INTAKING))),
+        List.of(Preset.of("out", PIVOT.at(ARM_OUT), ROLLER.at(ROLLER_INTAKING))),
         List.of(Interlock.that(ROLLER).runsOnlyWhen(PIVOT.atLeast(ARM_OUT))));
   }
 
@@ -213,13 +214,13 @@ class PlacesTest {
   /** A place or output is the joint's, by a name it has once, inside its stops. */
   static Stream<Arguments> nameRefusals() {
     return Stream.of(
-        refuses("a position it hasn't", () -> PIVOT.position("deployed"),
+        refuses("a position it hasn't", () -> RobotMath.position(PIVOT, "deployed"),
             "pivot has no position named \"deployed\": it has in, run, out"),
-        refuses("a position it hasn't, on a slide", () -> ELEVATOR.position("x"),
+        refuses("a position it hasn't, on a slide", () -> RobotMath.position(ELEVATOR, "x"),
             "elevator has no position named \"x\": it has down, clear, top"),
-        refuses("a position of a joint that names none", () -> ROLLER.position("in"),
+        refuses("a position of a joint that names none", () -> RobotMath.position(ROLLER, "in"),
             "roller has no position named \"in\": it has none"),
-        refuses("an output it hasn't", () -> ROLLER.output("feeding"),
+        refuses("an output it hasn't", () -> RobotMath.output(ROLLER, "feeding"),
             "roller has no output named \"feeding\": it has intaking, outtaking, and stopped"),
         refuses("a position past the hard stops",
             () -> robotOf(named(PIVOT, List.of(PIVOT_IN, Position.degrees("up", 140)), List.of())),
@@ -228,15 +229,15 @@ class PlacesTest {
         refuses("a name that is a position and an output",
             () -> named(ELEVATOR, List.of(Position.of("top", Inches.of(1))),
                 List.of(Output.of("top", MetersPerSecond.of(1)))),
-            "Prismatic[elevator].outputs: it names top twice: each name is one position or output"
+            "PrismaticJoint[elevator].outputs: it names top twice: each name is one position or output"
                 + " of the joint"),
         refuses("an output named twice",
             () -> named(ROLLER, List.of(), List.of(Output.rpm("a", 1), Output.rpm("a", 2))),
-            "Revolute[roller].outputs: it names a twice: each name is one position or output of"
+            "RevoluteJoint[roller].outputs: it names a twice: each name is one position or output of"
                 + " the joint"),
         refuses("an output named stopped, which every joint has",
             () -> named(ROLLER, List.of(), List.of(Output.volts("stopped", 0))),
-            "Revolute[roller].outputs: it names stopped, which every joint has built in (its"
+            "RevoluteJoint[roller].outputs: it names stopped, which every joint has built in (its"
                 + " motors at neutral): name it something else"));
   }
 
@@ -245,20 +246,20 @@ class PlacesTest {
     return Stream.of(
         refuses("a length for a joint that turns",
             () -> named(PIVOT, List.of(Position.of("deep", Inches.of(1))), List.of()),
-            "Revolute[pivot].positions: deep is a length, and the joint turns: give it an angle,"
+            "RevoluteJoint[pivot].positions: deep is a length, and the joint turns: give it an angle,"
                 + " Position.degrees(...)"),
         refuses("an angle for a joint that slides",
             () -> named(ELEVATOR, List.of(Position.degrees("level", 0)), List.of()),
-            "Prismatic[elevator].positions: level is an angle, and the joint slides: give it a"
+            "PrismaticJoint[elevator].positions: level is an angle, and the joint slides: give it a"
                 + " length, Position.of(name, Inches.of(...))"),
         refuses("a speed of turning for a slide",
             () -> named(ELEVATOR, List.of(), List.of(Output.rpm("creeping", 10))),
-            "Prismatic[elevator].outputs: creeping, 10 rpm, is a speed of turning, and elevator"
+            "PrismaticJoint[elevator].outputs: creeping, 10 rpm, is a speed of turning, and elevator"
                 + " slides: give it a speed along it, Output.of(\"creeping\","
                 + " InchesPerSecond.of(...))"),
         refuses("a speed along a slide for a roller",
             () -> named(ROLLER, List.of(), List.of(Output.of("feeding", MetersPerSecond.of(3)))),
-            "Revolute[roller].outputs: feeding, 3 m/s, is a speed along a slide, and roller"
+            "RevoluteJoint[roller].outputs: feeding, 3 m/s, is a speed along a slide, and roller"
                 + " turns: give it a speed of turning, Output.rpm(\"feeding\", ...)"),
         refuses("a speed with no unit",
             () -> Output.builder().name("fast").kind(Output.Kind.VELOCITY).value(10).build(),
@@ -270,9 +271,9 @@ class PlacesTest {
                 .motion(Position.Kind.ANGLE).build(),
             "Output[push].motion: only a speed is of turning or of sliding, and this is a voltage"),
         refuses("stops in angles for a slide",
-            () -> Joint.elevator("elevator", Part.CHASSIS, MechanismFixtures.point(0, 0, 0))
+            () -> Joint.elevator("elevator", Part.CHASSIS).at(Meters.of(0), Meters.of(0), Meters.of(0))
                 .range(Range.degrees(0, 135)).rest(Inches.of(0)),
-            "Prismatic[elevator].range: its range is angles, and the joint slides: give it in"
+            "PrismaticJoint[elevator].range: its range is angles, and the joint slides: give it in"
                 + " lengths, Range.meters(...) or Range.of(Inches.of(...), Inches.of(...))"),
         refuses("a region in lengths for a joint that turns",
             () -> Interlock.that(PIVOT).keepsOut(Range.meters(0, 1)).when(ELEVATOR.atMost(Inches.of(10))),
@@ -338,7 +339,7 @@ class PlacesTest {
                 + " band around out, pivot.between(Degrees.of(...), Degrees.of(...))"));
   }
 
-  /** Joints holding each other, as the robot starts or in a configuration, can't be freed. */
+  /** Joints holding each other, as the robot starts or in a preset, can't be freed. */
   static Stream<Arguments> deadlockRefusals() {
     return Stream.of(
         refuses("two joints that each run only when the other has moved",
@@ -355,17 +356,17 @@ class PlacesTest {
                 + " deadlock (elevator keeps out of 0.1 m to 0.6 m while arm at most 0°, so"
                 + " elevator stays between 0 m and 0.1 m; arm keeps out of -10° to 30° while"
                 + " elevator at most 0.8128 m, so arm stays between -30° and -10°)"),
-        refuses("a configuration that puts two joints where they hold each other",
+        refuses("a preset that puts two joints where they hold each other",
             () -> robot(List.of(STOWED, REACHING), List.of(ARM_CLEARS_BUMPER, ELEVATOR_LOW_WHILE_ARM_UP)),
-            "RobotDefinition[test].configurations: configuration reaching leaves arm and"
+            "RobotDefinition[test].presets: preset reaching leaves arm and"
                 + " elevator holding each other by their interlocks, so neither can free the"
                 + " other: a deadlock (arm keeps out of -10° to 30° while elevator at most 0.35 m,"
                 + " so arm stays between 30° and 120°; elevator keeps out of 0.1 m to 0.6 m while"
                 + " arm at least 20°, so elevator stays between 0 m and 0.1 m)"),
-        refuses("a configuration that puts a joint in a region it started in",
-            () -> robot(List.of(Configuration.of("down", ELEVATOR.at(ELEVATOR_DOWN))),
+        refuses("a preset that puts a joint in a region it started in",
+            () -> robot(List.of(Preset.of("down", ELEVATOR.at(ELEVATOR_DOWN))),
                 List.of(ELEVATOR_OFF_THE_BOTTOM, ARM_CLEARS_BUMPER_UNDER_32_IN)),
-            "RobotDefinition[test].configurations: configuration down puts elevator at 0 m, but"
+            "RobotDefinition[test].presets: preset down puts elevator at 0 m, but"
                 + " elevator keeps out of 0 m to 0.3 m while arm at most 0°, and arm is at -20°,"
                 + " where it rests"),
         refuses("a named position that every place of the other joint keeps it out of",
@@ -375,21 +376,21 @@ class PlacesTest {
                 + " elevator opens it (arm keeps out of -10° to 30° while elevator at most"
                 + " clear; arm keeps out of -5° to 10° while elevator at least clear)"),
         refuses("a shuttle put at the end a closed region reaches",
-            () -> onShuttle(Configuration.of("reaching", ELEVATOR.at(ELEVATOR_DOWN), SHUTTLE.at(SHUTTLE_OUT))),
-            "RobotDefinition[test].configurations: configuration reaching puts shuttle at 0.3 m,"
+            () -> onShuttle(Preset.of("reaching", ELEVATOR.at(ELEVATOR_DOWN), SHUTTLE.at(SHUTTLE_OUT))),
+            "RobotDefinition[test].presets: preset reaching puts shuttle at 0.3 m,"
                 + " but shuttle keeps out of 0.1 m to 0.3 m while elevator at most 0.35 m, and"
                 + " elevator is at 0 m"));
   }
 
-  /** A configuration sets each joint once, a joint of the robot's; no two are named alike. */
+  /** A preset sets each joint once, a joint of the robot's; no two are named alike. */
   static Stream<Arguments> configurationRefusals() {
     return Stream.of(
-        refuses("a joint set twice", () -> Configuration.of("twice", ARM.at(ARM_LEVEL), ARM.at(ARM_UP)),
-            "Configuration[twice].targets: set each joint once, not arm"),
-        refuses("no joint set", () -> Configuration.of("none"),
-            "Configuration[none].targets: sets no joint: name one at least"),
-        refuses("two configurations of a name", () -> robot(List.of(AMP, AMP), List.of()),
-            "RobotDefinition[test].configurations: two configurations are named amp"));
+        refuses("a joint set twice", () -> Preset.of("twice", ARM.at(ARM_LEVEL), ARM.at(ARM_UP)),
+            "Preset[twice].targets: set each joint once, not arm"),
+        refuses("no joint set", () -> Preset.of("none"),
+            "Preset[none].targets: sets no joint: name one at least"),
+        refuses("two presets of a name", () -> robot(List.of(AMP, AMP), List.of()),
+            "RobotDefinition[test].presets: two presets are named amp"));
   }
 
   /** A practice robot's constants are its own; re-placing or re-valuing one it hasn't is refused. */
@@ -419,7 +420,7 @@ class PlacesTest {
                 List.of(MechanismFixtures.motors(PUSHING, Motor.KRAKEN_X60, 1, gearing(3, 1))), List.of()),
             "RobotDefinition[test].joints: roller's pushing, 13 V, is past its motors' nominal 12"
                 + " V: the battery can't give it"),
-        refuses("a duty cycle past a whole battery", () -> Output.dutyCycle("flat out", 1.2),
+        refuses("a duty cycle past a whole battery", () -> Output.dutyCycle("flat out", Percent.of(120)),
             "Output[flat out].value: 1.2 must be a share of the battery's voltage, from -1 to 1"),
         refuses("a profile that cruises past what the motors turn the pivot at",
             () -> robotOf(GEARED_PIVOT.control(stowed(30)
@@ -440,7 +441,7 @@ class PlacesTest {
                 + " and 4° to stay"),
         refuses("an interlock on a joint that follows another",
             () -> RobotDefinitionBuilder.builder(lifted()).interlocks(List.of(Interlock.that(STAGE)
-                .keepsOut(Range.meters(0.1, 0.2)).when(ELEVATOR.atLeast(ELEVATOR_TOP)))).build(),
+                .keepsOut(Range.meters(0.1, 0.2)).when(ELEVATOR.atLeast(ELEVATOR_TOP)))).build().checked(),
             "RobotDefinition[test].interlocks: interlock \"stage keeps out of 0.1 m to 0.2 m while"
                 + " elevator at least top\" names stage, which follows elevator: name elevator"
                 + " instead"));
@@ -482,61 +483,61 @@ class PlacesTest {
             "roller can never run: no position of pivot has pivot at least 130° and pivot at most 110°"),
         refuses("a block's keep-out written in the list too",
             () -> RobotDefinitionBuilder.builder(keepOutInABlock())
-                .interlocks(List.of(ROLLER_ONLY_WHEN_OUT, ARM_KEEP_OUT_IN_A_LIST)).build(),
+                .interlocks(List.of(ROLLER_ONLY_WHEN_OUT, ARM_KEEP_OUT_IN_A_LIST)).build().checked(),
             "is written twice: once is enough, in arm's block or the robot's interlocks"),
         refuses("a block's keep-out that deadlocks with the list's",
             () -> RobotDefinitionBuilder.builder(keepOutInABlock())
-                .interlocks(List.of(Interlock.that(ELEVATOR).runsOnlyWhen(ARM.atLeast(ARM_UP)))).build(),
+                .interlocks(List.of(Interlock.that(ELEVATOR).runsOnlyWhen(ARM.atLeast(ARM_UP)))).build().checked(),
             "as the robot starts, it leaves arm and elevator holding each other by their interlocks"));
   }
 
   /** A practice robot is checked as a robot is, and another joint's constant is told apart. */
   static Stream<Arguments> practiceRobotRefusals() {
     return Stream.of(
-        refuses("a configuration on another joint's out", () -> usingAnotherJointsOut(),
-            "configurations: configuration out: " + ARM_OUT_ISNT_PIVOTS),
+        refuses("a preset on another joint's out", () -> usingAnotherJointsOut(),
+            "presets: preset out: " + ARM_OUT_ISNT_PIVOTS),
         refuses("an interlock on another joint's out", () -> usingAnotherJointsOut(),
             "interlocks: interlock \"roller runs only when pivot at least out\": " + ARM_OUT_ISNT_PIVOTS),
         refuses("an output re-valued by another joint's value",
             () -> ROLLER.replaced(Output.rpm("intaking", 1000), RPM.of(1800)),
             "roller's intaking runs at 2000 rpm, and this intaking, at 1000"),
         refuses("a run re-placed past an interlock's edge",
-            () -> competition().with(PIVOT.replaced(PIVOT_RUN, Degrees.of(132))),
-            "configuration intaking runs roller, but roller runs only when pivot at least run"),
+            () -> competition().with(PIVOT.replaced(PIVOT_RUN, Degrees.of(132))).checked(),
+            "preset intaking runs roller, but roller runs only when pivot at least run"),
         refuses("an out re-placed past the hard stops",
-            () -> competition().with(PIVOT.replaced(PIVOT_OUT, Degrees.of(140))),
+            () -> competition().with(PIVOT.replaced(PIVOT_OUT, Degrees.of(140))).checked(),
             "pivot's out, 140°, is outside its hard stops, 0° to 135°: it can't get there"),
         refuses("stops drawn in past a place",
-            () -> competition().with(ELEVATOR.range(Range.meters(0, 1))),
+            () -> competition().with(ELEVATOR.range(Range.meters(0, 1))).checked(),
             "elevator's top, 1.1 m, is outside its hard stops, 0 m to 1 m: it can't get there"),
         refuses("stops drawn in past an interlock's edge",
             () -> robot(List.of(STOWED, AMP), List.of(ROLLER_NEEDS_PIVOT_AT_125, ARM_CLEARS_BUMPER))
                 .with(PIVOT.replaced(PIVOT_OUT, Degrees.of(118)).range(Range.degrees(0, 120))),
             "125° is outside pivot's range, 0° to 120°"),
         refuses("a rest past the hard stops",
-            () -> competition().with(PIVOT.rest(Degrees.of(140))),
+            () -> competition().with(PIVOT.rest(Degrees.of(140))).checked(),
             "pivot rests at 140°, outside its hard stops, 0° to 135°: it can't start there"),
         refuses("a joint the robot hasn't",
             () -> practice().own(lightPivot("wrist", Optional.of(Range.degrees(0, 90)))),
             "has no joint wrist: add it to the definition's joints"));
   }
 
-  /** A configuration obeys the interlocks; a definition names only joints it lists; and the rest. */
+  /** A preset obeys the interlocks; a definition names only joints it lists; and the rest. */
   static Stream<Arguments> definitionRefusals() {
     return Stream.of(
-        refuses("a configuration that runs the roller with the pivot in",
+        refuses("a preset that runs the roller with the pivot in",
             () -> robot(List.of(ROLLING, LOW), List.of(ROLLER_ONLY_WHEN_OUT, ARM_CLEARS_BUMPER)),
-            "configuration rolling runs roller, but roller runs only when pivot at least run, and"
+            "preset rolling runs roller, but roller runs only when pivot at least run, and"
                 + " pivot is at 1.5°, where it rests"),
-        refuses("a configuration that puts the arm in the bumper's band",
+        refuses("a preset that puts the arm in the bumper's band",
             () -> robot(List.of(ROLLING, LOW), List.of(ROLLER_ONLY_WHEN_OUT, ARM_CLEARS_BUMPER)),
-            "configuration low puts arm at 0°, but arm keeps out of -10° to 30° while elevator at"
+            "preset low puts arm at 0°, but arm keeps out of -10° to 30° while elevator at"
                 + " most 0.35 m, and elevator is at 0 m, where it rests"),
-        refuses("a configuration of a joint the robot hasn't",
-            () -> robot(List.of(Configuration.of("elsewhere",
+        refuses("a preset of a joint the robot hasn't",
+            () -> robot(List.of(Preset.of("elsewhere",
                 named(ROLLER, List.of(), List.of(Output.volts("pushing", 3))).at(Output.volts("pushing", 3)))),
                 List.of(ROLLER_ONLY_WHEN_OUT, ARM_CLEARS_BUMPER)),
-            "configuration elsewhere's joint, roller, isn't one of the robot's joints: list it"),
+            "preset elsewhere's joint, roller, isn't one of the robot's joints: list it"),
         refuses("a follower with places of its own",
             () -> MechanismFixtures.definition(List.of(ELEVATOR, STAGE_WITH_A_PLACE),
                 List.of(linear(ELEVATOR, STAGE_WITH_A_PLACE, 0.5)), List.of(), List.of()),
@@ -581,8 +582,8 @@ class PlacesTest {
             () -> Condition.Between.builder().joint(ELEVATOR).from(0).to(2 * Range.EDGE).build()),
         accepts("a speed along a slide for a slide",
             () -> named(ELEVATOR, List.of(), List.of(Output.of("creeping", MetersPerSecond.of(0.1))))),
-        accepts("a configuration that stops the roller, the pivot staying in",
-            () -> robot(List.of(Configuration.of("stopped", ROLLER.at(Output.STOPPED), PIVOT.at(PIVOT_IN))),
+        accepts("a preset that stops the roller, the pivot staying in",
+            () -> robot(List.of(Preset.of("stopped", ROLLER.at(Output.STOPPED), PIVOT.at(PIVOT_IN))),
                 List.of(ROLLER_ONLY_WHEN_OUT, ARM_CLEARS_BUMPER))),
         accepts("a keep-out and one kept up while the arm hangs low: each can free the other",
             () -> robot(List.of(STOWED, AMP), List.of(ARM_CLEARS_BUMPER,
@@ -598,8 +599,8 @@ class PlacesTest {
                 Interlock.that(ROLLER).runsOnlyWhen(PIVOT.between(PIVOT_RUN, PIVOT_OUT)))),
         accepts("a pivot held by how fast the roller runs", () -> robotWith(Interlock.that(PIVOT).runsOnlyWhen(SPUN))),
         accepts("a shuttle at a region's inner edge, or out with the region open",
-            () -> onShuttle(Configuration.of("near", ELEVATOR.at(ELEVATOR_DOWN), SHUTTLE.at(SHUTTLE_HALF)),
-                Configuration.of("out", ELEVATOR.at(ELEVATOR_CLEAR), SHUTTLE.at(SHUTTLE_OUT)))),
+            () -> onShuttle(Preset.of("near", ELEVATOR.at(ELEVATOR_DOWN), SHUTTLE.at(SHUTTLE_HALF)),
+                Preset.of("out", ELEVATOR.at(ELEVATOR_CLEAR), SHUTTLE.at(SHUTTLE_OUT)))),
         accepts("a profile that cruises within what the motors turn the pivot at",
             () -> robotOf(GEARED_PIVOT.control(stowed(30)
                 .withProfile(DegreesPerSecond.of(1000), DegreesPerSecondPerSecond.of(3600))))),
@@ -674,8 +675,8 @@ class PlacesTest {
   /** What kind a place is, what an output runs, and the stopped every joint has built in. */
   static Stream<Arguments> placesAndOutputs() {
     return Stream.of(
-        asks("a pivot's place is an angle", () -> PIVOT.position("run").kind(), Position.Kind.ANGLE),
-        asks("an elevator's place is a length", () -> ELEVATOR.position("clear").kind(), Position.Kind.LENGTH),
+        asks("a pivot's place is an angle", () -> RobotMath.position(PIVOT, "run").kind(), Position.Kind.ANGLE),
+        asks("an elevator's place is a length", () -> RobotMath.position(ELEVATOR, "clear").kind(), Position.Kind.LENGTH),
         asks("a range in degrees is the range of degrees", () -> Range.of(Degrees.of(0), Degrees.of(135)), Range.degrees(0, 135)),
         asks("a range in inches is of lengths", () -> Range.of(Inches.of(0), Inches.of(10)).kind(), Position.Kind.LENGTH),
         asks("an rpm is a speed of turning", () -> ROLLER_INTAKING.motion(), Optional.of(Position.Kind.ANGLE)),
@@ -684,14 +685,14 @@ class PlacesTest {
         asks("a voltage in volts is a voltage",
             () -> Output.of("hold", Volts.of(-6)), Output.builder().name("hold").kind(Output.Kind.VOLTAGE).value(-6).build()),
         asks("a share of the battery is a duty cycle",
-            () -> ROLLER.replaced(ROLLER_INTAKING, Percent.of(60)).output("intaking").kind(), Output.Kind.DUTY_CYCLE),
-        asks("a duty cycle runs the joint", () -> Output.dutyCycle("eject", -0.8).runs(), true),
+            () -> RobotMath.output(ROLLER.replaced(ROLLER_INTAKING, Percent.of(60)), "intaking").kind(), Output.Kind.DUTY_CYCLE),
+        asks("a duty cycle runs the joint", () -> Output.dutyCycle("eject", Percent.of(-80)).runs(), true),
         asks("stopped doesn't", () -> Output.STOPPED.runs(), false),
-        asks("every joint has stopped built in", () -> ROLLER.output("stopped"), Output.STOPPED),
+        asks("every joint has stopped built in", () -> RobotMath.output(ROLLER, "stopped"), Output.STOPPED),
         asks("stopped is an output of every joint", () -> ROLLER.at(Output.STOPPED).isOutput(), true),
         asks("a joint at an output is an output", () -> ROLLER.at(ROLLER_INTAKING).isOutput(), true),
         asks("a joint at a position isn't", () -> PIVOT.at(PIVOT_OUT).isOutput(), false),
-        asks("a configuration's joints", () -> AMP.joints(), List.of(ELEVATOR, ARM)),
+        asks("a preset's joints", () -> AMP.joints(), List.of(ELEVATOR, ARM)),
         asks("a pivot held by how fast the roller runs is about the roller",
             () -> Interlock.that(PIVOT).runsOnlyWhen(SPUN).other(), Optional.of(ROLLER)),
         asks("a joint held by a switch is about no other joint",
@@ -725,11 +726,11 @@ class PlacesTest {
         asks("an output of the right name at another speed", () -> competition().whyNotOwn(ROLLER.at(Output.rpm("intaking", 1000))),
             "roller's intaking runs at 2000 rpm, and this intaking, at 1000 rpm, isn't one it has"
                 + " had: another joint's or another robot's; give roller's own"),
-        asks("an output re-valued, by its old value", () -> reValuedRoller().whyNotOwn(Output.volts("outtaking", -2)),
+        asks("an output re-valued, by its old value", () -> JointNames.whyNotOwn(reValuedRoller(), Output.volts("outtaking", -2)),
             Optional.of("roller's outtaking runs at -1 V, and this outtaking, at -2 V, isn't one it has had:"
                 + " another joint's or another robot's; give roller's own")),
         asks("an output re-valued to a share, by another share",
-            () -> ROLLER.replaced(ROLLER_INTAKING, Percent.of(60)).whyNotOwn(Output.dutyCycle("intaking", 0.5)),
+            () -> JointNames.whyNotOwn(ROLLER.replaced(ROLLER_INTAKING, Percent.of(60)), Output.dutyCycle("intaking", Percent.of(50))),
             Optional.of("roller's intaking runs at 60% of the battery, and this intaking, at 50% of the"
                 + " battery, isn't one it has had: another joint's or another robot's; give"
                 + " roller's own")));
@@ -738,26 +739,26 @@ class PlacesTest {
   /** A practice robot keeps the design's names at its own values. */
   static Stream<Arguments> practiceRobots() {
     return Stream.of(
-        asks("the practice robot's run", () -> practice().own(PIVOT).position("run"), Position.degrees("run", 120)),
-        asks("the competition robot's run", () -> competition().own(PIVOT).position("run"), PIVOT_RUN),
-        asks("the practice robot's interlock is on its own run", () -> practiceRun().joint().position("run"), Position.degrees("run", 120)),
+        asks("the practice robot's run", () -> RobotMath.position(practice().own(PIVOT), "run"), Position.degrees("run", 120)),
+        asks("the competition robot's run", () -> RobotMath.position(competition().own(PIVOT), "run"), PIVOT_RUN),
+        asks("the practice robot's interlock is on its own run", () -> RobotMath.position(practiceRun().joint(), "run"), Position.degrees("run", 120)),
         asks("a condition the program names is the practice robot's own", () -> practice().own(PIVOT.atLeast(PIVOT_RUN)), practiceRun()),
         asks("an output the program names is the same", () -> practice().own(ROLLER.at(ROLLER_INTAKING)), ROLLER.at(ROLLER_INTAKING)),
-        asks("a configuration is on the practice robot's pivot",
-            () -> practice().configurations().get(2).targets().getFirst().joint().position("run"), Position.degrees("run", 120)),
-        asks("the configurations are the design's", () -> practice().configurations(), List.of(STOWED, AMP, INTAKING)),
+        asks("a preset is on the practice robot's pivot",
+            () -> RobotMath.position(practice().presets().get(2).targets().getFirst().joint(), "run"), Position.degrees("run", 120)),
+        asks("the presets are the design's", () -> practice().presets(), List.of(STOWED, AMP, INTAKING)),
         asks("a practice pivot is the pivot, re-placed", () -> PIVOT.replaced(PIVOT_OUT, Degrees.of(125)).at(PIVOT_OUT), PIVOT.at(PIVOT_OUT)),
         asks("re-placed again, by the competition's constant",
-            () -> PIVOT.replaced(PIVOT_OUT, Degrees.of(125)).replaced(PIVOT_OUT, Degrees.of(120)).position("out"), Position.of("out", Degrees.of(120))),
+            () -> RobotMath.position(PIVOT.replaced(PIVOT_OUT, Degrees.of(125)).replaced(PIVOT_OUT, Degrees.of(120)), "out"), Position.of("out", Degrees.of(120))),
         asks("stops of its own",
             () -> competition().with(PIVOT.range(Range.degrees(0, 132))).joints().getFirst().range(), Optional.of(Range.degrees(0, 132))),
         asks("a re-valued roller is the roller", () -> reValuedRoller(), ROLLER),
-        asks("a re-valued output keeps its name", () -> reValuedRoller().output("outtaking"), Output.volts("outtaking", -1)),
-        asks("a re-valued output is owned by the old one", () -> reValuedRoller().own(ROLLER_OUTTAKING), Output.volts("outtaking", -1)),
+        asks("a re-valued output keeps its name", () -> RobotMath.output(reValuedRoller(), "outtaking"), Output.volts("outtaking", -1)),
+        asks("a re-valued output is owned by the old one", () -> JointNames.own(reValuedRoller(), ROLLER_OUTTAKING), Output.volts("outtaking", -1)),
         asks("what a re-valued roller ran at", () -> reValuedRoller().formerOutputs(), List.of(ROLLER_OUTTAKING, ROLLER_INTAKING)),
-        asks("an output added and re-valued", () -> ELEVATOR.replaced(ELEVATOR_CLEAR, Meters.of(0.38))
+        asks("an output added and re-valued", () -> RobotMath.output(ELEVATOR.replaced(ELEVATOR_CLEAR, Meters.of(0.38))
                 .outputs(Output.of("climbing", MetersPerSecond.of(0.5)))
-                .replaced(Output.of("climbing", MetersPerSecond.of(0.5)), MetersPerSecond.of(0.4)).output("climbing"),
+                .replaced(Output.of("climbing", MetersPerSecond.of(0.5)), MetersPerSecond.of(0.4)), "climbing"),
             Output.of("climbing", MetersPerSecond.of(0.4))));
   }
 
@@ -765,7 +766,7 @@ class PlacesTest {
   static Stream<Arguments> interlocksInBlocks() {
     return Stream.of(
         asks("the arm is the same arm, with the block", () -> armWithAKeepOut(), ARM),
-        asks("a block's interlock is the joint's own", () -> armWithAKeepOut().ownInterlocks(), List.of(ARM_KEEP_OUT_IN_A_LIST)),
+        asks("a block's interlock is the joint's own", () -> JointParts.interlocks(armWithAKeepOut()), List.of(ARM_KEEP_OUT_IN_A_LIST)),
         asks("the list has only what the list says", () -> keepOutInABlock().interlocks(), List.of(ROLLER_ONLY_WHEN_OUT)),
         asks("every interlock has the block's too", () -> keepOutInABlock().everyInterlock(), List.of(ARM_KEEP_OUT_IN_A_LIST, ROLLER_ONLY_WHEN_OUT)),
         asks("a re-tuned joint is as written, without its block's interlocks",
@@ -775,28 +776,28 @@ class PlacesTest {
   /** A place or output's value, in the units the joint runs in. */
   static Stream<Arguments> measures() {
     return Stream.of(
-        measures("a pivot's run, in radians", () -> PIVOT.position("run").value(), inRadians(110)),
-        measures("an elevator's clear, in meters", () -> ELEVATOR.position("clear").value(), 0.4),
-        measures("a roller's intaking, in radians a second", () -> ROLLER.output("intaking").value(), rpm(2000)),
+        measures("a pivot's run, in radians", () -> RobotMath.position(PIVOT, "run").value(), inRadians(110)),
+        measures("an elevator's clear, in meters", () -> RobotMath.position(ELEVATOR, "clear").value(), 0.4),
+        measures("a roller's intaking, in radians a second", () -> RobotMath.output(ROLLER, "intaking").value(), rpm(2000)),
         measures("a turn a second, in radians a second", () -> Output.of("spin", RotationsPerSecond.of(1)).value(), 2 * Math.PI),
         measures("half a meter a second, as it is", () -> Output.of("slide", MetersPerSecond.of(0.5)).value(), 0.5),
-        measures("60 percent of the battery, as 0.6", () -> ROLLER.replaced(ROLLER_INTAKING, Percent.of(60)).output("intaking").value(), 0.6),
+        measures("60 percent of the battery, as 0.6", () -> RobotMath.output(ROLLER.replaced(ROLLER_INTAKING, Percent.of(60)), "intaking").value(), 0.6),
         measures("an edge at a place written another way", () -> PIVOT.atLeast(Position.of("out", Degrees.of(130))).position(), inRadians(130)),
         measures("the practice robot's run", () -> practiceRun().position(), inRadians(120)),
         measures("the competition's constant, on a practice robot",
             () -> PIVOT.replaced(PIVOT_OUT, Degrees.of(125)).atLeast(PIVOT_OUT).position(), inRadians(125)),
         measures("another joint's out, kept as the code says",
             () -> PIVOT.replaced(PIVOT_OUT, Degrees.of(125)).atLeast(ARM_OUT).position(), inRadians(60)),
-        measures("an output re-valued in rpm", () -> reValuedRoller().own(ROLLER_INTAKING).value(), rpm(1800)),
+        measures("an output re-valued in rpm", () -> JointNames.own(reValuedRoller(), ROLLER_INTAKING).value(), rpm(1800)),
         measures("a place re-placed, owned by the old one",
-            () -> ELEVATOR.replaced(ELEVATOR_CLEAR, Meters.of(0.38)).own(ELEVATOR_CLEAR).value(), 0.38),
+            () -> JointNames.own(ELEVATOR.replaced(ELEVATOR_CLEAR, Meters.of(0.38)), ELEVATOR_CLEAR).value(), 0.38),
         measures("a rest set on a practice robot",
-            () -> competition().with(PIVOT.rest(Degrees.of(5))).joints().getFirst().restPosition(), inRadians(5)),
+            () -> RobotMath.restPosition(competition().with(PIVOT.rest(Degrees.of(5))).joints().getFirst()), inRadians(5)),
         measures("a rest past the out, its run still from 110°",
-            () -> competition().with(PIVOT.rest(Degrees.of(132))).joints().getFirst().restPosition(), inRadians(132)));
+            () -> RobotMath.restPosition(competition().with(PIVOT.rest(Degrees.of(132))).joints().getFirst()), inRadians(132)));
   }
 
-  /** What a condition, an interlock or a configuration says of itself: the words a refusal uses. */
+  /** What a condition, an interlock or a preset says of itself: the words a refusal uses. */
   static Stream<Arguments> descriptions() {
     return Stream.of(
         reads("at least a place", () -> PIVOT.atLeast(PIVOT_RUN), "pivot at least run"),
@@ -808,7 +809,7 @@ class PlacesTest {
         reads("at a place", () -> ARM.at(ARM_LEVEL), "arm at level"),
         reads("up to a speed", () -> SPUN, "roller at least 1500 rpm"),
         reads("the practice robot's run", () -> practiceRun(), "pivot at least run"),
-        reads("a configuration", () -> AMP, "amp (elevator at clear, arm at level)"),
+        reads("a preset", () -> AMP, "amp (elevator at clear, arm at level)"),
         reads("a roller run only when the pivot is out", () -> ROLLER_ONLY_WHEN_OUT, "roller runs only when pivot at least run"),
         reads("an arm kept out of a band", () -> ARM_CLEARS_BUMPER, "arm keeps out of -10° to 30° while elevator at most 0.35 m"),
         reads("a region short of the range's top",

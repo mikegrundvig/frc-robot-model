@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.within;
+import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Kilograms;
@@ -58,7 +59,7 @@ class RobotMathTest {
    */
   @Nested
   class ArmWithAServo {
-    final Joint.Revolute arm =
+    final RevoluteJoint arm =
         revolute(
             "arm",
             Part.CHASSIS,
@@ -72,17 +73,15 @@ class RobotMathTest {
     final Actuator.Servo linear =
         Actuator.Servo.builder().from(0.25).to(0.4).force(50).speed(0.03).build();
     final Drive servo =
-        Drive.builder()
-            .label("arm-servo")
-            .actuator(linear)
-            .transmission(
-                Transmission.Between.builder()
-                    .a(Part.CHASSIS)
-                    .onA(point(0.1, 0, 0.2))
-                    .b(arm)
-                    .onB(point(0.15, 0, 0))
-                    .build())
-            .build();
+        Drive.of(
+            "arm-servo",
+            linear,
+            Transmission.Between.builder()
+                .a(Part.CHASSIS)
+                .onA(point(0.1, 0, 0.2))
+                .b(arm)
+                .onB(point(0.15, 0, 0))
+                .build());
     final RobotMath math =
         definition(List.of(arm), List.of(), List.of(motors, servo), List.of(pivot)).math();
 
@@ -100,7 +99,7 @@ class RobotMathTest {
     /** kG = m g r R / (n Kt G η): the audit's formula, from WPILib's own motor model. */
     @Test
     void itsIdealGainsComeFromItsMotorsGearingAndMass() {
-      RobotMath.Gains gains = math.idealGains(arm);
+      RobotMath.Feedforward gains = math.idealGains(arm);
 
       double kG = 4 * GRAVITY * 0.3 * KRAKEN.R / (2 * KRAKEN.Kt * 60 * 0.9);
       double kV = 60 * 12 / KRAKEN.freeSpeed;
@@ -166,7 +165,7 @@ class RobotMathTest {
   /** An L-shaped link, its center raised 0.1 m above its zero direction 0.3 m out. */
   @Test
   void aCenterOffItsZeroGivesTheOffsetFromHorizontal() {
-    Joint.Revolute arm =
+    RevoluteJoint arm =
         revolute(
             "arm",
             Part.CHASSIS,
@@ -198,7 +197,7 @@ class RobotMathTest {
   @Nested
   class CascadeElevator {
     final Range travel = Range.meters(0, 1.2);
-    final Joint.Prismatic carriage =
+    final PrismaticJoint carriage =
         prismatic(
             "carriage",
             Part.CHASSIS,
@@ -206,7 +205,7 @@ class RobotMathTest {
             UP,
             travel,
             link("carriage", 3, point(0, 0, 0.05), point(0.2, 0.2, 0.1)));
-    final Joint.Prismatic stage1 =
+    final PrismaticJoint stage1 =
         prismatic(
             "stage1",
             Part.CHASSIS,
@@ -214,7 +213,7 @@ class RobotMathTest {
             UP,
             Range.meters(0, 0.4),
             link("stage1", 2, point(0, 0, 0.3), point(0.25, 0.05, 0.6)));
-    final Joint.Prismatic stage2 =
+    final PrismaticJoint stage2 =
         prismatic(
             "stage2",
             Part.CHASSIS,
@@ -260,7 +259,7 @@ class RobotMathTest {
       double drum = Inches.of(1).in(Meters);
       double rate = 5 / drum; // motor radians per meter
       double moved = 3 + 2.0 / 9 + 1.5 * 4.0 / 9 + 2 * KRAKEN_ROTOR * rate * rate;
-      RobotMath.Gains gains = math.idealGains(carriage);
+      RobotMath.Feedforward gains = math.idealGains(carriage);
 
       assertThat(math.gravityTorque(carriage, Map.of(carriage, 0.2)))
           .isCloseTo(force, within(1e-9));
@@ -278,7 +277,7 @@ class RobotMathTest {
     /** An arm on the carriage: its own gravity doesn't change with height; the carriage's does. */
     @Test
     void anArmRidesTheCarriage() {
-      Joint.Revolute arm =
+      RevoluteJoint arm =
           revolute(
               "arm",
               carriage,
@@ -313,7 +312,7 @@ class RobotMathTest {
    */
   @Test
   void aContinuousElevatorsLoadStepsAtEachStage() {
-    Joint.Prismatic carriage =
+    PrismaticJoint carriage =
         prismatic(
             "carriage",
             Part.CHASSIS,
@@ -321,7 +320,7 @@ class RobotMathTest {
             UP,
             Range.meters(0, 1.2),
             link("carriage", 3, point(0, 0, 0.05), point(0.2, 0.2, 0.1)));
-    Joint.Prismatic stage1 =
+    PrismaticJoint stage1 =
         prismatic(
             "stage1",
             Part.CHASSIS,
@@ -329,7 +328,7 @@ class RobotMathTest {
             UP,
             Range.meters(0, 0.75),
             link("stage1", 2, point(0, 0, 0.3), point(0.25, 0.05, 0.6)));
-    Joint.Prismatic stage2 =
+    PrismaticJoint stage2 =
         prismatic(
             "stage2",
             Part.CHASSIS,
@@ -365,7 +364,7 @@ class RobotMathTest {
    */
   @Test
   void aHopperOnACurveCarriesACamera() {
-    Joint.Revolute intake =
+    RevoluteJoint intake =
         revolute(
             "intake",
             Part.CHASSIS,
@@ -374,7 +373,7 @@ class RobotMathTest {
             Optional.of(Range.builder().kind(Position.Kind.ANGLE).lower(0).upper(1.5).build()),
             0,
             link("intake", 2.5, point(0.15, 0, 0), point(0.3, 0.4, 0.05)));
-    Joint.Prismatic hopper =
+    PrismaticJoint hopper =
         prismatic(
             "hopper",
             Part.CHASSIS,
@@ -429,7 +428,7 @@ class RobotMathTest {
    */
   @Test
   void aTurretsTwoEncodersTellMoreThanATurnApart() {
-    Joint.Revolute turret =
+    RevoluteJoint turret =
         revolute(
             "turret",
             Part.CHASSIS,
@@ -491,7 +490,7 @@ class RobotMathTest {
    */
   @Test
   void aCoarseEncoderSetsTheSpanAndAFineOneOnlyRefinesIt() {
-    Joint.Revolute turret =
+    RevoluteJoint turret =
         revolute(
             "turret",
             Part.CHASSIS,
@@ -548,7 +547,7 @@ class RobotMathTest {
    */
   @Test
   void aReadingBecomesThePositionInItsWindow() {
-    Joint.Revolute turret =
+    RevoluteJoint turret =
         revolute(
             "turret",
             Part.CHASSIS,
@@ -579,7 +578,7 @@ class RobotMathTest {
    */
   @Test
   void aReaderMadeOnceGivesTheSameNumbersAsAReadingWorkedOutAfresh() {
-    Joint.Revolute turret =
+    RevoluteJoint turret =
         revolute(
             "turret",
             Part.CHASSIS,
@@ -607,7 +606,7 @@ class RobotMathTest {
    */
   @Test
   void aDifferentialWristsMotorsShareItsPitchAndSplitItsRoll() {
-    Joint.Revolute pitch =
+    RevoluteJoint pitch =
         revolute(
             "pitch",
             Part.CHASSIS,
@@ -616,7 +615,7 @@ class RobotMathTest {
             Optional.of(Range.degrees(-90, 90)),
             0,
             link("wrist", 1.2, point(0.1, 0, 0), point(0.2, 0.1, 0.1)));
-    Joint.Revolute roll =
+    RevoluteJoint roll =
         revolute(
             "roll",
             pitch,
@@ -648,16 +647,10 @@ class RobotMathTest {
         .withMessageContaining("b rotor reads 2 joints");
     assertThatIllegalArgumentException()
         .isThrownBy(
-            () ->
-                Sensor.Encoder.builder()
-                    .label("wrist cancoder")
-                    .terms(rotorB.terms())
-                    .absolute(true)
-                    .countsPerTurn(4096)
-                    .build())
+            () -> Sensor.Encoder.of("wrist cancoder", rotorB.terms(), true).countsPerTurn(4096))
         .withMessageContaining("an absolute encoder reads one joint, not 2");
-    RobotMath.Gains pitching = math.idealGains(pitch);
-    RobotMath.Gains rolling = math.idealGains(roll);
+    RobotMath.Feedforward pitching = math.idealGains(pitch);
+    RobotMath.Feedforward rolling = math.idealGains(roll);
     assertThat(pitching.kV()).isCloseTo(20 * 12 / x44.freeSpeed, within(1e-9));
     assertThat(rolling.kV()).isCloseTo(20 * 12 / x44.freeSpeed, within(1e-9));
     double torque = GRAVITY * (1.2 * 0.1 + 0.8 * 0.15);
@@ -674,7 +667,7 @@ class RobotMathTest {
    */
   @Test
   void aWristChainedThroughTheShoulderFeelsTheShouldersAngle() {
-    Joint.Revolute shoulder =
+    RevoluteJoint shoulder =
         revolute(
             "shoulder",
             Part.CHASSIS,
@@ -683,7 +676,7 @@ class RobotMathTest {
             Optional.of(Range.degrees(-30, 120)),
             0,
             link("upper arm", 3, point(0.25, 0, 0), point(0.5, 0.05, 0.05)));
-    Joint.Revolute wrist =
+    RevoluteJoint wrist =
         revolute(
             "wrist",
             shoulder,
@@ -693,15 +686,10 @@ class RobotMathTest {
             0,
             link("claw", 1, point(0.12, 0, 0), point(0.2, 0.1, 0.1)));
     Drive chain =
-        Drive.builder()
-            .label("wrist")
-            .actuator(Actuator.Motors.builder().motor(Motor.KRAKEN_X44).count(1).build())
-            .transmission(
-                Transmission.Combined.builder()
-                    .terms(List.of(term(wrist, 25), term(shoulder, 25)))
-                    .efficiency(1)
-                    .build())
-            .build();
+        Drive.of(
+            "wrist",
+            Actuator.MotorGroup.of(Motor.KRAKEN_X44, 1),
+            Transmission.Combined.of(List.of(term(wrist, 25), term(shoulder, 25)), 1));
     RobotMath math =
         definition(
                 List.of(shoulder, wrist),
@@ -739,12 +727,10 @@ class RobotMathTest {
   @Test
   void aSwerveDriveMotorTurnsWithItsModulesSteering() {
     Body body = ConfigFixtures.body();
-    DrivetrainGeometry.ModuleType hardware =
-        DrivetrainGeometryModuleTypeBuilder.builder(ConfigFixtures.modules())
-            .couplingRatio(50.0 / 14)
-            .build();
-    DrivetrainGeometry drivetrain = DrivetrainGeometry.inset(hardware, body, Inches.of(2.625));
-    DrivetrainGeometry.ModuleJoints frontLeft = drivetrain.joints().get(0);
+    Drivetrain.Module hardware =
+        DrivetrainModuleBuilder.builder(ConfigFixtures.modules()).couplingRatio(50.0 / 14).build();
+    Drivetrain drivetrain = Drivetrain.inset(hardware, body, Inches.of(2.625));
+    Drivetrain.ModuleJoints frontLeft = drivetrain.joints().get(0);
     Sensor.Encoder cancoder = encoder("front-left cancoder", frontLeft.steer(), 1, true);
     Sensor.Encoder rotor = frontLeft.drive().rotor();
     RobotMath math =
@@ -757,9 +743,9 @@ class RobotMathTest {
     double radius = Inches.of(2).in(Meters);
 
     assertThat(drivetrain.joints())
-        .extracting(DrivetrainGeometry.ModuleJoints::label)
+        .extracting(Drivetrain.ModuleJoints::label)
         .containsExactly("front-left", "front-right", "back-left", "back-right");
-    assertThat(frontLeft.steer().origin().getTranslation().toTranslation2d())
+    assertThat(RobotMath.origin(frontLeft.steer()).getTranslation().toTranslation2d())
         .isEqualTo(drivetrain.moduleTranslations()[0]);
     assertThat(math.coordinate(frontLeft.drive(), Map.of(frontLeft.steer(), 2 * Math.PI)))
         .as("a turn of the module, wheel still: the coupling's turns of the motor")
@@ -791,7 +777,7 @@ class RobotMathTest {
   /** A shooter's flywheel: a joint that turns freely, geared up 2:3. */
   @Test
   void aFlywheelTurnsFreelyFasterThanItsMotor() {
-    Joint.Revolute flywheel =
+    RevoluteJoint flywheel =
         revolute(
             "flywheel",
             Part.CHASSIS,
@@ -821,7 +807,7 @@ class RobotMathTest {
   /** The chassis is the body as weighed, less every link where it was stowed. */
   @Test
   void theChassisIsTheBodyLessItsLinks() {
-    Joint.Revolute arm =
+    RevoluteJoint arm =
         revolute(
             "arm",
             Part.CHASSIS,
@@ -846,7 +832,7 @@ class RobotMathTest {
    */
   @Test
   void aFloorALinkageSwingsBendsGravityOffOneCosine() {
-    Joint.Revolute intake =
+    RevoluteJoint intake =
         revolute(
             "intake",
             Part.CHASSIS,
@@ -855,7 +841,7 @@ class RobotMathTest {
             Optional.of(Range.degrees(0, 130)),
             Math.toRadians(130),
             link("intake", 6.3, point(0.16, 0, 0), point(0.33, 0.5, 0.05)));
-    Joint.Revolute floor =
+    RevoluteJoint floor =
         revolute(
             "floor",
             Part.CHASSIS,
@@ -895,7 +881,7 @@ class RobotMathTest {
    */
   @Test
   void anArmWithNoMassHasNoGravityAndItsRotorsInertiaAlone() {
-    Joint.Revolute arm =
+    RevoluteJoint arm =
         revolute(
             "arm",
             Part.CHASSIS,
@@ -903,11 +889,11 @@ class RobotMathTest {
             PITCH_UP,
             Optional.of(Range.degrees(-10, 110)),
             0,
-            Link.builder().label("arm").mass(MassProperties.NONE).build());
+            Link.unseen("arm"));
     Drive motors = MechanismFixtures.motors(arm, Motor.KRAKEN_X60, 2, gearing(60, 0.9));
     RobotDefinition robot = definition(List.of(arm), List.of(), List.of(motors), List.of());
     RobotMath math = robot.math();
-    RobotMath.Gains gains = math.idealGains(arm);
+    RobotMath.Feedforward gains = math.idealGains(arm);
     double rotors = 2 * KRAKEN_ROTOR * 3600;
 
     assertThat(math.gravityTorque(arm, Map.of(arm, 0.0))).isZero();
@@ -928,7 +914,7 @@ class RobotMathTest {
    */
   @Test
   void gravityActsOnJointsByTheirAxesNotTheirMass() {
-    Joint.Revolute arm =
+    RevoluteJoint arm =
         revolute(
             "arm",
             Part.CHASSIS,
@@ -937,7 +923,7 @@ class RobotMathTest {
             Optional.of(Range.degrees(-10, 110)),
             0,
             Link.unseen("arm"));
-    Joint.Revolute turret =
+    RevoluteJoint turret =
         revolute(
             "turret",
             Part.CHASSIS,
@@ -946,10 +932,10 @@ class RobotMathTest {
             Optional.empty(),
             0,
             Link.unseen("turret"));
-    Joint.Prismatic lift =
+    PrismaticJoint lift =
         prismatic(
             "lift", Part.CHASSIS, point(-0.2, 0, 0.1), UP, Range.meters(0, 1), Link.unseen("lift"));
-    Joint.Prismatic hopper =
+    PrismaticJoint hopper =
         prismatic(
             "hopper",
             Part.CHASSIS,
@@ -957,8 +943,8 @@ class RobotMathTest {
             new Vector3(1, 0, 0),
             Range.meters(0, 0.3),
             Link.unseen("hopper"));
-    Joint.Prismatic ramp =
-        JointPrismaticBuilder.builder(
+    PrismaticJoint ramp =
+        PrismaticJointBuilder.builder(
                 prismatic(
                     "ramp",
                     Part.CHASSIS,
@@ -966,7 +952,7 @@ class RobotMathTest {
                     new Vector3(1, 0, 0),
                     Range.meters(0, 0.3),
                     Link.unseen("ramp")))
-            .origin(new Transform3d(point(0, 0, 0.3), new Rotation3d(0, Math.toRadians(-30), 0)))
+            .place(new Transform3d(point(0, 0, 0.3), new Rotation3d(0, Math.toRadians(-30), 0)))
             .build();
     RobotMath math =
         definition(List.of(arm, turret, lift, hopper, ramp), List.of(), List.of(), List.of())
@@ -987,7 +973,7 @@ class RobotMathTest {
    */
   @Test
   void theMissingDataReportSaysWhatIsntKnownAndWhatItCosts() {
-    Joint.Revolute arm =
+    RevoluteJoint arm =
         revolute(
             "arm",
             Part.CHASSIS,
@@ -995,8 +981,8 @@ class RobotMathTest {
             PITCH_UP,
             Optional.of(Range.degrees(-10, 110)),
             0,
-            Link.builder().label("arm").mass(MassProperties.NONE).build());
-    Joint.Revolute roller =
+            Link.unseen("arm"));
+    RevoluteJoint roller =
         revolute(
             "roller",
             arm,
@@ -1004,16 +990,13 @@ class RobotMathTest {
             new Vector3(0, 1, 0),
             Optional.empty(),
             0,
-            Link.builder()
-                .label("roller")
-                .mass(
-                    MassProperties.builder()
-                        .mass(Kilograms.of(0.5))
-                        .cg(point(0, 0, 0))
-                        .inertia(com.michaelgrundvig.frc.world.physical.Inertia.ZERO)
-                        .build())
-                .shapes(link("roller", 0.5, point(0, 0, 0), point(0.05, 0.4, 0.05)).shapes())
-                .build());
+            Link.of(
+                    "roller",
+                    MassProperties.of(
+                        Kilograms.of(0.5),
+                        point(0, 0, 0),
+                        com.michaelgrundvig.frc.world.physical.Inertia.ZERO))
+                .shapes(link("roller", 0.5, point(0, 0, 0), point(0.05, 0.4, 0.05)).shapes()));
     RobotDefinition weighed =
         definition(
             List.of(arm, roller),
@@ -1082,23 +1065,23 @@ class RobotMathTest {
   @Test
   void theModulesDefaultsAreSaidWhereTheyreRead() {
     RobotDefinition robot = ConfigFixtures.definition(List.of());
-    DrivetrainGeometry.ModuleType unmeasured =
-        DrivetrainGeometryModuleTypeBuilder.builder(ConfigFixtures.modules())
+    Drivetrain.Module unmeasured =
+        DrivetrainModuleBuilder.builder(ConfigFixtures.modules())
             .wheelCoefficientOfFriction(Optional.empty())
             .driveInertia(Optional.empty())
             .steerInertia(Optional.empty())
             .build();
-    DrivetrainGeometry.ModuleType steerUnmeasured =
-        DrivetrainGeometryModuleTypeBuilder.builder(ConfigFixtures.modules())
+    Drivetrain.Module steerUnmeasured =
+        DrivetrainModuleBuilder.builder(ConfigFixtures.modules())
             .steerInertia(Optional.empty())
             .build();
     RobotDefinition defaulted =
         RobotDefinitionBuilder.builder(robot)
-            .drivetrain(DrivetrainGeometry.inset(unmeasured, robot.body(), Inches.of(2.625)))
+            .drivetrain(Drivetrain.inset(unmeasured, robot.body(), Inches.of(2.625)))
             .build();
     RobotDefinition steerDefaulted =
         RobotDefinitionBuilder.builder(robot)
-            .drivetrain(DrivetrainGeometry.inset(steerUnmeasured, robot.body(), Inches.of(2.625)))
+            .drivetrain(Drivetrain.inset(steerUnmeasured, robot.body(), Inches.of(2.625)))
             .build();
 
     assertThat(notes(defaulted))
@@ -1135,12 +1118,14 @@ class RobotMathTest {
   /**
    * A joint gravity acts on, held at positions, is held by its kG: one not written is doubted on
    * the robot, as missing, or as seeded from a mass nobody tuned. A kG written, 0 included, clears
-   * it; a roller, a turret, a slide that runs level, and a joint with no control never need one.
+   * it; a roller, a turret, a slide that runs level, and a joint with no control never need one. A
+   * turning joint's kG written alone, with no mass to say where its weight is, is taken to pull
+   * hardest at its zero, and the robot says so: written with that angle, it says nothing.
    */
   @Test
   void aJointGravityActsOnWithNoKgWrittenIsDoubted() {
     MechanismControl control = MechanismFixtures.stowed(30);
-    Joint.Revolute bare =
+    RevoluteJoint bare =
         revolute(
                 "bare",
                 Part.CHASSIS,
@@ -1150,7 +1135,7 @@ class RobotMathTest {
                 0,
                 Link.unseen("bare arm"))
             .control(control);
-    Joint.Revolute weighed =
+    RevoluteJoint weighed =
         revolute(
                 "weighed",
                 Part.CHASSIS,
@@ -1160,7 +1145,7 @@ class RobotMathTest {
                 0,
                 link("weighed arm", 2, point(0.3, 0, 0), point(0.6, 0.05, 0.05)))
             .control(control);
-    Joint.Revolute counterbalanced =
+    RevoluteJoint counterbalanced =
         revolute(
                 "counterbalanced",
                 Part.CHASSIS,
@@ -1170,7 +1155,7 @@ class RobotMathTest {
                 0,
                 Link.unseen("balanced arm"))
             .control(control.withKg(0));
-    Joint.Revolute roller =
+    RevoluteJoint roller =
         revolute(
                 "roller",
                 bare,
@@ -1180,7 +1165,7 @@ class RobotMathTest {
                 0,
                 Link.unseen("roller"))
             .control(MechanismControl.velocity(0.02));
-    Joint.Revolute turret =
+    RevoluteJoint turret =
         revolute(
                 "turret",
                 Part.CHASSIS,
@@ -1190,7 +1175,7 @@ class RobotMathTest {
                 0,
                 Link.unseen("turret"))
             .control(control);
-    Joint.Prismatic lift =
+    PrismaticJoint lift =
         prismatic(
                 "lift",
                 Part.CHASSIS,
@@ -1199,7 +1184,7 @@ class RobotMathTest {
                 Range.meters(0, 1),
                 Link.unseen("lift"))
             .control(control);
-    Joint.Prismatic hopper =
+    PrismaticJoint hopper =
         prismatic(
                 "hopper",
                 Part.CHASSIS,
@@ -1208,7 +1193,7 @@ class RobotMathTest {
                 Range.meters(0, 0.3),
                 Link.unseen("hopper"))
             .control(control);
-    Joint.Revolute idle =
+    RevoluteJoint idle =
         revolute(
             "idle",
             Part.CHASSIS,
@@ -1217,15 +1202,45 @@ class RobotMathTest {
             Optional.of(Range.degrees(0, 90)),
             0,
             Link.unseen("idle arm"));
+    RevoluteJoint levelAtZero =
+        revolute(
+                "level at zero",
+                Part.CHASSIS,
+                point(0.1, 0.6, 0.5),
+                PITCH_UP,
+                Optional.of(Range.degrees(-10, 110)),
+                0,
+                Link.unseen("tuned arm"))
+            .control(control.withKg(0.35));
+    RevoluteJoint upright =
+        revolute(
+                "upright",
+                Part.CHASSIS,
+                point(0.1, -0.6, 0.5),
+                PITCH_UP,
+                Optional.of(Range.degrees(0, 135)),
+                0,
+                Link.unseen("upright arm"))
+            .control(control.withKg(0.35, Degrees.of(90)));
     List<Joint> joints =
-        List.of(bare, weighed, counterbalanced, roller, turret, lift, hopper, idle);
+        List.of(
+            bare,
+            weighed,
+            counterbalanced,
+            roller,
+            turret,
+            lift,
+            hopper,
+            idle,
+            levelAtZero,
+            upright);
     List<Drive> drives = new ArrayList<>();
     for (Joint joint : joints) {
       drives.add(
-          joint instanceof Joint.Revolute revolute
+          joint instanceof RevoluteJoint revolute
               ? MechanismFixtures.motors(revolute, Motor.KRAKEN_X60, 1, gearing(50, 1))
               : MechanismFixtures.motors(
-                  (Joint.Prismatic) joint, Motor.KRAKEN_X60, 1, gearing(10, 1), Inches.of(1)));
+                  (PrismaticJoint) joint, Motor.KRAKEN_X60, 1, gearing(10, 1), Inches.of(1)));
     }
     RobotDefinition robot = definition(joints, List.of(), drives, List.of());
 
@@ -1235,8 +1250,9 @@ class RobotMathTest {
         .containsExactly(
             tuple(
                 "bare has no kG: it holds against gravity by kP alone, so it sits below its"
-                    + " targets until its kG is tuned and written, withKg(...), or written as 0"
-                    + " for a counterbalanced joint",
+                    + " targets until its kG is tuned and written: withKg(k) for a joint level at"
+                    + " its zero, withKg(k, angle) with the angle its weight pulls hardest at for"
+                    + " one that isn't, or 0 for a counterbalanced joint",
                 ROBOT),
             tuple(
                 "weighed's kG is seeded from its mass, not tuned: it holds only as well as its"
@@ -1245,8 +1261,13 @@ class RobotMathTest {
                 ROBOT),
             tuple(
                 "lift has no kG: it holds against gravity by kP alone, so it sits below its"
-                    + " targets until its kG is tuned and written, withKg(...), or written as 0"
-                    + " for a counterbalanced joint",
+                    + " targets until its kG is tuned and written, withKg(k), or written as 0 for"
+                    + " a counterbalanced joint",
+                ROBOT),
+            tuple(
+                "level at zero's kG is taken to pull hardest at its zero, as if it were level"
+                    + " there: if it isn't, the kG holds it hardest in the wrong place; write"
+                    + " where its weight pulls hardest, withKg(k, angle)",
                 ROBOT));
     assertThat(MechanismFixtures.notes(robot.with(bare.retuned(tuned -> tuned.withKg(0.4)))))
         .noneMatch(note -> note.startsWith("bare has no kG"));
@@ -1266,20 +1287,15 @@ class RobotMathTest {
   }
 
   private static Transmission.Term term(Joint joint, double ratio) {
-    return Transmission.Term.builder().joint(joint).ratio(ratio).build();
+    return Transmission.Term.of(joint, ratio);
   }
 
   private static Drive differential(
       String label, Joint pitch, Joint roll, double onPitch, double onRoll) {
-    return Drive.builder()
-        .label(label)
-        .actuator(Actuator.Motors.builder().motor(Motor.KRAKEN_X44).count(1).build())
-        .transmission(
-            Transmission.Combined.builder()
-                .terms(List.of(term(pitch, onPitch), term(roll, onRoll)))
-                .efficiency(1)
-                .build())
-        .build();
+    return Drive.of(
+        label,
+        Actuator.MotorGroup.of(Motor.KRAKEN_X44, 1),
+        Transmission.Combined.of(List.of(term(pitch, onPitch), term(roll, onRoll)), 1));
   }
 
   /** What a definition says it doesn't know. */

@@ -13,6 +13,7 @@ import com.michaelgrundvig.frc.world.field.FieldModel;
 import com.michaelgrundvig.frc.world.field.Place;
 import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Symmetry;
+import com.michaelgrundvig.frc.world.field.TagFamily;
 import com.michaelgrundvig.frc.world.field.TagLayout;
 import com.michaelgrundvig.frc.world.field.Zone;
 import com.michaelgrundvig.frc.world.physical.Material;
@@ -23,6 +24,7 @@ import org.wpilib.fields.Fields;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Translation2d;
+import org.wpilib.units.measure.Distance;
 
 /**
  * 2025's field, REEFSCAPE. Written as {@link Rebuilt} is: blue's alliance only, in meters in
@@ -57,6 +59,12 @@ public final class Reefscape {
   /** The welded field. The AndyMark build is 1 cm narrower, with its own layout. */
   static final Fields LAYOUT = Fields.FRC_2025_REEFSCAPE_WELDED;
 
+  /** The tags are 36h11, as the game manual prints them. */
+  static final TagFamily TAG_FAMILY = TagFamily.TAG_36H11;
+
+  /** Each tag's black square is 6.5 in on a side, as the game manual prints them. */
+  static final Distance TAG_SIZE = Inches.of(6.5);
+
   /** Red's half is blue's turned half a turn: the processors are on opposite guardrails. */
   static final Symmetry SYMMETRY = Symmetry.ROTATED;
 
@@ -66,13 +74,13 @@ public final class Reefscape {
   // ---- Materials, where the manual names them ----
 
   /** The reef's pipes and the cages: Schedule 40 steel pipe (5.3, 5.4.1). */
-  static final Material STEEL = Material.builder().name("steel").build();
+  static final Material STEEL = Material.of("steel");
 
   /**
    * What the manual doesn't name a material for: the reef's base, the barge, the stations, the
    * processor.
    */
-  static final Material STRUCTURE = Material.builder().name("field structure").build();
+  static final Material STRUCTURE = Material.of("field structure");
 
   // ---- The reef, 12 ft from the alliance wall and centered between the guardrails (5.3) ----
 
@@ -367,6 +375,8 @@ public final class Reefscape {
               Fields.FRC_2025_REEFSCAPE_WELDED.loadField(),
               Fields.FRC_2025_REEFSCAPE_ANDY_MARK.loadField()),
           SYMMETRY,
+          TAG_FAMILY,
+          TAG_SIZE,
           Reefscape::field,
           LIMITS);
 
@@ -377,7 +387,7 @@ public final class Reefscape {
 
   /** The field model on another of the season's layouts: the AndyMark build, say. */
   static FieldModel field(Fields layout) {
-    return field(TagLayout.of(layout.loadField()));
+    return field(TagLayout.of(layout.loadField(), TAG_FAMILY, TAG_SIZE));
   }
 
   /**

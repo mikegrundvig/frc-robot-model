@@ -100,7 +100,7 @@ public record Travel(
    * it.
    */
   private static Taking takingOf(Joint joint) {
-    boolean turns = joint instanceof Joint.Revolute;
+    boolean turns = joint instanceof RevoluteJoint;
     if (!turns) {
       return Taking.AS_IT_IS;
     }
@@ -241,21 +241,23 @@ public record Travel(
       return null;
     }
     if (taking != Taking.AS_A_HEADING) {
-      return joint.shown(position) + " is outside " + shownLimits();
+      return Position.Kind.of(joint).shown(position) + " is outside " + shownLimits();
     }
     if (nearestTurnInside(position, from).isPresent()) {
       return null;
     }
-    return joint.shown(position) + ", at every turn of it, is outside " + shownLimits();
+    return Position.Kind.of(joint).shown(position)
+        + ", at every turn of it, is outside "
+        + shownLimits();
   }
 
   /** The limits as a refusal names them: "arm's limits, 5° to 130°". */
   private String shownLimits() {
     return possessive(joint.label())
         + " limits, "
-        + joint.shown(lower)
+        + Position.Kind.of(joint).shown(lower)
         + " to "
-        + joint.shown(upper);
+        + Position.Kind.of(joint).shown(upper);
   }
 
   /**

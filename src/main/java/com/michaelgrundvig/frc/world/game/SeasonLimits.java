@@ -10,8 +10,8 @@ import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
 import com.michaelgrundvig.frc.world.robot.Body;
 import com.michaelgrundvig.frc.world.robot.Condition;
-import com.michaelgrundvig.frc.world.robot.Configuration;
 import com.michaelgrundvig.frc.world.robot.Joint;
+import com.michaelgrundvig.frc.world.robot.Preset;
 import com.michaelgrundvig.frc.world.robot.RobotDefinition;
 import com.michaelgrundvig.frc.world.robot.RobotMath;
 import java.util.ArrayList;
@@ -27,8 +27,8 @@ import org.wpilib.units.measure.Mass;
  * What a season's game manual allows a robot to be: how big around, how tall at the start, how far
  * it may reach out, where its bumpers go, and how much it may weigh. The season's game class holds
  * its numbers; every robot's definition is checked against them in the tests ({@link #problems}),
- * its named configurations too. Where the robot reaches between its configurations, mid-move, isn't
- * checked: no guard reads the limits while the robot runs.
+ * its named presets too. Where the robot reaches between its presets, mid-move, isn't checked: no
+ * guard reads the limits while the robot runs.
  *
  * @param framePerimeter the most the frame may measure around
  * @param startingHeight the tallest the robot may be in its starting configuration: every joint
@@ -103,11 +103,11 @@ public record SeasonLimits(
   /**
    * Everything about a robot's definition the rules don't allow, each in words; empty when it fits.
    * The robot is checked as it starts a match, every joint where it rests, and in each of its
-   * configurations, the joints it doesn't name where they rest, against the extension limit. Only
-   * the links with shapes reach anywhere; collisions between links aren't checked yet. A robot
-   * that's weighed is checked against the weight limit; one that isn't yet is taken at the most the
-   * season allows, and its mass checked to add up at that ({@code RobotDefinition.massProblems}),
-   * as the definition checks a given weight's itself.
+   * presets, the joints it doesn't name where they rest, against the extension limit. Only the
+   * links with shapes reach anywhere; collisions between links aren't checked yet. A robot that's
+   * weighed is checked against the weight limit; one that isn't yet is taken at the most the season
+   * allows, and its mass checked to add up at that ({@code RobotDefinition.massProblems}), as the
+   * definition checks a given weight's itself.
    */
   public List<String> problems(RobotDefinition definition) {
     Body body = definition.body();
@@ -117,9 +117,9 @@ public record SeasonLimits(
     found.add(whyFrameIsTooBig(body));
     found.add(whyItStartsTooTall(body, math.top(atRest)));
     found.add(whyItStartsOutsideItsFrame(math.extension(atRest)));
-    for (Configuration configuration : definition.configurations()) {
-      double reach = math.extension(positions(configuration));
-      found.add(whyItReachesTooFar(configuration, reach));
+    for (Preset preset : definition.presets()) {
+      double reach = math.extension(positions(preset));
+      found.add(whyItReachesTooFar(preset, reach));
     }
     found.add(whyBumpersAreOutOfTheirZone(body));
     found.add(body.weight().flatMap(this::whyItIsTooHeavy));
@@ -177,10 +177,9 @@ public record SeasonLimits(
   }
 
   /**
-   * @param reach how far any link reaches beyond the frame perimeter in the configuration, in
-   *     meters
+   * @param reach how far any link reaches beyond the frame perimeter in the preset, in meters
    */
-  private Optional<String> whyItReachesTooFar(Configuration configuration, double reach) {
+  private Optional<String> whyItReachesTooFar(Preset preset, double reach) {
     boolean tooFar = reach > extension.in(Meters) + SLACK;
     if (!tooFar) {
       return Optional.empty();
@@ -188,24 +187,33 @@ public record SeasonLimits(
     return Optional.of(
         String.format(
             Locale.ROOT,
-            "configuration %s reaches %.3f m beyond its frame perimeter, more than the %.3f m"
+            "preset %s reaches %.3f m beyond its frame perimeter, more than the %.3f m"
                 + " allowed",
-            configuration.name(),
+            preset.name(),
             reach,
             extension.in(Meters)));
   }
 
+  /**
+   * Why the bumpers aren't within the season's bumper zone, if they aren't. A body that doesn't say
+   * where its bumpers are isn't checked, and says so itself at startup.
+   */
   private Optional<String> whyBumpersAreOutOfTheirZone(Body body) {
-    boolean tooLow = body.bumperBottom().in(Meters) < bumperZoneBottom.in(Meters) - SLACK;
-    boolean tooHigh = body.bumperTop().in(Meters) > bumperZoneTop.in(Meters) + SLACK;
+    if (body.bumperBottom().isEmpty() || body.bumperTop().isEmpty()) {
+      return Optional.empty();
+    }
+    Distance bottom = body.bumperBottom().get();
+    Distance top = body.bumperTop().get();
+    boolean tooLow = bottom.in(Meters) < bumperZoneBottom.in(Meters) - SLACK;
+    boolean tooHigh = top.in(Meters) > bumperZoneTop.in(Meters) + SLACK;
     if (!tooLow && !tooHigh) {
       return Optional.empty();
     }
     return Optional.of(
         "its bumpers, "
-            + shown(body.bumperBottom())
+            + shown(bottom)
             + " to "
-            + shown(body.bumperTop())
+            + shown(top)
             + " up, aren't within the bumper zone, "
             + shown(bumperZoneBottom)
             + " to "
@@ -233,14 +241,14 @@ public record SeasonLimits(
   }
 
   /**
-   * Where a configuration puts the joints it names at positions; the rest stay where they rest, and
-   * its outputs move nothing anywhere.
+   * Where a preset puts the joints it names at positions; the rest stay where they rest, and its
+   * outputs move nothing anywhere.
    */
-  private static Map<Joint, Double> positions(Configuration configuration) {
+  private static Map<Joint, Double> positions(Preset preset) {
     Map<Joint, Double> positions = new LinkedHashMap<>();
-    for (Condition.At target : configuration.targets()) {
+    for (Condition.At target : preset.targets()) {
       if (!target.isOutput()) {
-        positions.put(target.joint(), target.joint().position(target.name()).value());
+        positions.put(target.joint(), RobotMath.position(target.joint(), target.name()).value());
       }
     }
     return positions;

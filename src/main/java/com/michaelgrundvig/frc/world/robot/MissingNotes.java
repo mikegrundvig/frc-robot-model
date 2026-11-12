@@ -2,8 +2,10 @@ package com.michaelgrundvig.frc.world.robot;
 
 import static com.michaelgrundvig.frc.world.config.Rules.possessive;
 import static com.michaelgrundvig.frc.world.config.Rules.shown;
+import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Kilograms;
+import static org.wpilib.units.Units.Milliseconds;
 
 import com.michaelgrundvig.frc.world.config.Finding;
 import java.util.ArrayList;
@@ -53,6 +55,8 @@ final class MissingNotes {
   static List<Finding> of(RobotDefinition robot, RobotMath math, Mass robotMass) {
     MissingNotes missing = new MissingNotes(robot, math, robotMass);
     missing.addTheBodys();
+    missing.addTheBumpers();
+    missing.addTheBackupImu();
     missing.addTheDrivetrains();
     for (Joint joint : robot.joints()) {
       missing.addAJoints(joint);
@@ -60,6 +64,9 @@ final class MissingNotes {
     missing.addUncheckedOutputs();
     for (Sensor sensor : math.sensors()) {
       missing.addASensors(sensor);
+    }
+    for (CameraConfig camera : robot.cameras()) {
+      missing.addACameras(camera);
     }
     return missing.notes;
   }
@@ -117,6 +124,131 @@ final class MissingNotes {
   }
 
   /**
+   * The bumpers the body leaves out: their thickness, which the field places the robot by, and
+   * their height, which only the drawing and the season's bumper zone read.
+   */
+  private void addTheBumpers() {
+    Body body = robot.body();
+    if (body.bumperThickness().isEmpty()) {
+      note(
+          robot.name(),
+          "the bumpers' thickness isn't given: they're taken as "
+              + shown(Body.DEFAULT_BUMPER_THICKNESS)
+              + ", the usual bumper",
+          "where the field stands the robot on a start, and the simulator's and views' outline of"
+              + " it, rest on them: give .bumperThickness(...)",
+          Finding.Scope.ROBOT);
+    }
+    if (body.bumperBottom().isEmpty()) {
+      note(
+          robot.name(),
+          "the bumpers' height isn't given: they're drawn from "
+              + shown(Body.DEFAULT_BUMPER_BOTTOM)
+              + " to "
+              + shown(Body.DEFAULT_BUMPER_TOP)
+              + " up",
+          "the season's bumper zone isn't checked against them: give"
+              + " .bumperBottom(...).bumperTop(...)",
+          Finding.Scope.ROBOT);
+    }
+  }
+
+  /** A robot with no backup IMU, whose heading has nothing to fall back on but its wheels. */
+  private void addTheBackupImu() {
+    if (robot.backupImu().isPresent()) {
+      return;
+    }
+    note(
+        robot.name(),
+        "the robot has no backup IMU",
+        "with the gyro lost, its heading rests on the wheels alone: give Systemcore's,"
+            + " .backupImu(ImuMount.UNCHECKED), once it has one",
+        Finding.Scope.ROBOT);
+  }
+
+  /**
+   * What a camera leaves to its defaults, in one note: what the robot reads (its roll, its noise
+   * scale, its latency, and a mount nobody has checked), then what only the simulator and the views
+   * read (its field of view and sight range). The note is the robot's where the robot reads any of
+   * it, so it is said wherever the program runs, and the simulator's otherwise.
+   */
+  private void addACameras(CameraConfig camera) {
+    List<String> robotReads = whatTheRobotReads(camera);
+    List<String> simulatorReads = whatTheSimulatorReads(camera);
+    String robotCosts =
+        "the localizer places and weighs its images by them: the mount procedure gives its roll"
+            + " and checks its mount (docs/calibration.md), and its Vision log its latency and"
+            + " noise";
+    String simulatorCosts =
+        "what the simulator's camera sees, and the views' drawing of it, rest on them";
+    String robotSays = "camera " + camera.name() + ": " + String.join(", ", robotReads);
+    String simulatorSays = String.join(", ", simulatorReads);
+    if (robotReads.isEmpty() && simulatorReads.isEmpty()) {
+      return;
+    }
+    if (simulatorReads.isEmpty()) {
+      note(camera.name(), robotSays, robotCosts, Finding.Scope.ROBOT);
+      return;
+    }
+    if (robotReads.isEmpty()) {
+      note(
+          camera.name(),
+          "camera " + camera.name() + ": " + simulatorSays,
+          simulatorCosts,
+          Finding.Scope.SIMULATOR);
+      return;
+    }
+    note(
+        camera.name(),
+        robotSays,
+        robotCosts + ". In the simulator alone, " + simulatorSays + ": " + simulatorCosts,
+        Finding.Scope.ROBOT);
+  }
+
+  /** What a camera leaves out that the robot reads, each as the note says it. */
+  private static List<String> whatTheRobotReads(CameraConfig camera) {
+    List<String> robotReads = new ArrayList<>();
+    if (camera.roll().isEmpty()) {
+      robotReads.add("its roll is taken as 0°, level");
+    }
+    if (camera.noiseScale().isEmpty()) {
+      robotReads.add(
+          "its noise scale as " + shown(CameraConfig.DEFAULT_NOISE_SCALE) + ", a typical camera's");
+    }
+    if (camera.sensor().latency().isEmpty()) {
+      robotReads.add(
+          "its latency as "
+              + shown(camera.latencyOrDefault().in(Milliseconds))
+              + " ms, its software's typical one");
+    }
+    if (camera.mountTolerance().equals(CameraConfig.MountTolerance.UNCHECKED)) {
+      CameraConfig.MountTolerance unchecked = CameraConfig.MountTolerance.UNCHECKED;
+      robotReads.add(
+          "its mount as unchecked, as far as "
+              + shown(unchecked.along())
+              + " and "
+              + shown(unchecked.about().in(Degrees))
+              + "° off");
+    }
+    return robotReads;
+  }
+
+  /** What a camera leaves out that only the simulator and the views read. */
+  private static List<String> whatTheSimulatorReads(CameraConfig camera) {
+    List<String> simulatorReads = new ArrayList<>();
+    if (camera.lens().isEmpty() && camera.sensor().fieldOfView().isEmpty()) {
+      simulatorReads.add(
+          "its field of view is taken as "
+              + shown(CameraConfig.DEFAULT_FIELD_OF_VIEW.in(Degrees))
+              + "° across the diagonal");
+    }
+    if (camera.sensor().sightRange().isEmpty()) {
+      simulatorReads.add("its sight range as " + shown(CameraConfig.DEFAULT_SIGHT_RANGE));
+    }
+    return simulatorReads;
+  }
+
+  /**
    * What the drivetrain's modules leave to their defaults, and which of its motor controllers do
    * not say what feeds them.
    */
@@ -131,13 +263,13 @@ final class MissingNotes {
    * Each is noted once if any corner's module leaves it out.
    */
   private void addModulesDefaults() {
-    List<DrivetrainGeometry.ModuleType> modules =
-        robot.drivetrain().corners().stream().map(DrivetrainGeometry.Corner::module).toList();
+    List<Drivetrain.Module> modules =
+        robot.drivetrain().corners().stream().map(Drivetrain.Corner::module).toList();
     if (modules.stream().anyMatch(module -> module.wheelCoefficientOfFriction().isEmpty())) {
       note(
           robot.name(),
           "the tread's grip isn't measured: it's "
-              + shown(DrivetrainGeometry.ModuleType.DEFAULT_WHEEL_COEFFICIENT_OF_FRICTION)
+              + shown(Drivetrain.Module.DEFAULT_WHEEL_COEFFICIENT_OF_FRICTION)
               + ", PathPlanner's default",
           "drive moves plan their acceleration on it, and the slip check judges by it: measure"
               + " it with a pull test (docs/characterization.md, tread friction)",
@@ -147,7 +279,7 @@ final class MissingNotes {
       note(
           robot.name(),
           "the drive's own inertia isn't measured: it's "
-              + shown(DrivetrainGeometry.ModuleType.DEFAULT_DRIVE_INERTIA.in(KilogramSquareMeters))
+              + shown(Drivetrain.Module.DEFAULT_DRIVE_INERTIA.in(KilogramSquareMeters))
               + " kg m², an estimate for a 4 in wheel and a Kraken X60's rotor",
           "how fast the simulator's wheels spin up is a guess, though a small one beside the"
               + " robot's mass they carry",
@@ -157,7 +289,7 @@ final class MissingNotes {
       note(
           robot.name(),
           "the steering's inertia isn't measured: it's "
-              + shown(DrivetrainGeometry.ModuleType.DEFAULT_STEER_INERTIA.in(KilogramSquareMeters))
+              + shown(Drivetrain.Module.DEFAULT_STEER_INERTIA.in(KilogramSquareMeters))
               + " kg m², Phoenix Tuner X's simulation value",
           "how fast the simulator's modules steer at their current limit is a guess",
           Finding.Scope.SIMULATOR);
@@ -177,7 +309,7 @@ final class MissingNotes {
       return;
     }
     // Each corner has a drive controller and a steering controller.
-    int allOfThem = 2 * DrivetrainGeometry.LABELS.size();
+    int allOfThem = 2 * Drivetrain.LABELS.size();
     String what = "the drivetrain's " + String.join(", ", withNoFeed) + " have no PDH channel";
     if (withNoFeed.size() == allOfThem) {
       what = "none of the drivetrain's motor controllers has a PDH channel";
@@ -186,7 +318,7 @@ final class MissingNotes {
         robot.name(),
         what,
         "which channel feeds each, and through what breaker, isn't checked: give each module's"
-            + " wiring its feeds, .driveFeed(Pdh.feed(channel, breaker)) and .steerFeed(...)",
+            + " drive and steering its feed, TALON_FX.can(bus, id).pdh(channel, breaker)",
         Finding.Scope.ROBOT);
   }
 
@@ -197,11 +329,26 @@ final class MissingNotes {
         .toList();
   }
 
-  /** One joint's notes: its link's mass and shape, what moves it, its kG and its motors' feeds. */
+  /**
+   * One joint's notes: its place, its link's mass and shape, what moves it, its kG and its motors'
+   * feeds.
+   */
   private void addAJoints(Joint joint) {
     // A joint that is held at positions and that gravity acts on sags without a kG.
-    boolean heldAgainstGravity = joint.holdsPositions() && math.gravityActsOn(joint);
+    boolean heldAgainstGravity = RobotMath.holdsPositions(joint) && math.gravityActsOn(joint);
     addLinksMass(joint, heldAgainstGravity);
+    if (joint.place().isEmpty()) {
+      String parent = called(joint.parent());
+      note(
+          joint.label(),
+          joint.label() + " isn't placed on " + parent,
+          "it's taken at "
+              + possessive(parent)
+              + " origin, where it's drawn, simulated and"
+              + " checked against the starting height and the extension limit: give"
+              + " .at(forward, left, up)",
+          Finding.Scope.ROBOT);
+    }
     if (joint.link().shapes().isEmpty()) {
       note(
           joint.label(),
@@ -219,6 +366,14 @@ final class MissingNotes {
     }
     addKg(joint, heldAgainstGravity);
     addMotorsWithNoFeed(joint);
+  }
+
+  /** A part as a note names it: "the chassis", or a joint by its label. */
+  private static String called(Part part) {
+    if (part == Part.CHASSIS) {
+      return "the chassis";
+    }
+    return part.label();
   }
 
   /**
@@ -272,7 +427,7 @@ final class MissingNotes {
    * name no speed, or one whose time can't be worked out.
    */
   private String rotorsSpinItUp(Joint joint) {
-    if (joint.holdsPositions()) {
+    if (RobotMath.holdsPositions(joint)) {
       return "";
     }
     Optional<Output> fastest =
@@ -290,7 +445,7 @@ final class MissingNotes {
     return ", so its rotors alone bring it to "
         + speed.name()
         + ", "
-        + joint.shownSpeed(speed.value())
+        + Position.Kind.of(joint).shownSpeed(speed.value())
         + ", in "
         + shownTime(seconds.getAsDouble());
   }
@@ -332,14 +487,24 @@ final class MissingNotes {
    *
    * <p>The links' mass may seed a kG for such a joint, but only a tuned kG is known to hold it, so
    * a seeded one is noted too. A joint that a counterbalance holds writes a kG of 0.
+   *
+   * <p>A turning joint's kG written alone, with no mass in its links to say where its weight is, is
+   * taken to pull hardest at the joint's zero, as WPILib takes an arm level there. The model's zero
+   * is CAD's pose, often upright, so that is noted too: an arm that isn't level at its zero says
+   * where its weight pulls hardest, {@code withKg(k, angle)}.
    */
   private void addKg(Joint joint, boolean heldAgainstGravity) {
     Optional<MechanismControl> control = joint.driven().control();
     boolean needsAKg = control.isPresent() && heldAgainstGravity && math.leaderOf(joint) == null;
-    if (!needsAKg || control.get().gains().kG().isPresent()) {
+    if (!needsAKg) {
       return;
     }
     boolean seededFromItsMass = math.gravityHeld(joint) > NO_GRAVITY;
+    MechanismControl.Gains gains = control.get().gains();
+    if (gains.kG().isPresent()) {
+      addKgAssumedLevel(joint, gains, seededFromItsMass);
+      return;
+    }
     if (seededFromItsMass) {
       note(
           joint.label(),
@@ -353,7 +518,45 @@ final class MissingNotes {
         joint.label(),
         joint.label() + " has no kG",
         "it holds against gravity by kP alone, so it sits below its targets until its kG is tuned"
-            + " and written, withKg(...), or written as 0 for a counterbalanced joint",
+            + " and written"
+            + kgForms(joint),
+        Finding.Scope.ROBOT);
+  }
+
+  /** How a kG is written for a joint: with the angle its weight pulls hardest at, if it turns. */
+  private static String kgForms(Joint joint) {
+    if (joint instanceof RevoluteJoint) {
+      return ": withKg(k) for a joint level at its zero, withKg(k, angle) with the angle its weight"
+          + " pulls hardest at for one that isn't, or 0 for a counterbalanced joint";
+    }
+    return ", withKg(k), or written as 0 for a counterbalanced joint";
+  }
+
+  /**
+   * A turning joint's kG written with no angle, and no mass in its links to say where its weight
+   * pulls hardest: it's taken to pull hardest at the joint's zero. A kG of 0 holds nothing, so it
+   * assumes nothing.
+   */
+  private void addKgAssumedLevel(
+      Joint joint, MechanismControl.Gains gains, boolean seededFromItsMass) {
+    if (!(joint instanceof RevoluteJoint)) {
+      return;
+    }
+    if (seededFromItsMass) {
+      return;
+    }
+    if (gains.gravityAngle().isPresent()) {
+      return;
+    }
+    if (gains.kG().orElseThrow() == 0) {
+      return;
+    }
+    note(
+        joint.label(),
+        possessive(joint.label())
+            + " kG is taken to pull hardest at its zero, as if it were level there",
+        "if it isn't, the kG holds it hardest in the wrong place; write where its weight pulls"
+            + " hardest, withKg(k, angle)",
         Finding.Scope.ROBOT);
   }
 
@@ -363,7 +566,7 @@ final class MissingNotes {
    */
   private void addMotorsWithNoFeed(Joint joint) {
     List<String> withNoFeed =
-        motorControllersWithNoFeed(joint.devices()).stream()
+        motorControllersWithNoFeed(RobotMath.devices(joint)).stream()
             .map(device -> String.valueOf(device.id()))
             .toList();
     if (robot.pdh().isEmpty() || withNoFeed.isEmpty()) {

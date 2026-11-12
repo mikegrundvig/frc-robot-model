@@ -28,14 +28,15 @@ import org.wpilib.units.measure.Distance;
  * what they mean.
  */
 class SensorTest {
-  private static final Joint.Revolute PIVOT =
-      Joint.pivot("pivot", Part.CHASSIS, new Translation3d(0.2, 0, 0.3), Joint.PITCH_UP)
+  private static final RevoluteJoint PIVOT =
+      Joint.pivot("pivot", Part.CHASSIS, Joint.PITCH_UP)
+          .at(Meters.of(0.2), Meters.of(0), Meters.of(0.3))
           .range(Range.degrees(0, 120))
           .rest(Degrees.of(0))
           .carries(Link.unseen("arm"));
 
-  private static final Joint.Revolute ROLLER =
-      Joint.roller("roller", PIVOT, new Translation3d(0.3, 0, 0));
+  private static final RevoluteJoint ROLLER =
+      Joint.roller("roller", PIVOT).at(Meters.of(0.3), Meters.of(0), Meters.of(0));
 
   /**
    * A limit switch at the bottom of the pivot's travel trips at or below its position; the top one
@@ -73,12 +74,7 @@ class SensorTest {
   void conditionsReadASwitchEitherWayAndARangeAgainstADistance() {
     Sensor.Switch claw = Sensor.Switch.beam("claw beam", PIVOT);
     Sensor.Rangefinder hopper =
-        Sensor.Rangefinder.builder()
-            .label("hopper range")
-            .part(Part.CHASSIS)
-            .range(Meters.of(1.3))
-            .fieldOfView(Degrees.of(27))
-            .build();
+        Sensor.Rangefinder.of("hopper range", Part.CHASSIS, Meters.of(1.3), Degrees.of(27));
 
     assertThat(claw.tripped()).hasToString("claw beam tripped");
     assertThat(claw.clear()).hasToString("claw beam clear");
@@ -236,7 +232,8 @@ class SensorTest {
             List.of(),
             List.of(pivotMotor, rollerMotor),
             List.of(placed, unplaced, unknown));
-    Joint.Revolute stranger = Joint.roller("stranger", Part.CHASSIS, new Translation3d());
+    RevoluteJoint stranger =
+        Joint.roller("stranger", Part.CHASSIS).at(Meters.of(0), Meters.of(0), Meters.of(0));
 
     assertThat(robot.math().sensorPose(placed, Map.of(PIVOT, Math.PI / 2)).getTranslation())
         .as("on the arm, near its end, raised")

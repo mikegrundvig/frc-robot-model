@@ -33,17 +33,16 @@ class LoopCostTest {
   private static final com.sun.management.ThreadMXBean THREADS =
       (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
 
-  private static final Joint.Revolute PIVOT = StandardRobot.PIVOT;
+  private static final RevoluteJoint PIVOT = StandardRobot.PIVOT;
 
   /** A wheel that turns freely: it has no range. */
-  private static final Joint.Revolute WHEEL = StandardRobot.lightPivot("wheel", Optional.empty());
+  private static final RevoluteJoint WHEEL = StandardRobot.lightPivot("wheel", Optional.empty());
 
   private static Sensor.Switch limitAtZero(Joint joint) {
-    return Sensor.Switch.builder()
-        .label(joint.label() + " down")
-        .part(joint.parent())
-        .kind(new Sensor.Switch.Limit(joint, Optional.of(0.0), Sensor.Switch.Limit.End.LOWER))
-        .build();
+    return Sensor.Switch.of(
+        joint.label() + " down",
+        joint.parent(),
+        new Sensor.Switch.Limit(joint, Optional.of(0.0), Sensor.Switch.Limit.End.LOWER));
   }
 
   private static final Sensor.Switch PIVOT_DOWN = limitAtZero(PIVOT);

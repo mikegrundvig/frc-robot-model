@@ -82,7 +82,7 @@ class VenueTest {
   }
 
   private static List<String> problems(String text) {
-    return VenueCheck.problems(VenueFile.read(text), TestFields.layout(), Symmetry.ROTATED);
+    return VenueCheck.problems(VenueFile.read(text), TestFields.tagLayout(), Symmetry.ROTATED);
   }
 
   /** A venue's layout on its own, as WPIcal writes one: the earlier format, bare. */
@@ -327,7 +327,7 @@ class VenueTest {
     Venue official = VenueFile.read(file("official", BASE, TestFields.tags(), true, ""));
     Venue withNinetyNine = VenueFile.read(file(withoutTagThreeButWithNinetyNine(), ""));
 
-    List<Tag> tags = surveyed.tags(TestFields.layout());
+    List<Tag> tags = surveyed.tags(TestFields.tagLayout());
 
     assertThat(tags).extracting(Tag::id).containsExactly(2, 3, 12, 13, 4, 14);
     Tag four = tags.get(4);
@@ -335,14 +335,26 @@ class VenueTest {
     assertThat(four.surveyed()).isNotNull();
     assertThat(four.pose().getX()).isCloseTo(0.02, within(1e-12));
     assertThat(four.pose().getY()).isCloseTo(1.99, within(1e-12));
-    TagLayout layout = surveyed.tagLayout(TestFields.layout());
+    TagLayout layout = surveyed.tagLayout(TestFields.tagLayout());
     assertThat(layout.name()).isEqualTo("Practice field, October");
     assertThat(layout.lengthMeters()).isEqualTo(16);
     assertThat(layout.tags()).isEqualTo(tags);
-    assertThat(official.tags(TestFields.layout()))
+    TagLayout eightInch =
+        new TagLayout(
+            "Eight-inch tags",
+            TestFields.LENGTH,
+            TestFields.WIDTH,
+            TagFamily.TAG_36H11,
+            0.2032,
+            TestFields.tagLayout().tags());
+    assertThat(surveyed.tagLayout(eightInch).tagSizeMeters())
+        .as("a survey keeps the official layout's tag size")
+        .isEqualTo(0.2032);
+    assertThat(surveyed.tagLayout(eightInch).family()).isEqualTo(TagFamily.TAG_36H11);
+    assertThat(official.tags(TestFields.tagLayout()))
         .as("an official venue is nominal")
         .allMatch(t -> t.surveyed() == null);
-    assertThatThrownBy(() -> withNinetyNine.tags(TestFields.layout()))
+    assertThatThrownBy(() -> withNinetyNine.tags(TestFields.tagLayout()))
         .as("a tag its base doesn't have")
         .hasMessageContaining("no tag 99");
   }

@@ -63,7 +63,7 @@ public record Range(Position.Kind kind, double lower, double upper) {
   }
 
   /** Starts describing a range, one named value at a time. */
-  public static RangeBuilder.KindStage builder() {
+  static RangeBuilder.KindStage builder() {
     return RangeBuilder.builder();
   }
 

@@ -58,6 +58,19 @@ final class TestFields {
     return layout(tags());
   }
 
+  /** FRC's tags: 36h11, 6.5 in. */
+  static final double TAG_SIZE_METERS = 0.1651;
+
+  /** The test field's layout on these tags, 36h11 at FRC's 6.5 in. */
+  static TagLayout tagLayout(List<FieldTag> tags) {
+    return TagLayout.of(layout(tags), TagFamily.TAG_36H11, Meters.of(TAG_SIZE_METERS));
+  }
+
+  /** The test field's layout, 36h11 at FRC's 6.5 in. */
+  static TagLayout tagLayout() {
+    return tagLayout(tags());
+  }
+
   /** A tag standing upright, facing the given way. */
   static FieldTag tag(int id, double x, double y, double degrees) {
     return new FieldTag(
@@ -68,7 +81,7 @@ final class TestFields {
   static final Bumpers BUMPERS = new Bumpers(Meters.of(0.9), Meters.of(0.8));
 
   static FieldModel model(List<Start> starts, List<Place> places, List<Zone> zones) {
-    return new FieldModel(layout(), Symmetry.ROTATED, starts, places, zones);
+    return new FieldModel(tagLayout(), Symmetry.ROTATED, starts, places, zones);
   }
 
   static FieldModel model() {

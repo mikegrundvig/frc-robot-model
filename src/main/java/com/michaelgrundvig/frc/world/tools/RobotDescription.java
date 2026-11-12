@@ -1,8 +1,8 @@
-package com.michaelgrundvig.frc.world.bridges;
+package com.michaelgrundvig.frc.world.tools;
 
 import com.michaelgrundvig.frc.world.robot.Body;
 import com.michaelgrundvig.frc.world.robot.CameraConfig;
-import com.michaelgrundvig.frc.world.robot.DrivetrainGeometry;
+import com.michaelgrundvig.frc.world.robot.Drivetrain;
 import java.util.List;
 import java.util.Optional;
 import org.wpilib.math.geometry.Translation3d;
@@ -23,7 +23,7 @@ import org.wpilib.math.geometry.Translation3d;
 public record RobotDescription(
     String name,
     Body body,
-    DrivetrainGeometry drivetrain,
+    Drivetrain drivetrain,
     List<CameraConfig> cameras,
     Optional<Translation3d> imu) {
   public RobotDescription {

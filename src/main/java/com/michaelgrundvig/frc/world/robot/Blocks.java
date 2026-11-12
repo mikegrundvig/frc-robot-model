@@ -102,7 +102,7 @@ final class Blocks {
    */
   private static Optional<String> whyControlIsForTheOtherLoop(
       Joint joint, MechanismControl control) {
-    boolean jointHoldsPositions = joint.holdsPositions();
+    boolean jointHoldsPositions = RobotMath.holdsPositions(joint);
     boolean controlHoldsPositions = control.loop() == MechanismControl.Loop.POSITION;
     if (controlHoldsPositions == jointHoldsPositions) {
       return Optional.empty();
@@ -157,10 +157,10 @@ final class Blocks {
             Locale.ROOT,
             "%s's soft limits, %s to %s, must be inside its hard stops, %s to %s",
             joint.label(),
-            joint.shown(soft.lower()),
-            joint.shown(soft.upper()),
-            joint.shown(stops.lower()),
-            joint.shown(stops.upper())));
+            Position.Kind.of(joint).shown(soft.lower()),
+            Position.Kind.of(joint).shown(soft.upper()),
+            Position.Kind.of(joint).shown(stops.lower()),
+            Position.Kind.of(joint).shown(stops.upper())));
   }
 
   /**
@@ -173,9 +173,12 @@ final class Blocks {
       return List.of();
     }
     Range stops = joint.range().get();
-    String shownStops = joint.shown(stops.lower()) + " to " + joint.shown(stops.upper());
+    String shownStops =
+        Position.Kind.of(joint).shown(stops.lower())
+            + " to "
+            + Position.Kind.of(joint).shown(stops.upper());
     List<String> past = new ArrayList<>();
-    if (!stops.contains(joint.restPosition())) {
+    if (!stops.contains(RobotMath.restPosition(joint))) {
       past.add(restIsPastItsStops(joint, shownStops));
     }
     for (Position position : joint.positions()) {
@@ -185,7 +188,7 @@ final class Blocks {
                 + " "
                 + position.name()
                 + ", "
-                + joint.shown(position.value())
+                + Position.Kind.of(joint).shown(position.value())
                 + ", is outside its hard stops, "
                 + shownStops
                 + ": it can't get there");
@@ -203,14 +206,14 @@ final class Blocks {
     if (joint.rest().isPresent()) {
       return joint.label()
           + " rests at "
-          + joint.shown(joint.restPosition())
+          + Position.Kind.of(joint).shown(RobotMath.restPosition(joint))
           + ", outside its hard stops, "
           + shownStops
           + ": it can't start there";
     }
     return joint.label()
         + " has no rest, so it starts at its zero, "
-        + joint.shown(0)
+        + Position.Kind.of(joint).shown(0)
         + ", outside its hard stops, "
         + shownStops
         + ": it can't start there; give where it rests, .rest(...)";
@@ -239,9 +242,9 @@ final class Blocks {
                 "%s's %s, %s, is outside its soft limits, %s to %s: it's never driven there",
                 joint.label(),
                 position.name(),
-                joint.shown(position.value()),
-                joint.shown(soft.lower()),
-                joint.shown(soft.upper())));
+                Position.Kind.of(joint).shown(position.value()),
+                Position.Kind.of(joint).shown(soft.lower()),
+                Position.Kind.of(joint).shown(soft.upper())));
       }
     }
     return outside;
@@ -255,7 +258,7 @@ final class Blocks {
     if (control.homing().isEmpty()) {
       return Optional.empty();
     }
-    if (!joint.holdsPositions()) {
+    if (!RobotMath.holdsPositions(joint)) {
       return Optional.of(joint.label() + " only runs at outputs: it has no position to home");
     }
     boolean homesToAHardStop = control.homing().get() instanceof MechanismControl.Homing.ToHardStop;
@@ -273,7 +276,7 @@ final class Blocks {
    */
   private static Optional<String> whyItCannotFindWhereItIs(
       RobotMath math, Joint joint, MechanismControl control) {
-    if (!joint.holdsPositions() || control.homing().isPresent()) {
+    if (!RobotMath.holdsPositions(joint) || control.homing().isPresent()) {
       return Optional.empty();
     }
     if (math.absoluteEncoder(joint) == null) {
@@ -369,7 +372,7 @@ final class Blocks {
    * stops bound.
    */
   private static Optional<String> whySlidingEncoderCannotRead(Joint joint) {
-    if (!(joint instanceof Joint.Prismatic) || joint.driven().absoluteEncoder().isEmpty()) {
+    if (!(joint instanceof PrismaticJoint) || joint.driven().absoluteEncoder().isEmpty()) {
       return Optional.empty();
     }
     if (joint.driven().motors().flatMap(Driven.Motors::pitchRadius).isEmpty()) {
@@ -402,7 +405,7 @@ final class Blocks {
     if (!closesLoopOnEncoder) {
       return Optional.empty();
     }
-    if (!joint.holdsPositions()) {
+    if (!RobotMath.holdsPositions(joint)) {
       return Optional.of(
           joint.label()
               + " only runs at outputs, so its loop has no position to close on its absolute"
@@ -414,7 +417,7 @@ final class Blocks {
               + " loop closes on its absolute encoder, which tells it where it is: drop its"
               + " control's homing recipe");
     }
-    if (joint.range().isEmpty() && joint instanceof Joint.Revolute) {
+    if (joint.range().isEmpty() && joint instanceof RevoluteJoint) {
       return Optional.of(
           joint.label()
               + " turns freely, and its absolute encoder's reading wraps each turn: its loop can't"

@@ -13,19 +13,19 @@ import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Translation3d;
 
 /** Shapes: where each kind is from its pose, and how far a point is from it. */
-class ShapeTest {
+class SolidTest {
   private static final Translation3d SIZE = new Translation3d(1, 1, 1);
 
   private static Material aluminum() {
-    return Material.builder().name("aluminum").build();
+    return Material.of("aluminum");
   }
 
-  private static Shape.Box box(Pose3d pose, Translation3d size) {
-    return Shape.Box.builder().pose(pose).size(size).material(aluminum()).build();
+  private static Solid.Box box(Pose3d pose, Translation3d size) {
+    return Solid.Box.of(pose, size, aluminum());
   }
 
   /** A 2 x 1 x 0.5 m box centered at (1, 1, 1), turned a quarter turn about z: 2 m along y. */
-  private static Shape.Box box() {
+  private static Solid.Box box() {
     return box(
         new Pose3d(1, 1, 1, new Rotation3d(0, 0, Math.PI / 2)), new Translation3d(2, 1, 0.5));
   }
@@ -68,7 +68,6 @@ class ShapeTest {
         .hasMessageContaining("positive along each axis");
     assertThatThrownBy(() -> box(new Pose3d(Double.NaN, 0, 0, Rotation3d.ZERO), SIZE))
         .hasMessageContaining("Box.pose");
-    assertThatThrownBy(() -> Material.builder().name(" ").build())
-        .hasMessageContaining("Material.name");
+    assertThatThrownBy(() -> Material.of(" ")).hasMessageContaining("Material.name");
   }
 }

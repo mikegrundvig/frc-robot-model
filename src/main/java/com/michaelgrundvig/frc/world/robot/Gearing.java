@@ -28,13 +28,30 @@ public record Gearing(double ratio, double efficiency) {
         .orThrow();
   }
 
-  /** Starts describing a gearing, one named value at a time. */
-  public static GearingBuilder.RatioStage builder() {
-    return GearingBuilder.builder();
+  /**
+   * A reduction whose losses aren't measured yet: {@code Gearing.of(25)}, losing nothing until
+   * {@link #efficiency(double)} says.
+   *
+   * @param ratio the motor's turns for each turn of what it drives: 6.75 for a 6.75:1 reduction,
+   *     less than 1 for a step-up
+   */
+  public static Gearing of(double ratio) {
+    return GearingBuilder.builder().ratio(ratio).efficiency(1.0).build();
   }
 
-  /** A reduction whose losses aren't measured yet: {@code Gearing.of(25)}, losing nothing. */
-  public static Gearing of(double ratio) {
-    return builder().ratio(ratio).efficiency(1.0).build();
+  /**
+   * The same reduction, losing what it loses: {@code Gearing.of(6.75).efficiency(0.97)}.
+   *
+   * @param efficiency the share of the motor's torque, times the ratio, that reaches what it
+   *     drives: above 0, and at most 1 for a gearing that loses nothing. A gear stage loses a few
+   *     percent; a belt or a chain, a little less.
+   * @throws IllegalArgumentException if its efficiency is given already
+   */
+  public Gearing efficiency(double efficiency) {
+    if (this.efficiency != 1.0) {
+      throw new IllegalArgumentException(
+          "Gearing.efficiency is given already, as " + this.efficiency + ": give it once");
+    }
+    return GearingBuilder.builder(this).efficiency(efficiency).build();
   }
 }

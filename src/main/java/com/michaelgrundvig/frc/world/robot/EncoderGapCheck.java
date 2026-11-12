@@ -15,7 +15,7 @@ import java.util.List;
  * @param turn the encoder's turn at the joint, where the joint travels past it ({@link #turn}):
  *     they're apart by the nearest way round it; infinite where it doesn't
  */
-public record EncoderGap(Joint joint, double margin, double turn) {
+public record EncoderGapCheck(Joint joint, double margin, double turn) {
   /**
    * The least margin, without one in the joint's control: 5° on a joint that turns, 2 cm on one
    * that slides. The backlash and give between a motor and its joint's encoder (a gearbox's lash, a
@@ -47,8 +47,8 @@ public record EncoderGap(Joint joint, double margin, double turn) {
    * A joint's, from its block: the margin its control gives or the least of the encoder's counts,
    * and the turn its encoder travels past, if it does.
    */
-  public static EncoderGap of(RobotMath math, Joint joint, MechanismControl control) {
-    return new EncoderGap(joint, margin(math, joint, control), turn(math, joint));
+  public static EncoderGapCheck of(RobotMath math, Joint joint, MechanismControl control) {
+    return new EncoderGapCheck(joint, margin(math, joint, control), turn(math, joint));
   }
 
   /**
@@ -77,7 +77,7 @@ public record EncoderGap(Joint joint, double margin, double turn) {
     if (control.encoderGap().isPresent()) {
       return control.encoderGap().get().margin();
     }
-    boolean turns = joint instanceof Joint.Revolute;
+    boolean turns = joint instanceof RevoluteJoint;
     double least = turns ? ANGLE_MARGIN : LENGTH_MARGIN;
     Sensor.Encoder encoder = math.absoluteEncoder(joint);
     if (encoder == null) {
@@ -124,7 +124,9 @@ public record EncoderGap(Joint joint, double margin, double turn) {
 
   /** How far apart they are, in the joint's words: "6° apart, more than 5°". */
   public String shown(double encoder, double motor) {
-    return joint.shown(gap(encoder, motor)) + " apart, more than " + joint.shown(margin);
+    return Position.Kind.of(joint).shown(gap(encoder, motor))
+        + " apart, more than "
+        + Position.Kind.of(joint).shown(margin);
   }
 
   /** How far apart they are: the nearest way round the encoder's turn, where it wraps. */

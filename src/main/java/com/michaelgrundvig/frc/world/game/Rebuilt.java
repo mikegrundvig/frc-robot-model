@@ -14,6 +14,7 @@ import com.michaelgrundvig.frc.world.field.Platform;
 import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Surface;
 import com.michaelgrundvig.frc.world.field.Symmetry;
+import com.michaelgrundvig.frc.world.field.TagFamily;
 import com.michaelgrundvig.frc.world.field.TagLayout;
 import com.michaelgrundvig.frc.world.field.Zone;
 import com.michaelgrundvig.frc.world.physical.Material;
@@ -26,6 +27,7 @@ import org.wpilib.fields.Fields;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Translation2d;
+import org.wpilib.units.measure.Distance;
 
 /**
  * The field the robot plays on in 2026, REBUILT.
@@ -69,6 +71,12 @@ public final class Rebuilt {
   /** The welded field. The AndyMark build is 2 cm smaller, with its own layout. */
   static final Fields LAYOUT = Fields.FRC_2026_REBUILT_WELDED;
 
+  /** The tags are 36h11, as the game manual prints them. */
+  static final TagFamily TAG_FAMILY = TagFamily.TAG_36H11;
+
+  /** Each tag's black square is 6.5 in on a side, as the game manual prints them. */
+  static final Distance TAG_SIZE = Inches.of(6.5);
+
   /** Red's half is blue's turned half a turn: every tag lands on a partner within a millimeter. */
   static final Symmetry SYMMETRY = Symmetry.ROTATED;
 
@@ -77,16 +85,16 @@ public final class Rebuilt {
   // ---- Materials, where the manual names them. Contact numbers come later, per pair. ----
 
   /** The bumps' ramps: half-inch HDPE with an orange-peel texture (5.5). */
-  static final Material HDPE = Material.builder().name("HDPE, orange peel").build();
+  static final Material HDPE = Material.of("HDPE, orange peel");
 
   /** The tower, and the depot's barriers: powder-coated steel (5.7, 5.8). */
-  static final Material STEEL = Material.builder().name("powder-coated steel").build();
+  static final Material STEEL = Material.of("powder-coated steel");
 
   /**
    * What the manual doesn't name a material for: the hub's and the trenches' faces, and the
    * alliance wall's, the tower's and the outpost's.
    */
-  static final Material STRUCTURE = Material.builder().name("field structure").build();
+  static final Material STRUCTURE = Material.of("field structure");
 
   // ---- The hub, the bumps beside it, and the trenches beyond them, across the field ----
 
@@ -471,6 +479,8 @@ public final class Rebuilt {
               Fields.FRC_2026_REBUILT_WELDED.loadField(),
               Fields.FRC_2026_REBUILT_ANDY_MARK.loadField()),
           SYMMETRY,
+          TAG_FAMILY,
+          TAG_SIZE,
           Rebuilt::field,
           LIMITS);
 
@@ -491,7 +501,7 @@ public final class Rebuilt {
 
   /** The field model on a WPILib layout, its tags where it puts them. */
   public static FieldModel field(Field layout) {
-    return field(TagLayout.of(layout));
+    return field(TagLayout.of(layout, TAG_FAMILY, TAG_SIZE));
   }
 
   /**

@@ -6,7 +6,7 @@ import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.config.Finding;
 import com.michaelgrundvig.frc.world.physical.MassProperties;
-import com.michaelgrundvig.frc.world.physical.Shape;
+import com.michaelgrundvig.frc.world.physical.Solid;
 import com.michaelgrundvig.frc.world.physical.Vector3;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -81,7 +81,7 @@ public final class RobotMath {
    *     its angle from horizontal ({@link #gravityOffset}), and how well that cosine fits is {@link
    *     #gravityFit}; for a prismatic one, everywhere
    */
-  public record Gains(double kV, double kA, double kG) {}
+  public record Feedforward(double kV, double kA, double kG) {}
 
   /**
    * How well one cosine fits gravity's torque at a revolute joint across its range: Phoenix's
@@ -94,7 +94,7 @@ public final class RobotMath {
    * @param offset the cosine's offset, {@link #gravityOffset}: Phoenix's {@code
    *     GravityArmPositionOffset}
    * @param peak the cosine's amplitude, gravity's torque at its worst, in newton meters: what the
-   *     ideal kG holds, through the motors ({@link Gains#kG})
+   *     ideal kG holds, through the motors ({@link Feedforward#kG})
    * @param misfit the widest gap between the cosine and gravity's real torque over the range, as a
    *     share of the peak: 0 when one cosine is gravity, and when there's no gravity at all
    * @param worstAt where in the range the gap is widest, in radians
@@ -207,6 +207,105 @@ public final class RobotMath {
     return drivesOf(joint).size() == 1;
   }
 
+  /**
+   * Where a joint's frame is in its parent's frame when it is at position 0: where its block places
+   * it, or its parent's origin.
+   */
+  public static Transform3d origin(Joint joint) {
+    return joint.place().orElse(Transform3d.ZERO);
+  }
+
+  /**
+   * Where a joint is as the robot starts: where it rests ({@link Joint#rest}), or 0. This is where
+   * the robot is weighed and modeled, stowed, and where a mechanism that zeroes itself at boot is
+   * taken to be.
+   */
+  public static double restPosition(Joint joint) {
+    return joint.rest().orElse(0.0);
+  }
+
+  /**
+   * Whether a joint is held at positions: it is if it has a range or any named position. A joint
+   * with neither, a roller, only runs at outputs, and stops when nothing asks it to run.
+   */
+  public static boolean holdsPositions(Joint joint) {
+    return joint.range().isPresent() || !joint.positions().isEmpty();
+  }
+
+  /**
+   * How far a joint's frame has moved from its origin when it is at a position: turned about its
+   * axis, or slid along it.
+   *
+   * @param position in its units: radians, or meters
+   */
+  public static Transform3d motion(Joint joint, double position) {
+    return switch (joint) {
+      case RevoluteJoint turning -> turning.motion(position);
+      case PrismaticJoint sliding -> sliding.motion(position);
+    };
+  }
+
+  /**
+   * A joint's devices on the CAN bus, as its block wires them: its motor controllers, the leader
+   * first, and then its CANcoder. A joint that runs in the simulator alone has none.
+   */
+  public static List<CanDevice> devices(Joint joint) {
+    return JointParts.devices(joint);
+  }
+
+  /**
+   * A joint's limit switch at one end, as its block says it. A condition on the switch is made from
+   * it: {@code RobotMath.switchAt(PIVOT, End.LOWER).tripped()}.
+   *
+   * @throws IllegalArgumentException if it has none at that end
+   */
+  public static Sensor.Switch switchAt(Joint joint, Sensor.Switch.Limit.End end) {
+    return JointParts.switchAt(joint, end);
+  }
+
+  /**
+   * A joint's position by a name.
+   *
+   * @throws IllegalArgumentException if it has none by that name, naming those it has
+   */
+  public static Position position(Joint joint, String name) {
+    return JointNames.position(joint, name);
+  }
+
+  /**
+   * A joint's output by a name: one of its own, or {@link Output#STOPPED}, which every joint has.
+   *
+   * @throws IllegalArgumentException if it has none by that name, naming those it has
+   */
+  public static Output output(Joint joint, String name) {
+    return JointNames.output(joint, name);
+  }
+
+  /**
+   * A joint's own drives, as its block says them: its motors, labeled as the joint is, and each
+   * servo under the servo's own label. A drive between two joints, such as a differential's,
+   * belongs to the robot instead ({@code RobotDefinition.drives}).
+   */
+  public static List<Drive> ownDrives(Joint joint) {
+    return JointParts.drives(joint);
+  }
+
+  /**
+   * A joint's own sensors, as its block says them: its absolute encoder ("arm absolute encoder")
+   * and its limit switches ("arm lower limit", "arm upper limit"), each with its wiring.
+   */
+  public static List<Sensor> ownSensors(Joint joint) {
+    return JointParts.sensors(joint);
+  }
+
+  /**
+   * A joint's own interlocks, as its block says them ({@code .keepsOut(...).when(...)}, {@code
+   * .runsOnlyWhen(...)}), each about the joint as the robot has it.
+   */
+  public static List<Interlock> ownInterlocks(Joint joint) {
+    return JointParts.interlocks(joint);
+  }
+
   /** The drives. */
   public List<Drive> drives() {
     return drives;
@@ -258,7 +357,7 @@ public final class RobotMath {
     List<Joint> joints = tree.joints();
     for (int number = 0; number < joints.size(); number++) {
       if (!tree.follows(number)) {
-        rests.put(joints.get(number), joints.get(number).restPosition());
+        rests.put(joints.get(number), RobotMath.restPosition(joints.get(number)));
       }
     }
     return rests;
@@ -369,7 +468,7 @@ public final class RobotMath {
    */
   private int numberOfJointThatTurns(Joint joint) {
     int number = tree.numberOfIndependent(joint);
-    if (!(joint instanceof Joint.Revolute)) {
+    if (!(joint instanceof RevoluteJoint)) {
       throw new IllegalArgumentException(
           joint.label() + " slides: only a revolute joint turns against gravity");
     }
@@ -385,8 +484,8 @@ public final class RobotMath {
    */
   public GravityFit gravityFit(Joint joint) {
     int number = numberOfJointThatTurns(joint);
-    double from = joint.range().map(Range::lower).orElse(joint.restPosition() - Math.PI);
-    double to = joint.range().map(Range::upper).orElse(joint.restPosition() + Math.PI);
+    double from = joint.range().map(Range::lower).orElse(RobotMath.restPosition(joint) - Math.PI);
+    double to = joint.range().map(Range::upper).orElse(RobotMath.restPosition(joint) + Math.PI);
     return loads.cosineFit(number, from, to);
   }
 
@@ -402,7 +501,7 @@ public final class RobotMath {
         new Translation3d(axis.x(), axis.y(), axis.z())
             .rotateBy(pose(joint, Map.of()).getRotation());
     double verticalShareOfAxis = Math.abs(axisInRobotFrame.getZ());
-    if (joint instanceof Joint.Revolute) {
+    if (joint instanceof RevoluteJoint) {
       boolean axisIsOffVertical = verticalShareOfAxis < 1 - AXIS_TOLERANCE;
       return axisIsOffVertical;
     }
@@ -434,7 +533,7 @@ public final class RobotMath {
    *
    * @throws IllegalArgumentException if no motors move it, or it follows another joint
    */
-  public Gains idealGains(Joint joint) {
+  public Feedforward idealGains(Joint joint) {
     return loads.idealGains(joint, tree.numberOfIndependent(joint));
   }
 
@@ -460,7 +559,7 @@ public final class RobotMath {
   public double freeSpeed(Joint joint) {
     double lowestNominalVolts = Double.POSITIVE_INFINITY;
     for (Drive drive : drivesOf(joint)) {
-      double nominalVolts = ((Actuator.Motors) drive.actuator()).model().nominalVoltage;
+      double nominalVolts = ((Actuator.MotorGroup) drive.actuator()).model().nominalVoltage;
       lowestNominalVolts = Math.min(lowestNominalVolts, nominalVolts);
     }
     // kV is volts for each unit a second, so the volts there are, over kV, is the speed they hold.
@@ -593,7 +692,7 @@ public final class RobotMath {
    * @throws IllegalStateException if the encoder reads several joints
    */
   public double rotorToSensorRatio(Drive drive, Sensor.Encoder encoder) {
-    if (!(drive.actuator() instanceof Actuator.Motors)) {
+    if (!(drive.actuator() instanceof Actuator.MotorGroup)) {
       throw new IllegalArgumentException(drive.label() + " has no rotor: it isn't motors");
     }
     Joint joint = encoder.joint();
@@ -611,7 +710,7 @@ public final class RobotMath {
     // one that slides, so the rotor's is put in the same terms before the two are divided. Radians
     // of rotor for each radian of the joint are already turns for each turn.
     double rotorTurnsPerJointTurn = rotorRadiansPerJointUnit;
-    if (!(joint instanceof Joint.Revolute)) {
+    if (!(joint instanceof RevoluteJoint)) {
       rotorTurnsPerJointTurn = rotorRadiansPerJointUnit / (2 * Math.PI);
     }
     return rotorTurnsPerJointTurn / encoder.ratio(joint);
@@ -751,7 +850,7 @@ public final class RobotMath {
     List<Joint> joints = tree.joints();
     for (int number = 0; number < joints.size(); number++) {
       Pose3d frame = frames[number];
-      for (Shape shape : joints.get(number).link().shapes()) {
+      for (Solid shape : joints.get(number).link().shapes()) {
         for (Translation3d point : shape.points()) {
           points.add(frame.getTranslation().plus(point.rotateBy(frame.getRotation())));
         }

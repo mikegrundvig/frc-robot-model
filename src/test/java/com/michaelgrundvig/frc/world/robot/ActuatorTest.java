@@ -54,7 +54,7 @@ class ActuatorTest {
   @Test
   void motorsPushByVoltageLessTheirSpeed() {
     DCMotor one = Motor.KRAKEN_X60.model();
-    Actuator.Motors two = motors(2);
+    Actuator.MotorGroup two = motors(2);
 
     assertThat(two.forceOrTorque(12, 0, 0)).isCloseTo(2 * one.stallTorque, within(1e-9));
     assertThat(two.forceOrTorque(12, 0, one.freeSpeed))
@@ -64,27 +64,30 @@ class ActuatorTest {
 
   @Test
   void aGearingLosesSomethingButNotEverything() {
-    assertThatNoException().isThrownBy(() -> Gearing.builder().ratio(0.5).efficiency(1).build());
+    assertThatNoException().isThrownBy(() -> Gearing.of(0.5));
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> Gearing.builder().ratio(0).efficiency(1).build())
+        .isThrownBy(() -> Gearing.of(0))
         .withMessageStartingWith("Gearing.ratio");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> Gearing.builder().ratio(60).efficiency(0).build())
+        .isThrownBy(() -> Gearing.of(60).efficiency(0))
         .withMessageStartingWith("Gearing.efficiency");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> Gearing.builder().ratio(60).efficiency(1.1).build())
+        .isThrownBy(() -> Gearing.of(60).efficiency(1.1))
         .withMessage("Gearing.efficiency: 1.1 must be at most 1");
+    assertThatIllegalArgumentException()
+        .isThrownBy(() -> Gearing.of(60).efficiency(0.9).efficiency(0.8))
+        .withMessage("Gearing.efficiency is given already, as 0.9: give it once");
   }
 
   @Test
   void atLeastOneMotorDrivesIt() {
     assertThatIllegalArgumentException()
         .isThrownBy(() -> motors(0))
-        .withMessageStartingWith("Motors.count");
+        .withMessageStartingWith("MotorGroup.count");
   }
 
-  private static Actuator.Motors motors(int count) {
-    return Actuator.Motors.builder().motor(Motor.KRAKEN_X60).count(count).build();
+  private static Actuator.MotorGroup motors(int count) {
+    return Actuator.MotorGroup.of(Motor.KRAKEN_X60, count);
   }
 
   /**

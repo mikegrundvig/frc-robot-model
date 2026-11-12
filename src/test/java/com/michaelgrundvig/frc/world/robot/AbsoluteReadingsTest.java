@@ -32,7 +32,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * past a whole turn. Exactly at an edge, a reading is either edge: they're one place, a turn apart.
  */
 class AbsoluteReadingsTest {
-  private static final Joint.Revolute PIVOT =
+  private static final RevoluteJoint PIVOT =
       revolute(
           "pivot",
           Part.CHASSIS,
@@ -42,7 +42,7 @@ class AbsoluteReadingsTest {
           0,
           link("arm", 2, point(0.3, 0, 0), point(0.4, 0.05, 0.05)));
 
-  private static final Joint.Prismatic ELEVATOR =
+  private static final PrismaticJoint ELEVATOR =
       prismatic(
           "elevator",
           Part.CHASSIS,
@@ -63,9 +63,9 @@ class AbsoluteReadingsTest {
 
   private static RobotMath math(Joint joint, Sensor.Encoder encoder) {
     Drive drive =
-        joint instanceof Joint.Prismatic slides
+        joint instanceof PrismaticJoint slides
             ? MechanismFixtures.motors(slides, Motor.KRAKEN_X60, 2, gearing(5, 1), Inches.of(0.75))
-            : MechanismFixtures.motors((Joint.Revolute) joint, Motor.KRAKEN_X60, 1, gearing(25, 1));
+            : MechanismFixtures.motors((RevoluteJoint) joint, Motor.KRAKEN_X60, 1, gearing(25, 1));
     return definition(List.of(joint), List.of(), List.of(drive), List.of(encoder)).math();
   }
 
@@ -144,6 +144,6 @@ class AbsoluteReadingsTest {
 
   /** A position in degrees for a joint that turns, in meters for one that slides. */
   private static double shown(Sensor.Encoder encoder, double position) {
-    return encoder.joint() instanceof Joint.Revolute ? Math.toDegrees(position) : position;
+    return encoder.joint() instanceof RevoluteJoint ? Math.toDegrees(position) : position;
   }
 }

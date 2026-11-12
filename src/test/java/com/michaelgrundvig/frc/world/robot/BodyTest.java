@@ -4,6 +4,7 @@ import static com.michaelgrundvig.frc.world.robot.ConfigFixtures.body;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.within;
+import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Kilograms;
@@ -13,8 +14,12 @@ import static org.wpilib.units.Units.Pounds;
 import com.michaelgrundvig.frc.world.physical.Inertia;
 import com.michaelgrundvig.frc.world.physical.MassProperties;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.wpilib.math.geometry.Translation3d;
 import org.wpilib.units.measure.Mass;
 
@@ -29,11 +34,11 @@ class BodyTest {
     assertThat(body.frameLength().in(Inches)).isCloseTo(28, within(1e-9));
     assertThat(body.frameWidth().in(Inches)).isCloseTo(24, within(1e-9));
     assertThat(body.overallHeight().in(Inches)).isCloseTo(30, within(1e-9));
-    assertThat(body.bumperThickness().in(Inches)).isCloseTo(3.5, within(1e-9));
+    assertThat(body.bumperThicknessOrDefault().in(Inches)).isCloseTo(3.5, within(1e-9));
     assertThat(body.bumperThicknessLeftRight()).isEmpty();
     assertThat(body.bumperThicknessLeftRightOrDefault().in(Inches)).isCloseTo(3.5, within(1e-9));
-    assertThat(body.bumperBottom().in(Inches)).isCloseTo(2.5, within(1e-9));
-    assertThat(body.bumperTop().in(Inches)).isCloseTo(5.75, within(1e-9));
+    assertThat(body.bumperBottomOrDefault().in(Inches)).isCloseTo(2.5, within(1e-9));
+    assertThat(body.bumperTopOrDefault().in(Inches)).isCloseTo(5.75, within(1e-9));
     assertThat(body.weight().orElseThrow().in(Kilograms)).isCloseTo(60, within(1e-9));
     assertThat(body.yawMomentOfInertia(SIXTY).in(KilogramSquareMeters)).isCloseTo(6, within(1e-9));
     assertThat(body.cgHeight().in(Meters)).isCloseTo(0.2, within(1e-9));
@@ -82,6 +87,62 @@ class BodyTest {
   void theBumpersRunFromTheirBottomUpToTheirTopWithinTheRobot() {
     assertRejected("bumperTop", () -> change().bumperTop(Inches.of(2)).build());
     assertRejected("bumperTop", () -> change().bumperTop(Inches.of(31)).build());
+  }
+
+  /**
+   * A body that leaves its bumpers out, as a robot on the bench does, wears the usual 3 in ones,
+   * drawn across the 2026 bumper zone; their top and bottom come together or not at all.
+   */
+  @Test
+  void bumpersLeftOutAreTheUsualOnes() {
+    Body bare = Body.frame(Inches.of(26), Inches.of(26), Inches.of(8));
+
+    assertThat(bare.bumperThickness()).isEmpty();
+    assertThat(bare.bumperThicknessOrDefault()).isEqualTo(Body.DEFAULT_BUMPER_THICKNESS);
+    assertThat(bare.bumperLength().in(Inches)).isCloseTo(32, within(1e-9));
+    assertThat(bare.bumperWidth().in(Inches)).isCloseTo(32, within(1e-9));
+    assertThat(bare.bumperBottomOrDefault().in(Inches)).isCloseTo(2.5, within(1e-9));
+    assertThat(bare.bumperTopOrDefault().in(Inches)).isCloseTo(5.75, within(1e-9));
+    assertRejected(
+        "bumperTop", () -> BodyBuilder.builder(bare).bumperBottom(Inches.of(2.5)).build());
+  }
+
+  /** Each of a body's verbs says its part once: a second would drop the first. */
+  static Stream<Arguments> partsSaidTwice() {
+    Body full =
+        Body.frame(Inches.of(28), Inches.of(24), Inches.of(30))
+            .bumpers(Inches.of(3.5), Inches.of(2.5), Inches.of(5.75))
+            .sideBumpers(Inches.of(5.5))
+            .weight(SIXTY)
+            .inertia(Body.Turning.yaw(KilogramSquareMeters.of(6)))
+            .cg(inches(0, 0, 8));
+    return Stream.of(
+        argumentSet(
+            "bumpers",
+            (ThrowingCallable) () -> full.bumpers(Inches.of(3), Inches.of(2), Inches.of(5)),
+            "Body has its bumpers already: give it once, in one .bumpers(thickness, bottom, top)"),
+        argumentSet(
+            "side bumpers",
+            (ThrowingCallable) () -> full.sideBumpers(Inches.of(5)),
+            "Body has its side bumpers already: give it once, in one .sideBumpers(thickness)"),
+        argumentSet(
+            "weight",
+            (ThrowingCallable) () -> full.weight(SIXTY),
+            "Body has its weight already: give it once, in one .weight(mass)"),
+        argumentSet(
+            "inertia",
+            (ThrowingCallable) () -> full.inertia(Body.Turning.yaw(KilogramSquareMeters.of(5))),
+            "Body has its inertia already: give it once, in one .inertia(turning)"),
+        argumentSet(
+            "center of mass",
+            (ThrowingCallable) () -> full.cg(inches(0, 0, 9)),
+            "Body has its center of mass already: give it once, in one .cg(point)"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("partsSaidTwice")
+  void aPartSaidTwiceIsRefused(ThrowingCallable twice, String refusal) {
+    assertThatIllegalArgumentException().isThrownBy(twice).withMessage(refusal);
   }
 
   /**

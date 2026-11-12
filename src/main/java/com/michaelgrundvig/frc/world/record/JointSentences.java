@@ -3,6 +3,7 @@ package com.michaelgrundvig.frc.world.record;
 import static com.michaelgrundvig.frc.world.config.Rules.possessive;
 
 import com.michaelgrundvig.frc.world.robot.Joint;
+import com.michaelgrundvig.frc.world.robot.Position;
 import com.michaelgrundvig.frc.world.robot.RobotDefinition;
 import com.michaelgrundvig.frc.world.robot.Sensor;
 import java.util.ArrayList;
@@ -129,7 +130,7 @@ public final class JointSentences {
   public static String place(Joint joint, JointPlace place, double position) {
     return switch (place.where()) {
       case UNKNOWN -> "unknown";
-      case UNNAMED -> joint.shown(position);
+      case UNNAMED -> Position.Kind.of(joint).shown(position);
       case AT -> "at " + placeName(joint, place.place());
       case BETWEEN ->
           "between " + placeName(joint, place.place()) + " and " + placeName(joint, place.other());

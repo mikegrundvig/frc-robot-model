@@ -59,7 +59,7 @@ public record Pdh(CanBus bus, int id) {
   }
 
   /** Starts describing a PDH, one named value at a time. */
-  public static PdhBuilder.BusStage builder() {
+  static PdhBuilder.BusStage builder() {
     return PdhBuilder.builder();
   }
 
@@ -74,8 +74,8 @@ public record Pdh(CanBus bus, int id) {
   }
 
   /**
-   * A device's feed, where a builder takes one: {@code .driveFeed(Pdh.feed(0, Amps.of(40)))}. A
-   * motor controller in a joint's block says its own, {@code TALON_FX.can(32).pdh(4, Amps.of(40))}.
+   * A device's feed: a channel, and the breaker it's through. A motor controller says its own, in a
+   * joint's block or a swerve module's corner, {@code TALON_FX.can(32).pdh(4, Amps.of(40))}.
    */
   public static Feed feed(int channel, Current breaker) {
     return PdhFeedBuilder.builder().channel(channel).breaker(breaker).build();
@@ -105,7 +105,7 @@ public record Pdh(CanBus bus, int id) {
     }
 
     /** Starts describing a feed, one named value at a time. */
-    public static PdhFeedBuilder.ChannelStage builder() {
+    static PdhFeedBuilder.ChannelStage builder() {
       return PdhFeedBuilder.builder();
     }
   }
@@ -130,7 +130,7 @@ public record Pdh(CanBus bus, int id) {
               String.join(", ", fed.stream().map(CanDevice::name).toList())
                   + (fed.size() == 1 ? " is" : " are")
                   + " fed from a PDH's channel, and the robot declares no PDH: give its definition"
-                  + " one, .pdh(Pdh.can(1)) at its CAN ID"));
+                  + " one, .withPdh(Pdh.can(1)) at its CAN ID"));
     }
     List<Finding> problems = new ArrayList<>();
     Map<Integer, String> owners = new HashMap<>();

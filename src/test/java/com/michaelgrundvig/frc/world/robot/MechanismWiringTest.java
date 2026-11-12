@@ -5,23 +5,25 @@ import static com.michaelgrundvig.frc.world.robot.MechanismWiring.DATA_PORT;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
+import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.Rotations;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.wpilib.math.geometry.Translation3d;
+import org.wpilib.math.system.DCMotor;
 
 /** A mechanism's wiring is checked when it's written down, not when the mechanism won't move. */
 class MechanismWiringTest {
   /** A joint's motors on TalonFXs at these IDs, the first leading. */
-  private static Joint.Revolute onTalons(MechanismWiring.Device... controllers) {
-    return Joint.pivot("arm", Part.CHASSIS, new Translation3d(), Joint.PITCH_UP)
+  private static RevoluteJoint onTalons(MechanismWiring.Device... controllers) {
+    return Joint.pivot("arm", Part.CHASSIS, Joint.PITCH_UP)
+        .at(Meters.of(0), Meters.of(0), Meters.of(0))
         .motors(Motor.KRAKEN_X60.through(Gearing.of(60)).on(controllers));
   }
 
   @Test
   void theFirstMotorLeads() {
-    Joint.Revolute arm =
+    RevoluteJoint arm =
         onTalons(
             MechanismWiring.Controller.TALON_FX.can(11),
             MechanismWiring.Controller.TALON_FX.can(12));
@@ -64,20 +66,138 @@ class MechanismWiringTest {
                             onTalons(
                                 MechanismWiring.Controller.TALON_FX.can(11),
                                 MechanismWiring.Controller.TALON_FX.can(11))))
-                    .build())
+                    .build()
+                    .checked())
         .hasMessageContaining(
             "two TalonFXs on Systemcore's CAN_S0 port share CAN ID 11, arm motor 11 and arm motor"
                 + " 11: give each its own");
   }
 
+  /** A joint's device refused, and how, word for word. */
+  private record Refused(String scenario, Runnable joint, String message) {}
+
+  /**
+   * IDs are on the bus and an offset within a turn, and a refusal names the joint the device is in:
+   * a device doesn't check them as it's made, so that the joint holding it can.
+   */
   @Test
-  void idsAreOnTheBusAndAnOffsetWithinATurn() {
-    assertThatThrownBy(() -> MechanismWiring.Controller.TALON_FX.can(63))
-        .hasMessage("Device.id: 63 must be from 0 to 62");
-    assertThatThrownBy(() -> CANCODER.can(5).offset(Rotations.of(1.5)))
-        .hasMessage("Cancoder.offset: 1.5 R must be from -1 R to 1 R");
-    assertThatThrownBy(() -> CANCODER.can(63).offset(Rotations.of(0)))
-        .hasMessage("Cancoder.id: 63 must be from 0 to 62");
+  void idsAreOnTheBusAndAnOffsetWithinATurnRefusedUnderTheirJoint() {
+    RevoluteJoint arm = onTalons(MechanismWiring.Controller.TALON_FX.can(11));
+    List<Refused> rows =
+        List.of(
+            new Refused(
+                "a motor controller off the bus",
+                () ->
+                    onTalons(
+                        MechanismWiring.Controller.TALON_FX.can(11),
+                        MechanismWiring.Controller.TALON_FX.can(63)),
+                "Motors[arm].controllers: CAN ID 63 must be from 0 to 62"),
+            new Refused(
+                "a CANcoder's offset of more than a turn",
+                () -> arm.absoluteEncoder(CANCODER.can(5).offset(Rotations.of(1.5))),
+                "AbsoluteEncoder[arm].cancoder: offset 1.5 R must be from -1 R to 1 R"),
+            new Refused(
+                "a CANcoder off the bus",
+                () -> arm.absoluteEncoder(CANCODER.can(63).offset(Rotations.of(0))),
+                "AbsoluteEncoder[arm].cancoder: CAN ID 63 must be from 0 to 62"),
+            new Refused(
+                "a data port's offset of more than a turn",
+                () -> arm.absoluteEncoder(DATA_PORT.offset(Rotations.of(-1.5))),
+                "AbsoluteEncoder[arm].dataPort: offset -1.5 R must be from -1 R to 1 R"));
+
+    for (Refused row : rows) {
+      assertThatThrownBy(row.joint()::run).as(row.scenario()).hasMessage(row.message());
+    }
+  }
+
+  /**
+   * FOC is said on a controller, once, and only where it can be: on CTRE's controllers, on every
+   * controller of a joint or none, and for a motor WPILib has an FOC curve of.
+   */
+  @Test
+  void focIsSaidOnceOnEveryControllerOfAJointThatCanRunIt() {
+    List<Refused> rows =
+        List.of(
+            new Refused(
+                "the leader with FOC and a follower without",
+                () ->
+                    onTalons(
+                        MechanismWiring.Controller.TALON_FX.can(11).foc(),
+                        MechanismWiring.Controller.TALON_FX.can(12)),
+                "Motors.controllers: a joint's motors are all driven with FOC or none is: its"
+                    + " leader says .foc(), and CAN ID 12 doesn't: say .foc() on every controller"
+                    + " or on none"),
+            new Refused(
+                "a follower with FOC and the leader without",
+                () ->
+                    onTalons(
+                        MechanismWiring.Controller.TALON_FX.can(11),
+                        MechanismWiring.Controller.TALON_FX.can(12).foc()),
+                "Motors.controllers: a joint's motors are all driven with FOC or none is: its"
+                    + " leader doesn't, and CAN ID 12 says .foc(): say .foc() on every controller"
+                    + " or on none"),
+            new Refused(
+                "a Minion, which has no FOC curve",
+                () ->
+                    Motor.MINION
+                        .through(Gearing.of(60))
+                        .on(MechanismWiring.Controller.TALON_FXS.can(11).foc()),
+                "Motors.controllers: a Minion has no FOC curve to run it on: .foc() is for a"
+                    + " Kraken X60, a Kraken X44 or a Falcon 500"),
+            new Refused(
+                "a NEO on a TalonFXS, which has no FOC curve",
+                () ->
+                    Motor.NEO
+                        .through(Gearing.of(60))
+                        .on(MechanismWiring.Controller.TALON_FXS.can(11).foc()),
+                "Motors.controllers: a NEO has no FOC curve to run it on: .foc() is for a Kraken"
+                    + " X60, a Kraken X44 or a Falcon 500"),
+            new Refused(
+                "a SPARK MAX, which has no FOC",
+                () -> MechanismWiring.Controller.SPARK_MAX.can(11).foc(),
+                "a SPARK MAX at CAN ID 11 has no FOC, which is CTRE's: drop .foc(), or put the"
+                    + " motor on a TalonFX"),
+            new Refused(
+                "a SPARK Flex, which has no FOC",
+                () -> MechanismWiring.Controller.SPARK_FLEX.can(11).foc(),
+                "a SPARK Flex at CAN ID 11 has no FOC, which is CTRE's: drop .foc(), or put the"
+                    + " motor on a TalonFX"),
+            new Refused(
+                "FOC said twice",
+                () -> MechanismWiring.Controller.TALON_FX.can(11).foc().foc(),
+                "a TalonFX at CAN ID 11 already says .foc(): say it once"));
+
+    for (Refused row : rows) {
+      assertThatThrownBy(row.joint()::run).as(row.scenario()).hasMessage(row.message());
+    }
+  }
+
+  /**
+   * A joint whose controllers say {@code .foc()} runs on its motor's FOC curve, which the simulator
+   * and the model's ideal gains take: more torque, a little less speed. One that doesn't, on the
+   * plain curve.
+   */
+  @Test
+  void aJointSaidFocRunsOnItsMotorsFocCurve() {
+    RevoluteJoint plain =
+        onTalons(
+            MechanismWiring.Controller.TALON_FX.can(11),
+            MechanismWiring.Controller.TALON_FX.can(12));
+    RevoluteJoint foc =
+        onTalons(
+            MechanismWiring.Controller.TALON_FX.can(11).foc(),
+            MechanismWiring.Controller.TALON_FX.can(12).foc());
+
+    Actuator.MotorGroup plainMotors =
+        (Actuator.MotorGroup) JointParts.drives(plain).get(0).actuator();
+    Actuator.MotorGroup focMotors = (Actuator.MotorGroup) JointParts.drives(foc).get(0).actuator();
+
+    assertThat(plainMotors.commutation()).isEqualTo(MechanismWiring.Commutation.TRAPEZOIDAL);
+    assertThat(plainMotors.model().stallTorque).isEqualTo(DCMotor.getKrakenX60(2).stallTorque);
+    assertThat(focMotors.commutation()).isEqualTo(MechanismWiring.Commutation.FOC);
+    assertThat(focMotors.motor()).isEqualTo(Motor.KRAKEN_X60);
+    assertThat(focMotors.model().stallTorque).isEqualTo(DCMotor.getKrakenX60Foc(2).stallTorque);
+    assertThat(focMotors.model().freeSpeed).isEqualTo(DCMotor.getKrakenX60Foc(2).freeSpeed);
   }
 
   /**

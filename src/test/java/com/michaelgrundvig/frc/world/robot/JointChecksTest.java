@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.Inches;
+import static org.wpilib.units.Units.Meters;
 
 import com.michaelgrundvig.frc.world.physical.Vector3;
 import java.util.stream.Stream;
@@ -23,7 +24,6 @@ import org.wpilib.math.geometry.Translation3d;
  * PlacesTest}, beside the other refusals of named places.
  */
 class JointChecksTest {
-  private static final Translation3d AXLE = new Translation3d(0.25, 0, 0.32);
   private static final Transform3d NOWHERE =
       new Transform3d(new Translation3d(Double.NaN, 0, 0.3), Rotation3d.ZERO);
   private static final Transform3d HERE = new Transform3d(Translation3d.ZERO, Rotation3d.ZERO);
@@ -44,18 +44,19 @@ class JointChecksTest {
     return new Transform3d(Translation3d.ZERO, new Rotation3d(new Quaternion(w, x, y, z)));
   }
 
-  private static Joint.Revolute pivotAt(Transform3d origin, Vector3 axis) {
-    return Joint.Revolute.builder()
+  private static RevoluteJoint pivotAt(Transform3d origin, Vector3 axis) {
+    return RevoluteJoint.builder()
         .label("pivot")
         .parent(Part.CHASSIS)
-        .origin(origin)
         .axis(axis)
         .link(Link.unseen("pivot"))
+        .place(origin)
         .build();
   }
 
-  private static Joint.Prismatic elevator() {
-    return Joint.elevator("elevator", Part.CHASSIS, AXLE);
+  private static PrismaticJoint elevator() {
+    return Joint.elevator("elevator", Part.CHASSIS)
+        .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32));
   }
 
   @ParameterizedTest
@@ -81,48 +82,48 @@ class JointChecksTest {
     return Stream.of(
         refuses("an origin that is not a number",
             () -> pivotAt(NOWHERE, Joint.PITCH_UP),
-            "Revolute[pivot].origin: " + NOWHERE + " must be a transform, numbers all"),
+            "RevoluteJoint[pivot].place: " + NOWHERE + " must be a transform, numbers all"),
         refuses("an origin nowhere along y",
             () -> pivotAt(at(0, Double.NaN, 0), Joint.PITCH_UP),
-            "Revolute[pivot].origin: " + at(0, Double.NaN, 0) + " must be a transform, numbers all"),
+            "RevoluteJoint[pivot].place: " + at(0, Double.NaN, 0) + " must be a transform, numbers all"),
         refuses("an origin nowhere along z",
             () -> pivotAt(at(0, 0, Double.NEGATIVE_INFINITY), Joint.PITCH_UP),
-            "Revolute[pivot].origin: " + at(0, 0, Double.NEGATIVE_INFINITY) + " must be a transform, numbers all"),
+            "RevoluteJoint[pivot].place: " + at(0, 0, Double.NEGATIVE_INFINITY) + " must be a transform, numbers all"),
         refuses("an origin turned no way by its quaternion's W",
             () -> pivotAt(turned(NONE, 0, 0, 0), Joint.PITCH_UP),
-            "Revolute[pivot].origin: " + turned(NONE, 0, 0, 0) + " must be a transform, numbers all"),
+            "RevoluteJoint[pivot].place: " + turned(NONE, 0, 0, 0) + " must be a transform, numbers all"),
         refuses("...by its X",
             () -> pivotAt(turned(0, NONE, 0, 0), Joint.PITCH_UP),
-            "Revolute[pivot].origin: " + turned(0, NONE, 0, 0) + " must be a transform, numbers all"),
+            "RevoluteJoint[pivot].place: " + turned(0, NONE, 0, 0) + " must be a transform, numbers all"),
         refuses("...by its Y",
             () -> pivotAt(turned(0, 0, NONE, 0), Joint.PITCH_UP),
-            "Revolute[pivot].origin: " + turned(0, 0, NONE, 0) + " must be a transform, numbers all"),
+            "RevoluteJoint[pivot].place: " + turned(0, 0, NONE, 0) + " must be a transform, numbers all"),
         refuses("...by its Z",
             () -> pivotAt(turned(0, 0, 0, NONE), Joint.PITCH_UP),
-            "Revolute[pivot].origin: " + turned(0, 0, 0, NONE) + " must be a transform, numbers all"),
+            "RevoluteJoint[pivot].place: " + turned(0, 0, 0, NONE) + " must be a transform, numbers all"),
         refuses("an axis of no length",
             () -> pivotAt(HERE, NO_WAY),
-            "Revolute[pivot].axis: " + NO_WAY + " must point some way: an axis can't be zero"),
+            "RevoluteJoint[pivot].axis: " + NO_WAY + " must point some way: an axis can't be zero"),
         refuses("an axis that is not a number",
             () -> pivotAt(HERE, NOT_A_WAY),
-            "Revolute[pivot].axis: " + NOT_A_WAY + " must point some way: an axis can't be zero"));
+            "RevoluteJoint[pivot].axis: " + NOT_A_WAY + " must point some way: an axis can't be zero"));
   }
 
   /** A joint that turns is geared alone; one that slides winds onto a drum, and has no gravity angle. */
   static Stream<Arguments> drives() {
     return Stream.of(
         refuses("a drum on a joint that turns",
-            () -> Joint.pivot("pivot", Part.CHASSIS, AXLE, Joint.PITCH_UP)
+            () -> Joint.pivot("pivot", Part.CHASSIS, Joint.PITCH_UP).at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
                 .motors(Motor.KRAKEN_X60.through(Gearing.of(25)).drum(Inches.of(1))),
-            "Revolute[pivot].driven.motors: a joint that turns has no drum: give its motors a"
+            "RevoluteJoint[pivot].driven.motors: a joint that turns has no drum: give its motors a"
                 + " gearing alone"),
         refuses("no drum on a joint that slides",
             () -> elevator().motors(Motor.KRAKEN_X60.through(Gearing.of(10))),
-            "Prismatic[elevator].driven.motors: a joint that slides needs its drum: give its"
+            "PrismaticJoint[elevator].driven.motors: a joint that slides needs its drum: give its"
                 + " motors the pitch radius"),
         refuses("a gravity angle on a joint that slides",
             () -> elevator().control(MechanismControl.position(30).withKg(0.3, Degrees.of(0))),
-            "Prismatic[elevator].driven.control: a joint that slides is held against gravity the"
+            "PrismaticJoint[elevator].driven.control: a joint that slides is held against gravity the"
                 + " same all along it, so its kG has no angle: give kG alone, withKg(kG)"));
   }
 

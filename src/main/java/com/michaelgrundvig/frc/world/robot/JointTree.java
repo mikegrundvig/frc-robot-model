@@ -155,7 +155,7 @@ final class JointTree {
   double[] positions(Map<Joint, Double> given) {
     double[] positions = new double[joints.size()];
     for (int number = 0; number < positions.length; number++) {
-      positions[number] = joints.get(number).restPosition();
+      positions[number] = RobotMath.restPosition(joints.get(number));
     }
     for (Map.Entry<Joint, Double> entry : given.entrySet()) {
       int number = numberOfIndependent(entry.getKey());
@@ -232,7 +232,9 @@ final class JointTree {
       parentFrame = frame(parent[number], positions, frames);
     }
     Pose3d frame =
-        parentFrame.transformBy(joint.origin()).transformBy(joint.motion(positions[number]));
+        parentFrame
+            .transformBy(RobotMath.origin(joint))
+            .transformBy(RobotMath.motion(joint, positions[number]));
     frames[number] = frame;
     return frame;
   }
@@ -339,7 +341,7 @@ final class JointTree {
   /** How fast one joint carries a point for each unit of the joint's own speed. */
   private Translation3d carriedBy(int number, Translation3d point, Pose3d[] frames) {
     Translation3d axis = axis(number, frames);
-    if (joints.get(number) instanceof Joint.Revolute) {
+    if (joints.get(number) instanceof RevoluteJoint) {
       Translation3d fromAxis = point.minus(frames[number].getTranslation());
       return cross(axis, fromAxis);
     }
@@ -354,7 +356,7 @@ final class JointTree {
   Translation3d spinOf(int link, Pose3d[] frames, double[] rates) {
     Translation3d spin = Translation3d.ZERO;
     for (int number = link; number != NONE; number = parent[number]) {
-      if (rates[number] != 0 && joints.get(number) instanceof Joint.Revolute) {
+      if (rates[number] != 0 && joints.get(number) instanceof RevoluteJoint) {
         spin = spin.plus(axis(number, frames).times(rates[number]));
       }
     }

@@ -21,11 +21,11 @@ import java.util.Optional;
  * low while the arm is above the band is a deadlock: with the arm up and the elevator down, each is
  * held to the side that holds the other.
  *
- * <p>A ring is judged only where the robot is put: as it starts, and in each configuration. Joints
- * can get into a deadlock anywhere else only by moving into it together, each in the very loop the
- * other's interlock closes, so nothing else is refused. Two named positions that no configuration
- * puts together are not refused either, since a pair of interlocks like the one above exists to
- * keep the robot out of exactly that.
+ * <p>A ring is judged only where the robot is put: as it starts, and in each preset. Joints can get
+ * into a deadlock anywhere else only by moving into it together, each in the very loop the other's
+ * interlock closes, so nothing else is refused. Two named positions that no preset puts together
+ * are not refused either, since a pair of interlocks like the one above exists to keep the robot
+ * out of exactly that.
  */
 final class Deadlock {
   private Deadlock() {}
@@ -52,7 +52,7 @@ final class Deadlock {
    * @return the deadlock as a refusal says it, ready to follow what puts the robot there: "leaves
    *     arm and elevator holding each other by their interlocks, ..."
    */
-  static Optional<String> of(InterlockRing ring, Placement placement) {
+  static Optional<String> of(InterlockRing ring, TrialPlacement placement) {
     List<String> holds = new ArrayList<>();
     for (int index = 0; index < ring.size(); index++) {
       Interlock interlock = ring.interlocks().get(index);
@@ -80,7 +80,7 @@ final class Deadlock {
    * joint run at a voltage) is not taken to hold the joint: a deadlock is refused only where it can
    * be shown.
    */
-  private static Optional<Held> heldBy(Interlock interlock, Placement placement) {
+  private static Optional<Held> heldBy(Interlock interlock, TrialPlacement placement) {
     ConditionReading condition = placement.reading(interlock.condition());
     boolean holdsItsJoint =
         switch (interlock) {
@@ -180,7 +180,7 @@ final class Deadlock {
     if (readerWaitsOnItsSpeed) {
       return "stays still";
     }
-    return "stays at " + still.joint().shown(still.at());
+    return "stays at " + Position.Kind.of(still.joint()).shown(still.at());
   }
 
   /**
@@ -195,12 +195,15 @@ final class Deadlock {
     double from = stretch.from();
     double to = stretch.to();
     if (!Double.isFinite(from)) {
-      return "at " + joint.shown(to) + " or below";
+      return "at " + Position.Kind.of(joint).shown(to) + " or below";
     }
     if (!Double.isFinite(to)) {
-      return "at " + joint.shown(from) + " or above";
+      return "at " + Position.Kind.of(joint).shown(from) + " or above";
     }
-    return "between " + joint.shown(from) + " and " + joint.shown(to);
+    return "between "
+        + Position.Kind.of(joint).shown(from)
+        + " and "
+        + Position.Kind.of(joint).shown(to);
   }
 
   /**

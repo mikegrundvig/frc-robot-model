@@ -13,15 +13,12 @@ import org.junit.jupiter.api.Test;
 class ControllerPinsTest {
   private static final CanBus BUS = CanBus.port(CanBus.Systemcore.CAN_S0);
 
-  private static final Joint.Revolute PIVOT = StandardRobot.PIVOT;
+  private static final RevoluteJoint PIVOT = StandardRobot.PIVOT;
 
   /** A limit switch in the robot's list of sensors, by a label of its own. */
   private static Sensor.Switch limit(String label, Joint joint, Sensor.Switch.Limit.End end) {
-    return Sensor.Switch.builder()
-        .label(label)
-        .part(joint.parent())
-        .kind(new Sensor.Switch.Limit(joint, Optional.empty(), end))
-        .build();
+    return Sensor.Switch.of(
+        label, joint.parent(), new Sensor.Switch.Limit(joint, Optional.empty(), end));
   }
 
   /**
@@ -32,12 +29,12 @@ class ControllerPinsTest {
    */
   @Test
   void eachJointsControllerLimitsComeFromTheWiring() {
-    Joint.Revolute onSpark =
+    RevoluteJoint onSpark =
         PIVOT.motors(Motor.NEO.through(MechanismFixtures.gearing(25, 1)).on(SPARK_MAX.can(21)));
-    Joint.Revolute onTalon =
+    RevoluteJoint onTalon =
         PIVOT.motors(
             Motor.FALCON_500.through(MechanismFixtures.gearing(25, 1)).on(TALON_FX.can(21)));
-    Joint.Revolute roller =
+    RevoluteJoint roller =
         StandardRobot.ROLLER.motors(
             Motor.KRAKEN_X60.through(MechanismFixtures.gearing(3, 1)).on(TALON_FX.can(22)));
     Sensor.Switch up =
@@ -78,6 +75,7 @@ class ControllerPinsTest {
   private static RobotDefinition robot(Joint pivot, Joint roller, List<Sensor> sensors) {
     return RobotDefinitionBuilder.builder(StandardRobot.robotOf(pivot, roller))
         .sensors(sensors)
-        .build();
+        .build()
+        .checked();
   }
 }

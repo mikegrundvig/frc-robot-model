@@ -7,8 +7,8 @@ import java.util.Optional;
 
 /**
  * The design's example robot ({@link StandardRobot}) with two sensors, for the tests of the record
- * of what a robot did, which live in another package: its joints, interlocks and configurations,
- * and where each is in the definition's lists.
+ * of what a robot did, which live in another package: its joints, interlocks and presets, and where
+ * each is in the definition's lists.
  */
 public final class RecordedRobot {
   private RecordedRobot() {}
@@ -22,7 +22,7 @@ public final class RecordedRobot {
 
   /**
    * The robot. Its joints are the pivot, the roller, the elevator and the arm, in that order. Its
-   * interlocks are the roller's run-only-when and then the arm's keep-out. Its configurations are
+   * interlocks are the roller's run-only-when and then the arm's keep-out. Its presets are
    * "stowed", "amp" and "intaking". Its sensors are the pivot's lower limit switch and then the
    * claw's beam.
    */
@@ -33,7 +33,7 @@ public final class RecordedRobot {
                   List.of(),
                   StandardRobot.DRIVES,
                   List.of(PIVOT_DOWN, CLAW_BEAM)))
-          .configurations(List.of(StandardRobot.STOWED, StandardRobot.AMP, StandardRobot.INTAKING))
+          .presets(List.of(StandardRobot.STOWED, StandardRobot.AMP, StandardRobot.INTAKING))
           .interlocks(List.of(StandardRobot.ROLLER_ONLY_WHEN_OUT, StandardRobot.ARM_CLEARS_BUMPER))
           .build();
 
@@ -49,7 +49,7 @@ public final class RecordedRobot {
 
   /** A pivot with no named places, turning freely. */
   public static Joint unnamedTurret() {
-    return JointRevoluteBuilder.builder(StandardRobot.lightPivot("turret", Optional.empty()))
+    return RevoluteJointBuilder.builder(StandardRobot.lightPivot("turret", Optional.empty()))
         .build();
   }
 }

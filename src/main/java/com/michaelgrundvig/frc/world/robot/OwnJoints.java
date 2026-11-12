@@ -8,10 +8,10 @@ import java.util.Optional;
  *
  * <p>A practice robot is the competition robot with some joints changed: re-wired, re-tuned, or
  * with their stops and named places somewhere else. A joint changed in those ways is still equal to
- * the joint it was made from, so a configuration or an interlock written with the competition
- * robot's constants ({@code PIVOT.atLeast(PIVOT_OUT)}) can be matched to the practice robot's
- * joint. Matching it matters because the two joints may put the same named place at different
- * positions, and each robot has to be checked, and driven, at its own.
+ * the joint it was made from, so a preset or an interlock written with the competition robot's
+ * constants ({@code PIVOT.atLeast(PIVOT_OUT)}) can be matched to the practice robot's joint.
+ * Matching it matters because the two joints may put the same named place at different positions,
+ * and each robot has to be checked, and driven, at its own.
  *
  * <p>A joint the robot does not have is left as it was written. The definition's checks then find
  * it and refuse it, which gives a better message than failing here would.
@@ -31,10 +31,10 @@ final class OwnJoints {
     return joints.get(at);
   }
 
-  /** A configuration with each of its targets on the robot's own joint. */
-  static Configuration onOwn(List<Joint> joints, Configuration configuration) {
-    return ConfigurationBuilder.builder(configuration)
-        .targets(configuration.targets().stream().map(target -> onOwn(joints, target)).toList())
+  /** A preset with each of its targets on the robot's own joint. */
+  static Preset onOwn(List<Joint> joints, Preset preset) {
+    return PresetBuilder.builder(preset)
+        .targets(preset.targets().stream().map(target -> onOwn(joints, target)).toList())
         .build();
   }
 
@@ -114,10 +114,10 @@ final class OwnJoints {
     if (place.isEmpty()) {
       return position;
     }
-    boolean isTheJointsOwn = joint.whyNotOwn(place.get()).isEmpty();
+    boolean isTheJointsOwn = JointNames.whyNotOwn(joint, place.get()).isEmpty();
     if (!isTheJointsOwn) {
       return position;
     }
-    return joint.own(place.get()).value();
+    return JointNames.own(joint, place.get()).value();
   }
 }

@@ -35,7 +35,7 @@ final class JointChecks {
   /**
    * Checks the values that both kinds of joint have.
    *
-   * @param record the kind of joint, which names its violations: {@code Revolute[arm].range}
+   * @param record the kind of joint, which names its violations: {@code RevoluteJoint[arm].range}
    * @param kind what the joint is measured in
    * @throws com.michaelgrundvig.frc.world.config.ConfigException listing everything wrong
    */
@@ -43,7 +43,7 @@ final class JointChecks {
       Class<? extends Record> record,
       Position.Kind kind,
       String label,
-      Transform3d origin,
+      Optional<Transform3d> place,
       Vector3 axis,
       Optional<Range> range,
       Optional<Double> rest,
@@ -51,7 +51,7 @@ final class JointChecks {
       List<Output> outputs) {
     Checks.on(record, label)
         .field("label", label, notBlank())
-        .field("origin", origin, numbersAll())
+        .field("place", place, given(numbersAll()))
         .field("axis", axis, pointingSomeWay())
         .field("rest", rest, given(finite()))
         .whyNot("range", () -> whyRangeIsOfTheOtherKind(kind, range))
@@ -65,7 +65,7 @@ final class JointChecks {
    * Checks how a joint that turns is driven: its motors have no drum, and its control is in angles.
    */
   static void turning(String label, Driven driven) {
-    Checks.on(Joint.Revolute.class, label)
+    Checks.on(RevoluteJoint.class, label)
         .whyNot("driven.motors", () -> whyTurningHasADrum(driven))
         .whyNot("driven.control", () -> whyControlIsOfTheOtherKind(Position.Kind.ANGLE, driven))
         .orThrow();
@@ -76,7 +76,7 @@ final class JointChecks {
    * no angle, and its control is in lengths.
    */
   static void sliding(String label, Driven driven) {
-    Checks.on(Joint.Prismatic.class, label)
+    Checks.on(PrismaticJoint.class, label)
         .whyNot("driven.motors", () -> whySlidingHasNoDrum(driven))
         .whyNot("driven.control", () -> whySlidingHasAGravityAngle(driven))
         .whyNot("driven.control", () -> whyControlIsOfTheOtherKind(Position.Kind.LENGTH, driven))

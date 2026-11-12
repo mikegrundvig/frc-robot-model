@@ -1,12 +1,13 @@
-package com.michaelgrundvig.frc.world.bridges;
+package com.michaelgrundvig.frc.world.tools;
 
 import java.util.List;
 
 /**
  * The team's robots, as the tool writers see them. The robot program implements it over its own
  * list of robots, and names that class to the build's tool-config plugins, which run a writer's
- * {@code main} on the compiled code: the writers live in the library, and the library never sees
- * the robot program. An implementation needs a public constructor that takes nothing.
+ * {@code main} on the compiled code: the writers live in the build's plugins, and neither they nor
+ * the model ever see the robot program. An implementation needs a public constructor that takes
+ * nothing.
  */
 public interface RobotCatalog {
   /**

@@ -20,7 +20,7 @@ import org.wpilib.math.geometry.Rotation3d;
 
 /** Tags as known: where the official layout puts them, and where a survey found them. */
 class TagTest {
-  private static final TagLayout LAYOUT = TagLayout.of(TestFields.layout());
+  private static final TagLayout LAYOUT = TestFields.tagLayout();
 
   @Test
   void aTagIsWhereTheSurveyFoundItElseWhereTheLayoutPutsIt() {
@@ -37,9 +37,26 @@ class TagTest {
     twice.add(LAYOUT.tags().get(0));
     return Stream.of(
         refused("a negative tag number", () -> Tag.nominal(-1, new Pose3d()), "zero or more"),
-        refused("a tag twice", () -> new TagLayout("Twice", 16, 8, twice), "tag 2 twice"),
         refused(
-            "a layout with no length", () -> new TagLayout("Flat", 0, 8, List.of()), "positive"));
+            "a tag twice",
+            () ->
+                new TagLayout(
+                    "Twice", 16, 8, TagFamily.TAG_36H11, TestFields.TAG_SIZE_METERS, twice),
+            "tag 2 twice"),
+        refused(
+            "a tag with no size",
+            () -> new TagLayout("Dots", 16, 8, TagFamily.TAG_36H11, 0, List.of()),
+            "more than 0 and less than 10 m, not 0.0"),
+        refused(
+            "a tag 10 m on a side",
+            () -> new TagLayout("Billboards", 16, 8, TagFamily.TAG_36H11, 10, List.of()),
+            "more than 0 and less than 10 m, not 10.0"),
+        refused(
+            "a layout with no length",
+            () ->
+                new TagLayout(
+                    "Flat", 0, 8, TagFamily.TAG_36H11, TestFields.TAG_SIZE_METERS, List.of()),
+            "positive"));
   }
 
   @ParameterizedTest
@@ -66,7 +83,10 @@ class TagTest {
       tags.add(new Tag(tag.getID(), nominal, surveyed));
     }
     FieldModel field =
-        FieldModel.builder(new TagLayout("Surveyed", 16, 8, tags), Symmetry.ROTATED)
+        FieldModel.builder(
+                new TagLayout(
+                    "Surveyed", 16, 8, TagFamily.TAG_36H11, TestFields.TAG_SIZE_METERS, tags),
+                Symmetry.ROTATED)
             .places(List.of(Place.between("Hub", 2, 3)))
             .build();
 

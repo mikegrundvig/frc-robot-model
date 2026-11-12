@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 import static org.wpilib.units.Units.Amps;
 import static org.wpilib.units.Units.Kilograms;
+import static org.wpilib.units.Units.Meters;
+import static org.wpilib.units.Units.Percent;
 
 import com.michaelgrundvig.frc.world.config.Finding;
 import com.michaelgrundvig.frc.world.physical.Inertia;
@@ -20,53 +22,45 @@ import org.wpilib.math.geometry.Translation3d;
  * which hides a shot that feeds before its shooter is at speed.
  */
 class SpinUpNoteTest {
-  private static final Translation3d AXLE = new Translation3d(-0.2, 0, 0.45);
   private static final double RPM_3000 = 3000 * 2 * Math.PI / 60;
   private static final Output SHOOTING = Output.rpm("shooting", 3000);
 
   /** What 1.8 kg of wheels and disks on a shaft weigh, and how hard they are to turn about it. */
   private static final Link FLYWHEEL =
-      Link.builder()
-          .label("flywheel")
-          .mass(
-              MassProperties.builder()
-                  .mass(Kilograms.of(1.8))
-                  .cg(Translation3d.ZERO)
-                  .inertia(
-                      Inertia.builder()
-                          .ixx(0.00232)
-                          .iyy(0.00232)
-                          .izz(0.00232)
-                          .ixy(0)
-                          .ixz(0)
-                          .iyz(0)
-                          .build())
-                  .build())
-          .build();
+      Link.of(
+          "flywheel",
+          MassProperties.of(
+              Kilograms.of(1.8),
+              Translation3d.ZERO,
+              Inertia.builder()
+                  .ixx(0.00232)
+                  .iyy(0.00232)
+                  .izz(0.00232)
+                  .ixy(0)
+                  .ixz(0)
+                  .iyz(0)
+                  .build()));
 
   /** A link with a turning inertia and no mass. */
   private static final Link INERTIA_ONLY =
-      Link.builder()
-          .label("flywheel")
-          .mass(
-              MassProperties.builder()
-                  .mass(Kilograms.of(0))
-                  .cg(Translation3d.ZERO)
-                  .inertia(
-                      Inertia.builder()
-                          .ixx(0.00232)
-                          .iyy(0.00232)
-                          .izz(0.00232)
-                          .ixy(0)
-                          .ixz(0)
-                          .iyz(0)
-                          .build())
-                  .build())
-          .build();
+      Link.of(
+          "flywheel",
+          MassProperties.of(
+              Kilograms.of(0),
+              Translation3d.ZERO,
+              Inertia.builder()
+                  .ixx(0.00232)
+                  .iyy(0.00232)
+                  .izz(0.00232)
+                  .ixy(0)
+                  .ixz(0)
+                  .iyz(0)
+                  .build()));
 
   /** A shooter of two Krakens, straight onto a shaft, run at its outputs. */
-  private static Joint.Revolute shooter(Link link, Output... outputs) {
-    return Joint.roller("shooter", Part.CHASSIS, AXLE)
+  private static RevoluteJoint shooter(Link link, Output... outputs) {
+    return Joint.roller("shooter", Part.CHASSIS)
+        .at(Meters.of(-0.2), Meters.of(0), Meters.of(0.45))
         .carries(link)
         .outputs(outputs)
         .motors(Motor.KRAKEN_X60.through(Gearing.of(1)).count(2))
@@ -93,7 +87,7 @@ class SpinUpNoteTest {
    */
   @Test
   void theTimeIsTheInertiaTimesTheSpeedOverTheTorqueAtTheLimit() {
-    record Row(String joint, Joint.Revolute shooter, double speed, double seconds) {}
+    record Row(String joint, RevoluteJoint shooter, double speed, double seconds) {}
     List<Row> rows =
         List.of(
             new Row("no flywheel", shooter(Link.unseen("flywheel"), SHOOTING), RPM_3000, 0.00527),
@@ -111,8 +105,9 @@ class SpinUpNoteTest {
   /** A joint with no control has no stator limit to work from. */
   @Test
   void aJointWithNoControlHasNoTime() {
-    Joint.Revolute uncontrolled =
-        Joint.roller("shooter", Part.CHASSIS, AXLE)
+    RevoluteJoint uncontrolled =
+        Joint.roller("shooter", Part.CHASSIS)
+            .at(Meters.of(-0.2), Meters.of(0), Meters.of(0.45))
             .outputs(SHOOTING)
             .motors(Motor.KRAKEN_X60.through(Gearing.of(1)).count(2));
 
@@ -123,7 +118,10 @@ class SpinUpNoteTest {
   /** A joint no motors turn has no torque to work from. */
   @Test
   void aJointNoMotorsTurnHasNoTime() {
-    Joint.Revolute unmotored = Joint.roller("shooter", Part.CHASSIS, AXLE).outputs(SHOOTING);
+    RevoluteJoint unmotored =
+        Joint.roller("shooter", Part.CHASSIS)
+            .at(Meters.of(-0.2), Meters.of(0), Meters.of(0.45))
+            .outputs(SHOOTING);
 
     assertThat(robot(unmotored).math().secondsFromRestAtStatorLimit(unmotored, RPM_3000)).isEmpty();
   }
@@ -157,7 +155,8 @@ class SpinUpNoteTest {
                         + " alone bring it to shooting, 3000 rpm, in about 5 ms")),
             new Row(
                 "tenths of a second when it takes a tenth or more",
-                Joint.roller("shooter", Part.CHASSIS, AXLE)
+                Joint.roller("shooter", Part.CHASSIS)
+                    .at(Meters.of(-0.2), Meters.of(0), Meters.of(0.45))
                     .outputs(Output.rpm("shooting", 3000))
                     .motors(Motor.KRAKEN_X60.through(Gearing.of(1)))
                     .control(MechanismControl.velocity(0.02).withStatorLimit(Amps.of(1))),
@@ -176,7 +175,7 @@ class SpinUpNoteTest {
                 shooter(
                     Link.unseen("shooter"),
                     Output.volts("pushing", 6),
-                    Output.dutyCycle("easing", 0.2)),
+                    Output.dutyCycle("easing", Percent.of(20))),
                 List.of("shooter has no mass: shooter adds nothing to shooter's inertia")),
             new Row(
                 "its inertia and no mass",
@@ -186,7 +185,8 @@ class SpinUpNoteTest {
                         + " shooter's inertia")),
             new Row(
                 "a position joint with no mass",
-                Joint.pivot("turret", Part.CHASSIS, AXLE, Vector3.UP)
+                Joint.pivot("turret", Part.CHASSIS, Vector3.UP)
+                    .at(Meters.of(-0.2), Meters.of(0), Meters.of(0.45))
                     .positions(Position.degrees("front", 0))
                     .motors(Motor.KRAKEN_X60.through(Gearing.of(50)))
                     .control(

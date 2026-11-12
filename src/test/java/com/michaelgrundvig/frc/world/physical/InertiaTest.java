@@ -28,11 +28,7 @@ class InertiaTest {
   }
 
   private static MassProperties part(double kilograms, double x, Inertia inertia) {
-    return MassProperties.builder()
-        .mass(Kilograms.of(kilograms))
-        .cg(new Translation3d(x, 0, 0))
-        .inertia(inertia)
-        .build();
+    return MassProperties.of(Kilograms.of(kilograms), new Translation3d(x, 0, 0), inertia);
   }
 
   private static MassProperties cube(double x) {
@@ -95,22 +91,18 @@ class InertiaTest {
   void massPropertiesMustBeAPartsOwn(String label, double kilograms, double z, String refusal) {
     assertThatThrownBy(
             () ->
-                MassProperties.builder()
-                    .mass(Kilograms.of(kilograms))
-                    .cg(new Translation3d(0, 0, z))
-                    .inertia(Inertia.ZERO)
-                    .build())
+                MassProperties.of(
+                    Kilograms.of(kilograms), new Translation3d(0, 0, z), Inertia.ZERO))
         .hasMessageContaining(refusal);
   }
 
   @Test
   void massPropertiesSayWhereTheWeightIs() {
     MassProperties robot =
-        MassProperties.builder()
-            .mass(Pounds.of(135))
-            .cg(new Translation3d(0.02, -0.01, 0.2))
-            .inertia(Inertia.box(Pounds.of(135), new Translation3d(0.8, 0.7, 0.5)))
-            .build();
+        MassProperties.of(
+            Pounds.of(135),
+            new Translation3d(0.02, -0.01, 0.2),
+            Inertia.box(Pounds.of(135), new Translation3d(0.8, 0.7, 0.5)));
 
     assertThat(robot.mass().in(Kilograms)).isCloseTo(61.235, within(1e-3));
     assertThat(robot.cg().getZ()).isEqualTo(0.2);

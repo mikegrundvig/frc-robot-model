@@ -8,13 +8,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Whether the joints and places that a condition, a configuration or an interlock names are the
- * robot's own, and how the model refuses one that is not.
+ * Whether the joints and places that a condition, a preset or an interlock names are the robot's
+ * own, and how the model refuses one that is not.
  *
  * <p>The definition's other checks of its named places each have a type of their own: {@link
- * JointSpeedChecks} holds each joint's named speeds to what its motors can do, {@link
- * ConfigurationChecks} judges each configuration, and {@link InterlockChecks} judges the
- * interlocks.
+ * JointSpeedChecks} holds each joint's named speeds to what its motors can do, {@link PresetChecks}
+ * judges each preset, and {@link InterlockChecks} judges the interlocks.
  */
 final class Places {
   private Places() {}
@@ -45,8 +44,8 @@ final class Places {
 
   /**
    * Why a place that a condition names is not its joint's own, if one is not: it is another joint's
-   * place, or another robot's ({@link Joint#whyNotOwn(Position)}). A condition on a speed or a
-   * sensor names no place.
+   * place, or another robot's ({@link RobotDefinition#whyNotOwn(Joint, Position)}). A condition on
+   * a speed or a sensor names no place.
    */
   static Optional<String> whyNotOwn(Condition condition) {
     return switch (condition) {
@@ -63,9 +62,9 @@ final class Places {
 
   private static Optional<String> whyPlaceIsNotOwn(Condition.At at) {
     if (at.position().isPresent()) {
-      return at.joint().whyNotOwn(at.position().get());
+      return JointNames.whyNotOwn(at.joint(), at.position().get());
     }
-    return at.joint().whyNotOwn(at.output().orElseThrow());
+    return JointNames.whyNotOwn(at.joint(), at.output().orElseThrow());
   }
 
   /** An edge written as a number names no place, so there is nothing that could be another's. */
@@ -73,20 +72,19 @@ final class Places {
     if (place.isEmpty()) {
       return Optional.empty();
     }
-    return joint.whyNotOwn(place.get());
+    return JointNames.whyNotOwn(joint, place.get());
   }
 
   /**
-   * Whether a joint can be named by a configuration or an interlock: it is one of the robot's
-   * joints, and it moves on its own rather than following another.
+   * Whether a joint can be named by a preset or an interlock: it is one of the robot's joints, and
+   * it moves on its own rather than following another.
    */
   static boolean movesOnItsOwn(RobotMath math, Joint joint) {
     return math.has(joint) && math.leaderOf(joint) == null;
   }
 
   /**
-   * Why a joint cannot be named by a configuration or an interlock, if it cannot ({@link
-   * #movesOnItsOwn}).
+   * Why a joint cannot be named by a preset or an interlock, if it cannot ({@link #movesOnItsOwn}).
    *
    * @param what what names it, as the message begins: {@code configuration amp}
    */

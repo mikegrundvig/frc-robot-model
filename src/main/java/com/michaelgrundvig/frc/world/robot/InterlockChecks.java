@@ -14,8 +14,8 @@ import java.util.Set;
  *
  * <p>Everything here is judged before the robot runs, so only a condition on a joint's position can
  * be judged at all: what a sensor reads and how fast a joint runs are not known yet. Positions are
- * judged with the robot placed some way ({@link Placement}): as it starts, or as a configuration
- * puts it.
+ * judged with the robot placed some way ({@link TrialPlacement}): as it starts, or as a preset puts
+ * it.
  */
 final class InterlockChecks {
   private InterlockChecks() {}
@@ -49,12 +49,12 @@ final class InterlockChecks {
    * What is doubtful as the robot starts: a joint that rests inside a region it is kept out of. An
    * elevator resting on its bottom stop, with "keep out of the lowest 10 cm while the intake is in"
    * on it, is one. This is a doubt and not a refusal because the robot copes with it: it lets the
-   * joint leave by the side it is kept to and do nothing else, until the condition clears. A
-   * configuration that puts the joint there is still refused ({@link ConfigurationChecks}).
+   * joint leave by the side it is kept to and do nothing else, until the condition clears. A preset
+   * that puts the joint there is still refused ({@link PresetChecks}).
    */
   static List<Finding> startDoubts(RobotMath math, List<Interlock> interlocks) {
     List<Finding> doubts = new ArrayList<>();
-    Placement start = Placement.asTheRobotStarts(math);
+    TrialPlacement start = TrialPlacement.asTheRobotStarts(math);
     for (Interlock interlock : checkable(math, interlocks)) {
       if (!(interlock instanceof Interlock.KeepsOut keepOut)) {
         continue;
@@ -73,7 +73,7 @@ final class InterlockChecks {
                   + ": "
                   + joint.label()
                   + " may only leave it, by its edge at "
-                  + joint.shown(edgeToLeaveBy)
+                  + Position.Kind.of(joint).shown(edgeToLeaveBy)
                   + ", until that changes"));
     }
     return doubts;
@@ -111,7 +111,7 @@ final class InterlockChecks {
    * @return what the placement does, ready to follow what puts the robot there: "runs roller, but
    *     roller runs only when pivot at least 110°, and pivot is at 1.5°, where it rests"
    */
-  static Optional<String> howBroken(Interlock interlock, Placement placement) {
+  static Optional<String> howBroken(Interlock interlock, TrialPlacement placement) {
     return switch (interlock) {
       case Interlock.RunsOnlyWhen runsOnlyWhen -> howRunsOnlyWhenIsBroken(runsOnlyWhen, placement);
       case Interlock.KeepsOut keepOut -> howKeepOutIsBroken(keepOut, placement);
@@ -119,7 +119,7 @@ final class InterlockChecks {
   }
 
   private static Optional<String> howRunsOnlyWhenIsBroken(
-      Interlock.RunsOnlyWhen runsOnlyWhen, Placement placement) {
+      Interlock.RunsOnlyWhen runsOnlyWhen, TrialPlacement placement) {
     Joint joint = runsOnlyWhen.joint();
     Joint other = onPosition(runsOnlyWhen).joint();
     boolean mayRun = onPosition(runsOnlyWhen).holdsAt(placement.positionOf(other));
@@ -131,7 +131,7 @@ final class InterlockChecks {
   }
 
   private static Optional<String> howKeepOutIsBroken(
-      Interlock.KeepsOut keepOut, Placement placement) {
+      Interlock.KeepsOut keepOut, TrialPlacement placement) {
     Joint joint = keepOut.joint();
     Joint other = onPosition(keepOut).joint();
     double position = placement.positionOf(joint);
@@ -143,7 +143,7 @@ final class InterlockChecks {
         "puts "
             + joint.label()
             + " at "
-            + joint.shown(position)
+            + Position.Kind.of(joint).shown(position)
             + ", but "
             + keepOut
             + ", and "
@@ -275,7 +275,7 @@ final class InterlockChecks {
         + " can never reach "
         + position.name()
         + ", "
-        + joint.shown(position.value())
+        + Position.Kind.of(joint).shown(position.value())
         + ": no position of "
         + other.label()
         + " opens it ("
@@ -311,7 +311,7 @@ final class InterlockChecks {
   private static List<Finding> deadlocksAsTheRobotStarts(
       RobotMath math, List<Interlock> interlocks) {
     List<Finding> found = new ArrayList<>();
-    Placement start = Placement.asTheRobotStarts(math);
+    TrialPlacement start = TrialPlacement.asTheRobotStarts(math);
     Set<Set<Joint>> reported = new HashSet<>();
     for (InterlockRing ring : InterlockRing.among(interlocks)) {
       Optional<String> deadlock = Deadlock.of(ring, start);

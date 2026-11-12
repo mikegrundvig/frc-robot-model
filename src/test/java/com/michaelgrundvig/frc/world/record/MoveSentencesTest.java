@@ -45,7 +45,7 @@ class MoveSentencesTest {
     private final double seconds;
     private final int joint;
     private final MoveTarget target;
-    private int configuration = Identity.NONE;
+    private int preset = Identity.NONE;
     private double targetNumber = Double.NaN;
     private double position;
     private double velocity;
@@ -83,8 +83,8 @@ class MoveSentencesTest {
       return this;
     }
 
-    Part of(int configuration) {
-      this.configuration = configuration;
+    Part of(int preset) {
+      this.preset = preset;
       return this;
     }
 
@@ -106,7 +106,7 @@ class MoveSentencesTest {
           progress,
           seconds,
           joint,
-          configuration,
+          preset,
           target,
           Identity.NONE,
           targetNumber,
@@ -200,7 +200,7 @@ class MoveSentencesTest {
             .insideAfter(0.41)
             .build();
 
-    assertThat(elevator.isOfAConfiguration()).isTrue();
+    assertThat(elevator.isOfAPreset()).isTrue();
     assertThat(
             MoveSentences.outcome(
                 ROBOT, "elevator and arm → stowed", List.of(elevator, arm), List.of(), ""))

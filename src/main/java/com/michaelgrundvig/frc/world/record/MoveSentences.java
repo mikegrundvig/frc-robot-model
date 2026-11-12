@@ -3,7 +3,9 @@ package com.michaelgrundvig.frc.world.record;
 import static com.michaelgrundvig.frc.world.config.Rules.possessive;
 
 import com.michaelgrundvig.frc.world.robot.Joint;
+import com.michaelgrundvig.frc.world.robot.Position;
 import com.michaelgrundvig.frc.world.robot.RobotDefinition;
+import com.michaelgrundvig.frc.world.robot.RobotMath;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -170,19 +172,24 @@ public final class MoveSentences {
     }
     return switch (part.target()) {
       case NUMBER ->
-          atItsPosition(joint, part) + ", its target " + joint.shown(part.targetNumber());
+          atItsPosition(joint, part)
+              + ", its target "
+              + Position.Kind.of(joint).shown(part.targetNumber());
       case SPEED ->
-          atItsSpeed(joint, part) + ", its target " + joint.shownSpeed(part.targetNumber());
-      default -> joint.holdsPositions() ? atItsPosition(joint, part) : atItsSpeed(joint, part);
+          atItsSpeed(joint, part)
+              + ", its target "
+              + Position.Kind.of(joint).shownSpeed(part.targetNumber());
+      default ->
+          RobotMath.holdsPositions(joint) ? atItsPosition(joint, part) : atItsSpeed(joint, part);
     };
   }
 
   private static String atItsPosition(Joint joint, MoveOutcome part) {
-    return joint.label() + " at " + joint.shown(part.position());
+    return joint.label() + " at " + Position.Kind.of(joint).shown(part.position());
   }
 
   private static String atItsSpeed(Joint joint, MoveOutcome part) {
-    return joint.label() + " at " + joint.shownSpeed(part.velocity());
+    return joint.label() + " at " + Position.Kind.of(joint).shownSpeed(part.velocity());
   }
 
   /**

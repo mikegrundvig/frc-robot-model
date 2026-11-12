@@ -75,21 +75,21 @@ public record Venue(
    * layout puts it (its nominal pose) and, unless the venue is the official layout itself, where
    * the survey found it.
    *
-   * @param base the official layout named by {@link #base}
+   * @param base the official layout named by {@link #base}, as the game gives it
    * @throws IllegalArgumentException if the venue has a tag the base doesn't, which {@link
    *     VenueCheck} reports first
    */
-  public List<Tag> tags(Field base) {
+  public List<Tag> tags(TagLayout base) {
     Map<Integer, Pose3d> official = new HashMap<>();
-    for (FieldTag tag : base.getTags()) {
-      official.put(tag.getID(), tag.getPose());
+    for (Tag tag : base.tags()) {
+      official.put(tag.id(), tag.nominal());
     }
     List<Tag> tags = new ArrayList<>();
     for (FieldTag tag : layout.getTags()) {
       Pose3d nominal = official.get(tag.getID());
       if (nominal == null) {
         throw new IllegalArgumentException(
-            name + ": " + base.getName() + " has no tag " + tag.getID());
+            name + ": " + base.name() + " has no tag " + tag.getID());
       }
       if (kind == Kind.OFFICIAL) {
         // The official layout is nobody's survey: its tags are where it says, and no more.
@@ -101,10 +101,18 @@ public record Venue(
     return tags;
   }
 
-  /** The venue's tags ({@link #tags}), with the field's size and the venue's name. */
-  public TagLayout tagLayout(Field base) {
+  /**
+   * The venue's tags ({@link #tags}), with the field's size and the venue's name, and the official
+   * layout's tag family and size: a survey measures where the tags stand, not what they are.
+   */
+  public TagLayout tagLayout(TagLayout base) {
     return new TagLayout(
-        layout.getName(), layout.getFieldLength(), layout.getFieldWidth(), tags(base));
+        layout.getName(),
+        layout.getFieldLength(),
+        layout.getFieldWidth(),
+        base.family(),
+        base.tagSizeMeters(),
+        tags(base));
   }
 
   /**

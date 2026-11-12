@@ -9,7 +9,9 @@ import java.lang.annotation.Target;
 
 /**
  * Marks a configuration record, which is then built by name through a builder generated at compile
- * time: {@code Body.builder().frameLength(...).frameWidth(...)...build()}.
+ * time: {@code Lens.builder().width(...).height(...)...build()}. Most records keep it to their
+ * package, and a robot builds them through their factories and verbs, which use it ({@code
+ * Body.frame(...).bumpers(...)}).
  *
  * <p>The builder asks for every value the record can't do without, in order, by name, so one can't
  * be left out (the code doesn't compile) or land in the wrong place (every value is labeled where

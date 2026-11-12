@@ -17,7 +17,6 @@ import com.michaelgrundvig.frc.world.robot.Driven.LimitSwitch;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.wpilib.math.geometry.Translation3d;
 
 /**
  * The PDH is the robot's, and each motor controller says which of its channels feeds it where it's
@@ -25,19 +24,18 @@ import org.wpilib.math.geometry.Translation3d;
  * can't check.
  */
 class PdhTest {
-  private static final Translation3d AXLE = new Translation3d(0.25, 0, 0.32);
   private static final Output INTAKING = Output.rpm("intaking", 2000);
   private static final CanBus CANIVORE = CanBus.canivore("canivore");
 
   /** A roller on two TalonFXs, each fed as written. */
-  private static Joint.Revolute roller(
-      MechanismWiring.Device leader, MechanismWiring.Device other) {
-    return Joint.roller("roller", Part.CHASSIS, AXLE)
+  private static RevoluteJoint roller(MechanismWiring.Device leader, MechanismWiring.Device other) {
+    return Joint.roller("roller", Part.CHASSIS)
+        .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
         .outputs(INTAKING)
         .motors(Motor.KRAKEN_X60.through(Gearing.of(3)).on(leader, other));
   }
 
-  private static final Joint.Revolute FED =
+  private static final RevoluteJoint FED =
       roller(
           TALON_FX.can(31).pdh(4, Amps.of(40)), TALON_FX.can(32).clockwise().pdh(5, Amps.of(30)));
 
@@ -46,50 +44,76 @@ class PdhTest {
     return RobotDefinitionBuilder.builder(ConfigFixtures.definition(List.of()))
         .pdh(pdh)
         .joints(List.of(joints))
-        .build();
+        .build()
+        .checked();
   }
 
+  /** A module's drive and steering at an ID and the next, and its CANcoder at the first. */
   private static SwerveWiring.ModuleWiring module(
-      int first, Optional<Pdh.Feed> driveFeed, Optional<Pdh.Feed> steerFeed) {
-    return SwerveWiring.ModuleWiring.builder()
-        .driveId(first)
-        .steerId(first + 1)
-        .encoderOffset(Rotations.of(0))
-        .driveInverted(false)
-        .steerInverted(false)
-        .encoderInverted(false)
-        .encoderId(first)
-        .driveFeed(driveFeed)
-        .steerFeed(steerFeed)
+      MechanismWiring.Device drive, MechanismWiring.Device steering) {
+    return SwerveWiringModuleWiringBuilder.builder()
+        .drive(drive)
+        .steering(steering)
+        .encoder(CANCODER.can(drive.id()).offset(Rotations.of(0)))
         .build();
   }
 
   /** The test drivetrain, wired: its front left module fed on channels 0 and 1, the rest not. */
-  private static DrivetrainGeometry wiredDrivetrain() {
-    return ConfigFixtures.drivetrain()
-        .wired(
-            SwerveWiring.builder()
-                .canBus(CanBus.SYSTEMCORE)
-                .driveController(TALON_FX)
-                .steerController(TALON_FX)
-                .gyroId(9)
-                .gyroYawScale(1.0)
-                .modules(
-                    List.of(
-                        module(
-                            1,
-                            Optional.of(Pdh.feed(0, Amps.of(40))),
-                            Optional.of(Pdh.feed(1, Amps.of(40)))),
-                        module(3, Optional.empty(), Optional.empty()),
-                        module(5, Optional.empty(), Optional.empty()),
-                        module(7, Optional.empty(), Optional.empty())))
-                .build());
+  private static Drivetrain wiredDrivetrain() {
+    return ConfigFixtures.wired(
+        ConfigFixtures.drivetrain(),
+        SwerveWiring.PIGEON_2.can(9),
+        List.of(
+            module(TALON_FX.can(1).pdh(0, Amps.of(40)), TALON_FX.can(2).pdh(1, Amps.of(40))),
+            module(TALON_FX.can(3), TALON_FX.can(4)),
+            module(TALON_FX.can(5), TALON_FX.can(6)),
+            module(TALON_FX.can(7), TALON_FX.can(8))));
   }
 
   /**
    * REV's PDH: 20 high-current channels, 0 to 19, up to 40 A; three low-current, 20 to 22, and the
    * switchable one, 23, each up to 15 A (REV's specifications and labeled diagram).
    */
+  /**
+   * A motor's supply limit after its step-down is no more than the breaker that feeds it, as the
+   * current limits say: past it, a long push trips the breaker. A supply limit below the step-down
+   * is the limit always, so it's that one that counts.
+   */
+  @Test
+  void aMotorsSupplyLimitAfterItsStepDownIsNoMoreThanItsBreaker() {
+    record Case(
+        String name, MechanismWiring.Device leader, MechanismControl control, String says) {}
+    MechanismControl defaults = MechanismControl.velocity(0.02);
+    List<Case> cases =
+        List.of(
+            new Case("on a 40 A breaker", TALON_FX.can(31).pdh(4, Amps.of(40)), defaults, ""),
+            new Case(
+                "on a 30 A breaker",
+                TALON_FX.can(31).pdh(4, Amps.of(30)),
+                defaults,
+                "CurrentLimits[roller].supplyLower: 40 A is more than the 30 A breaker feeding"
+                    + " a TalonFX at 31, which a long push trips: give withSupplyLimit(Amps.of(30)),"
+                    + " or a bigger breaker"),
+            new Case(
+                "on a 30 A breaker, its supply limited to it",
+                TALON_FX.can(31).pdh(4, Amps.of(30)),
+                defaults.withSupplyLimit(Amps.of(30)),
+                ""),
+            new Case("with no feed said", TALON_FX.can(31), defaults, ""));
+    for (Case c : cases) {
+      if (c.says().isEmpty()) {
+        assertThat(roller(c.leader(), TALON_FX.can(32).clockwise()).control(c.control()))
+            .as(c.name())
+            .isNotNull();
+        continue;
+      }
+      assertThatIllegalArgumentException()
+          .as(c.name())
+          .isThrownBy(() -> roller(c.leader(), TALON_FX.can(32).clockwise()).control(c.control()))
+          .withMessage(c.says());
+    }
+  }
+
   @Test
   void aRevPdhHasTwentyHighCurrentChannelsThreeLowAndASwitchableOne() {
     assertThat(Pdh.CHANNELS).isEqualTo(24);
@@ -140,8 +164,9 @@ class PdhTest {
    */
   @Test
   void theRobotListsEveryDeviceOnItsBusesOnce() {
-    Joint.Revolute pivot =
-        Joint.pivot("pivot", Part.CHASSIS, AXLE, Joint.PITCH_DOWN)
+    RevoluteJoint pivot =
+        Joint.pivot("pivot", Part.CHASSIS, Joint.PITCH_DOWN)
+            .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
             .range(Range.degrees(0, 135))
             .rest(Position.degrees("in", 1.5))
             .motors(
@@ -199,7 +224,7 @@ class PdhTest {
   /** One breaker, one device: two controllers on one channel is a wiring mistake. */
   @Test
   void aChannelFeedsOneDevice() {
-    Joint.Revolute twice =
+    RevoluteJoint twice =
         roller(TALON_FX.can(31).pdh(4, Amps.of(40)), TALON_FX.can(32).pdh(4, Amps.of(40)));
 
     assertThatIllegalArgumentException()
@@ -258,13 +283,14 @@ class PdhTest {
         .withMessage(
             "RobotDefinition[test].pdh: roller motor 31, roller motor 32 are fed from a PDH's"
                 + " channel, and the robot declares no PDH: give its definition one,"
-                + " .pdh(Pdh.can(1)) at its CAN ID");
+                + " .withPdh(Pdh.can(1)) at its CAN ID");
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
                 RobotDefinitionBuilder.builder(robot(Optional.empty()))
                     .drivetrain(wiredDrivetrain())
-                    .build())
+                    .build()
+                    .checked())
         .withMessageStartingWith(
             "RobotDefinition[test].pdh: front-left drive, front-left steering are fed");
   }
@@ -276,10 +302,11 @@ class PdhTest {
    */
   @Test
   void withAPdhAWiredControllerWithNoChannelIsADoubt() {
-    Joint.Revolute half = roller(TALON_FX.can(31).pdh(4, Amps.of(40)), TALON_FX.can(32));
-    Joint.Revolute none = roller(TALON_FX.can(41), TALON_FX.can(42));
-    Joint.Revolute simulated =
-        Joint.roller("simulated", Part.CHASSIS, AXLE)
+    RevoluteJoint half = roller(TALON_FX.can(31).pdh(4, Amps.of(40)), TALON_FX.can(32));
+    RevoluteJoint none = roller(TALON_FX.can(41), TALON_FX.can(42));
+    RevoluteJoint simulated =
+        Joint.roller("simulated", Part.CHASSIS)
+            .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
             .outputs(INTAKING)
             .motors(Motor.KRAKEN_X60.through(Gearing.of(3)));
     RobotDefinition robot =
@@ -293,8 +320,8 @@ class PdhTest {
             "the drivetrain's front-right drive, front-right steering, back-left drive, back-left"
                 + " steering, back-right drive, back-right steering have no PDH channel: which"
                 + " channel feeds each, and through what breaker, isn't checked: give each"
-                + " module's wiring its feeds, .driveFeed(Pdh.feed(channel, breaker)) and"
-                + " .steerFeed(...)",
+                + " module's drive and steering its feed, TALON_FX.can(bus, id).pdh(channel,"
+                + " breaker)",
             "roller's motor controller 32 has no PDH channel: which channel feeds each, and"
                 + " through what breaker, isn't checked: give each its own where it's wired,"
                 + " .pdh(channel, breaker)");
@@ -313,21 +340,8 @@ class PdhTest {
         RobotDefinitionBuilder.builder(
                 robot(Optional.empty(), roller(TALON_FX.can(31), TALON_FX.can(32))))
             .drivetrain(
-                ConfigFixtures.drivetrain()
-                    .wired(
-                        SwerveWiring.builder()
-                            .canBus(CanBus.SYSTEMCORE)
-                            .driveController(TALON_FX)
-                            .steerController(TALON_FX)
-                            .gyroId(9)
-                            .gyroYawScale(1.0)
-                            .modules(
-                                List.of(
-                                    module(1, Optional.empty(), Optional.empty()),
-                                    module(3, Optional.empty(), Optional.empty()),
-                                    module(5, Optional.empty(), Optional.empty()),
-                                    module(7, Optional.empty(), Optional.empty())))
-                            .build()))
+                ConfigFixtures.wired(
+                    ConfigFixtures.drivetrain(), CanBus.SYSTEMCORE, TALON_FX, TALON_FX, 9, 1))
             .build();
 
     assertThat(MechanismFixtures.findings(robot))

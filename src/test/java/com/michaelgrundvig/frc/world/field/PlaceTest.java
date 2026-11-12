@@ -56,7 +56,7 @@ class PlaceTest {
     measured.set(2, TestFields.tag(12, 12.04, 4, 0)); // red's far face is 4 cm further out
     var model =
         new FieldModel(
-            TestFields.layout(measured), Symmetry.ROTATED, List.of(), List.of(), List.of());
+            TestFields.tagLayout(measured), Symmetry.ROTATED, List.of(), List.of(), List.of());
 
     assertPose(place("hub").on(model, RED), 11.52, 4, 180);
     assertPose(place("hub").on(model, BLUE), 4.5, 4, 0);

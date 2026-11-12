@@ -26,7 +26,7 @@ class TrialPositionsTest {
   private static final double NO_END_BELOW = Double.NEGATIVE_INFINITY;
   private static final double NO_END_ABOVE = Double.POSITIVE_INFINITY;
 
-  private static final Joint.Revolute WHEEL = lightPivot("wheel", Optional.empty());
+  private static final RevoluteJoint WHEEL = lightPivot("wheel", Optional.empty());
 
   private static Condition.OnJoint elevatorAtLeast(double meters) {
     return ELEVATOR.atLeast(Meters.of(meters));

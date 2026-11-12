@@ -83,6 +83,37 @@ final class JointNames {
   }
 
   /**
+   * A joint's own position of the name a position has, where the joint puts it. Code passes the
+   * team's constant, and gets the position as the robot running the code has it: a practice robot
+   * whose position was re-placed ({@code replaced}) gives its own.
+   *
+   * @throws IllegalArgumentException if the position is not the joint's own ({@link
+   *     #whyNotOwn(Joint, Position)})
+   */
+  static Position own(Joint joint, Position position) {
+    Optional<String> whyNotOwn = whyNotOwn(joint, position);
+    if (whyNotOwn.isPresent()) {
+      throw new IllegalArgumentException(whyNotOwn.get());
+    }
+    return position(joint, position.name());
+  }
+
+  /**
+   * A joint's own output of the name an output has, at the joint's value, or {@link
+   * Output#STOPPED}. A practice robot whose output was re-valued ({@code replaced}) gives its own.
+   *
+   * @throws IllegalArgumentException if the output is not the joint's own ({@link #whyNotOwn(Joint,
+   *     Output)})
+   */
+  static Output own(Joint joint, Output output) {
+    Optional<String> whyNotOwn = whyNotOwn(joint, output);
+    if (whyNotOwn.isPresent()) {
+      throw new IllegalArgumentException(whyNotOwn.get());
+    }
+    return output(joint, output.name());
+  }
+
+  /**
    * Why a position is not a joint's own, if it is not.
    *
    * <p>A position is the joint's own when the joint has a position of that name and kind, and the
@@ -129,7 +160,10 @@ final class JointNames {
     }
     return Optional.of(
         notOneItHasHad(
-            joint, own.name(), "is at " + joint.shown(own.value()), joint.shown(position.value())));
+            joint,
+            own.name(),
+            "is at " + Position.Kind.of(joint).shown(own.value()),
+            Position.Kind.of(joint).shown(position.value())));
   }
 
   /**
@@ -180,7 +214,7 @@ final class JointNames {
     boolean hasThatName =
         joint.positions().stream().anyMatch(each -> each.name().equals(rest.name()));
     if (hasThatName) {
-      return joint.own(rest).value();
+      return JointNames.own(joint, rest).value();
     }
     Position.Kind kind = Position.Kind.of(joint);
     if (rest.kind() == kind) {
@@ -314,7 +348,7 @@ final class JointNames {
    */
   private static String shownOutput(Joint joint, Output output) {
     return switch (output.kind()) {
-      case VELOCITY -> joint.shownSpeed(output.value());
+      case VELOCITY -> Position.Kind.of(joint).shownSpeed(output.value());
       case VOLTAGE -> shown(output.value()) + " V";
       case DUTY_CYCLE -> shown(output.value() * 100) + "% of the battery";
     };

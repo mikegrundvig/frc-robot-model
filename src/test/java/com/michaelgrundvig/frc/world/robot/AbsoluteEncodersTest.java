@@ -26,11 +26,11 @@ class AbsoluteEncodersTest {
   private static final double MARGIN = RobotMath.WRAP_MARGIN * 1;
 
   /** A slide with its stops at these positions, in meters. */
-  private static Joint.Prismatic slide(double lower, double upper) {
+  private static PrismaticJoint slide(double lower, double upper) {
     return lightSlide("slide", new Vector3(1, 0, 0), Range.meters(lower, upper));
   }
 
-  private static final Joint.Prismatic SLIDE = slide(0.25, 0.75);
+  private static final PrismaticJoint SLIDE = slide(0.25, 0.75);
 
   /** An absolute encoder on a slide that turns this many times for each meter. */
   private static Sensor.Encoder turning(String label, double turnsPerMeter, int countsPerTurn) {

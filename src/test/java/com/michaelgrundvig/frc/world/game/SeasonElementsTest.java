@@ -89,7 +89,7 @@ class SeasonElementsTest {
         .extracting(Surface::name)
         .doesNotContainAnyElementsOf(field.elements().stream().map(Element::name).toList());
     // A block low enough to drive over would be terrain: every element stands above the bumpers.
-    double bumperTop = BODY.bumperTop().in(Meters);
+    double bumperTop = BODY.bumperTopOrDefault().in(Meters);
     assertThat(field.elements())
         .allSatisfy(element -> assertThat(element.heightMeters()).isGreaterThan(bumperTop));
   }
@@ -98,8 +98,8 @@ class SeasonElementsTest {
   @ParameterizedTest
   @MethodSource("fields")
   void noStartIsInsideAnything(FieldModel field) {
-    double lowest = BODY.bumperBottom().in(Meters);
-    double highest = BODY.bumperTop().in(Meters);
+    double lowest = BODY.bumperBottomOrDefault().in(Meters);
+    double highest = BODY.bumperTopOrDefault().in(Meters);
     // Bumpers a millimeter smaller all round: a start may touch what it backs up to.
     double length = BODY.bumperLength().in(Meters) - 0.002;
     double width = BODY.bumperWidth().in(Meters) - 0.002;

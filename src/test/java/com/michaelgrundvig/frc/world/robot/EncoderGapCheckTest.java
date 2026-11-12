@@ -16,15 +16,15 @@ import org.junit.jupiter.api.Test;
  * How far apart a joint's absolute encoder and its motor's count may be, still, and whether they
  * are.
  */
-class EncoderGapTest {
+class EncoderGapCheckTest {
   private static final double LOOP = 0.02;
 
-  private static final Joint.Revolute PIVOT =
+  private static final RevoluteJoint PIVOT =
       StandardRobot.PIVOT
           .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(25, 1)))
           .control(MechanismControl.position(30));
 
-  private static final Joint.Prismatic ELEVATOR =
+  private static final PrismaticJoint ELEVATOR =
       StandardRobot.ELEVATOR
           .motors(
               Motor.KRAKEN_X60
@@ -34,7 +34,7 @@ class EncoderGapTest {
           .control(MechanismControl.position(60));
 
   /** A turret that turns freely. */
-  private static final Joint.Revolute TURRET =
+  private static final RevoluteJoint TURRET =
       StandardRobot.named(
               StandardRobot.lightPivot("turret", Optional.empty()),
               List.of(Position.degrees("front", 0)),
@@ -43,7 +43,7 @@ class EncoderGapTest {
           .control(MechanismControl.position(20));
 
   private static double margin(Joint joint) {
-    return EncoderGap.margin(
+    return EncoderGapCheck.margin(
         StandardRobot.robotOf(joint).math(), joint, joint.driven().control().orElseThrow());
   }
 
@@ -55,13 +55,13 @@ class EncoderGapTest {
    */
   @Test
   void itsMarginIsTheLeastOrEightCountsAtTheJoint() {
-    Joint.Revolute onCancoder =
+    RevoluteJoint onCancoder =
         PIVOT
             .motors(motors -> motors.on(TALON_FX.can(21)))
             .absoluteEncoder(CANCODER.can(34).offset(Rotations.of(0)));
-    Joint.Revolute onPot =
+    RevoluteJoint onPot =
         PIVOT.absoluteEncoder(MechanismWiring.PortEncoder.analog(2, 10).offset(Rotations.of(0)));
-    Joint.Prismatic elevator =
+    PrismaticJoint elevator =
         ELEVATOR.absoluteEncoder(
             Driven.AbsoluteEncoder.of()
                 .ratio(1.0 / 9)
@@ -82,7 +82,7 @@ class EncoderGapTest {
    */
   @Test
   void theyreApartOnlyPastTheirMarginAndALoopsTravel() {
-    EncoderGap gap = new EncoderGap(PIVOT, Math.toRadians(5), Double.POSITIVE_INFINITY);
+    EncoderGapCheck gap = new EncoderGapCheck(PIVOT, Math.toRadians(5), Double.POSITIVE_INFINITY);
     double off = Math.toRadians(6);
 
     assertThat(gap.apart(off, 0, 0, LOOP)).isTrue();
@@ -101,12 +101,12 @@ class EncoderGapTest {
    */
   @Test
   void theyreApartTheNearestWayRoundAJointThatTravelsPastItsEncodersTurn() {
-    Joint.Revolute turret =
+    RevoluteJoint turret =
         TURRET.absoluteEncoder(MechanismWiring.PortEncoder.dutyCycle(1).offset(Rotations.of(0)));
-    Joint.Revolute pivot =
+    RevoluteJoint pivot =
         PIVOT.absoluteEncoder(MechanismWiring.PortEncoder.dutyCycle(1).offset(Rotations.of(0)));
-    double turn = EncoderGap.turn(StandardRobot.robotOf(turret).math(), turret);
-    EncoderGap gap = new EncoderGap(turret, Math.toRadians(5), turn);
+    double turn = EncoderGapCheck.turn(StandardRobot.robotOf(turret).math(), turret);
+    EncoderGapCheck gap = new EncoderGapCheck(turret, Math.toRadians(5), turn);
 
     assertThat(Math.toDegrees(turn)).isCloseTo(360, within(1e-9));
     assertThat(gap.agree(Math.toRadians(-10), Math.toRadians(350))).isTrue();
@@ -114,6 +114,6 @@ class EncoderGapTest {
     assertThat(gap.apart(Math.toRadians(-170), Math.toRadians(170), 0, LOOP)).isTrue();
     assertThat(gap.shown(Math.toRadians(-170), Math.toRadians(170)))
         .isEqualTo("20° apart, more than 5°");
-    assertThat(EncoderGap.turn(StandardRobot.robotOf(pivot).math(), pivot)).isInfinite();
+    assertThat(EncoderGapCheck.turn(StandardRobot.robotOf(pivot).math(), pivot)).isInfinite();
   }
 }

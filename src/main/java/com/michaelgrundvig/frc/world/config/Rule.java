@@ -39,8 +39,7 @@ public interface Rule<V> {
 
   /**
    * A rule from a check that gives the reason a value is wrong, if there is one, as an {@link
-   * Optional} rather than as a string that may be null: {@code
-   * Rule.of(Configuration::whyNotOnceEach)}.
+   * Optional} rather than as a string that may be null: {@code Rule.of(Preset::whyNotOnceEach)}.
    *
    * @param whyNot the reason the value is wrong, or empty when it is fine
    */

@@ -20,7 +20,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 import org.wpilib.math.geometry.Rotation3d;
 import org.wpilib.math.geometry.Transform3d;
 import org.wpilib.math.geometry.Translation2d;
@@ -32,10 +31,11 @@ import org.wpilib.units.measure.MomentOfInertia;
 
 /**
  * A swerve drivetrain, as built: a module at each corner, each of its own type and where its wheel
- * touches the floor; and, in the same block, how it's driven and wired: {@code
- * DrivetrainGeometry.uniform(MODULES, forward, left).wired(WIRING).control(DRIVING)}. How it's
- * driven isn't part of what it is: two drivetrains the same but for their control or wiring are
- * one, re-tuned or re-wired.
+ * touches the floor; and, in the same block, how it's wired and driven: {@code
+ * Drivetrain.uniform(MODULE, forward, left).gyro(...).frontLeft(...)...backRight(...)
+ * .control(DRIVING)} ({@link SwerveWiring}). How it's wired and driven isn't part of what it is:
+ * two drivetrains the same but for their wiring or control have the same hardware ({@link
+ * #sameHardwareAs}), re-wired or re-tuned.
  *
  * <p>Most drivetrains have one type of module at every corner, placed symmetrically: {@link
  * #uniform} places them as Phoenix Tuner X's swerve project gives them, and {@link #inset} from a
@@ -46,33 +46,41 @@ import org.wpilib.units.measure.MomentOfInertia;
  * front left, front right, back left, back right.
  *
  * @param corners the four modules: front left, front right, back left, back right
- * @param wiring where its devices are on the CAN bus, and how they turn; none runs it in the
- *     simulator alone. Its controllers must drive its modules' motors, and SPARKs are on
- *     Systemcore's own CAN
- * @param control how it's driven: its limits and gains, tuned while the robot runs; a robot needs
- *     it
+ * @param wiring where its devices are on the CAN bus, and how they turn, written from its gyro
+ *     ({@link #gyro}); none runs it in the simulator alone. Its controllers must drive its modules'
+ *     motors, and SPARKs are on Systemcore's own CAN
+ * @param control how it's driven: its limits and gains, tuned while the robot runs, from {@code
+ *     DrivetrainControl.defaults()}; a robot needs it. Its drive kV, where not tuned, is filled in
+ *     with the modules' ideal ({@link #idealDriveKv}), and its top speed, where not given, with
+ *     four fifths of their free speed ({@code DrivetrainControl.TOP_SPEED_SHARE})
  */
 @ConfigRecord
-public record DrivetrainGeometry(
+public record Drivetrain(
     List<Corner> corners, Optional<SwerveWiring> wiring, Optional<DrivetrainControl> control) {
   /** The corners' names, in their order: front left, front right, back left, back right. */
   public static final List<String> LABELS =
       List.of("front-left", "front-right", "back-left", "back-right");
 
-  public DrivetrainGeometry {
+  public Drivetrain {
     corners = List.copyOf(corners);
     List<Corner> all = corners;
     Optional<SwerveWiring> wired = wiring;
-    Checks.on(DrivetrainGeometry.class)
-        .field("corners", corners, Rule.of(DrivetrainGeometry::whyNotFourCorners))
+    Checks.on(Drivetrain.class)
+        .field("corners", corners, Rule.of(Drivetrain::whyNotFourCorners))
         .whyNot("corners", () -> whyCornersAreMisplaced(all))
         .whyNot("wiring", () -> wired.flatMap(each -> whyItCannotBeWired(all, each)))
         .orThrow();
+    // The drive's kV not tuned is the modules' ideal, and a top speed not given a share of their
+    // free speed, both filled in here so the program drives on them.
+    Module slowest = slowest(all);
+    double ideal = slowest.idealDriveKv();
+    LinearVelocity topSpeed = slowest.freeSpeed().times(DrivetrainControl.TOP_SPEED_SHARE);
+    control = control.map(each -> each.seeded(ideal, topSpeed));
   }
 
   /** Starts describing a swerve drivetrain, one corner at a time. */
-  public static DrivetrainGeometryBuilder.CornersStage builder() {
-    return DrivetrainGeometryBuilder.builder();
+  static DrivetrainBuilder.CornersStage builder() {
+    return DrivetrainBuilder.builder();
   }
 
   /**
@@ -82,7 +90,7 @@ public record DrivetrainGeometry(
    * @param forward how far the front wheels are ahead of the center, and the back ones behind it
    * @param left how far the left wheels are left of the center, and the right ones right of it
    */
-  public static DrivetrainGeometry uniform(ModuleType module, Distance forward, Distance left) {
+  public static Drivetrain uniform(Module module, Distance forward, Distance left) {
     return placed(module, forward.in(Meters), left.in(Meters));
   }
 
@@ -93,14 +101,14 @@ public record DrivetrainGeometry(
    * @throws com.michaelgrundvig.frc.world.config.ConfigException if the inset leaves no room
    *     between the wheels
    */
-  public static DrivetrainGeometry inset(ModuleType module, Body body, Distance wheelInset) {
+  public static Drivetrain inset(Module module, Body body, Distance wheelInset) {
     return placed(
         module,
         body.frameLength().in(Meters) / 2 - wheelInset.in(Meters),
         body.frameWidth().in(Meters) / 2 - wheelInset.in(Meters));
   }
 
-  private static DrivetrainGeometry placed(ModuleType module, double x, double y) {
+  private static Drivetrain placed(Module module, double x, double y) {
     double[][] signs = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
     List<Corner> corners = new ArrayList<>();
     for (double[] sign : signs) {
@@ -113,9 +121,20 @@ public record DrivetrainGeometry(
     return builder().corners(corners).build();
   }
 
-  /** The same drivetrain, wired: its modules' and its gyro's devices. */
-  public DrivetrainGeometry wired(SwerveWiring wiring) {
-    return DrivetrainGeometryBuilder.builder(this).wiring(wiring).build();
+  /**
+   * Starts wiring the drivetrain, its gyro first: {@code .gyro(PIGEON_2.can(CANIVORE, 1))}, then
+   * each corner's drive, steering and absolute encoder, {@code .frontLeft(...)} to {@code
+   * .backRight(...)}, which gives the drivetrain back, wired. On a drivetrain already wired, this
+   * starts its wiring afresh: a practice robot's, {@code
+   * COMPETITION.with(DRIVETRAIN.gyro(...).frontLeft(...)...backRight(...))}.
+   */
+  public SwerveWiring.FrontLeft gyro(SwerveWiring.Gyro gyro) {
+    return new SwerveWiring.FrontLeft(this, gyro);
+  }
+
+  /** The same drivetrain, wired as its block wrote it ({@link #gyro}). */
+  Drivetrain withWiring(SwerveWiring wiring) {
+    return DrivetrainBuilder.builder(this).wiring(wiring).build();
   }
 
   /**
@@ -127,44 +146,30 @@ public record DrivetrainGeometry(
    *
    * @throws IllegalArgumentException if it isn't wired
    */
-  public DrivetrainGeometry encoderOffsets(
+  public Drivetrain encoderOffsets(
       Angle frontLeft, Angle frontRight, Angle backLeft, Angle backRight) {
     SwerveWiring was =
         wiring.orElseThrow(
             () ->
                 new IllegalArgumentException(
                     "the drivetrain isn't wired, so its modules have no offsets: wire it,"
-                        + " .wired(...)"));
-    List<Angle> offsets = List.of(frontLeft, frontRight, backLeft, backRight);
-    List<SwerveWiring.ModuleWiring> modules = new ArrayList<>();
-    for (int i = 0; i < offsets.size(); i++) {
-      modules.add(
-          SwerveWiringModuleWiringBuilder.builder(was.modules().get(i))
-              .encoderOffset(offsets.get(i))
-              .build());
-    }
-    return wired(SwerveWiringBuilder.builder(was).modules(modules).build());
+                        + " .gyro(...).frontLeft(...)...backRight(...)"));
+    return withWiring(was.encoderOffsets(frontLeft, frontRight, backLeft, backRight));
   }
 
   /** The same drivetrain, driven so: its limits and gains. */
-  public DrivetrainGeometry control(DrivetrainControl control) {
-    return DrivetrainGeometryBuilder.builder(this).control(control).build();
+  public Drivetrain control(DrivetrainControl control) {
+    return DrivetrainBuilder.builder(this).control(control).build();
   }
 
   /**
-   * Equal to another drivetrain the same in everything but how it's driven and wired, and what only
-   * the simulator reads: its modules' drive and steering inertias. A practice robot's drivetrain,
-   * its Tuner X simulation inertias its own, is still the competition robot's.
+   * Whether another drivetrain is this one's hardware: the same in everything but how it's wired
+   * and driven, and what only the simulator reads, its modules' drive and steering inertias. A
+   * practice robot's drivetrain, its Tuner X simulation inertias its own, is still the competition
+   * robot's. Equality ({@code equals}) is a record's, every value the same.
    */
-  @Override
-  public boolean equals(@Nullable Object other) {
-    return other instanceof DrivetrainGeometry that
-        && robotReads(corners).equals(robotReads(that.corners));
-  }
-
-  @Override
-  public int hashCode() {
-    return robotReads(corners).hashCode();
+  public boolean sameHardwareAs(Drivetrain other) {
+    return robotReads(corners).equals(robotReads(other.corners));
   }
 
   /** Its corners as the robot reads them: each module without what only the simulator reads. */
@@ -172,9 +177,9 @@ public record DrivetrainGeometry(
     return corners.stream()
         .map(
             corner ->
-                DrivetrainGeometryCornerBuilder.builder(corner)
+                DrivetrainCornerBuilder.builder(corner)
                     .module(
-                        DrivetrainGeometryModuleTypeBuilder.builder(corner.module())
+                        DrivetrainModuleBuilder.builder(corner.module())
                             .driveInertia(Optional.empty())
                             .steerInertia(Optional.empty())
                             .build())
@@ -189,7 +194,7 @@ public record DrivetrainGeometry(
    * @param position where its wheel touches the floor, from the robot's center: forward and left
    */
   @ConfigRecord
-  public record Corner(ModuleType module, Translation2d position) {
+  public record Corner(Module module, Translation2d position) {
     public Corner {
       Checks.on(Corner.class)
           .field(
@@ -203,8 +208,8 @@ public record DrivetrainGeometry(
     }
 
     /** Starts describing a corner, one named value at a time. */
-    public static DrivetrainGeometryCornerBuilder.ModuleStage builder() {
-      return DrivetrainGeometryCornerBuilder.builder();
+    static DrivetrainCornerBuilder.ModuleStage builder() {
+      return DrivetrainCornerBuilder.builder();
     }
   }
 
@@ -236,7 +241,7 @@ public record DrivetrainGeometry(
    *     the drive's encoder would otherwise count as travel. Zero for a module without the coupling
    */
   @ConfigRecord
-  public record ModuleType(
+  public record Module(
       Motor driveMotor,
       Motor steerMotor,
       Distance wheelRadius,
@@ -266,8 +271,8 @@ public record DrivetrainGeometry(
      */
     public static final MomentOfInertia DEFAULT_STEER_INERTIA = KilogramSquareMeters.of(0.004);
 
-    public ModuleType {
-      Checks.on(ModuleType.class)
+    public Module {
+      Checks.on(Module.class)
           .field("wheelRadius", wheelRadius, positive())
           .field("wheelCoefficientOfFriction", wheelCoefficientOfFriction, given(positive()))
           .field("driveInertia", driveInertia, given(positive()))
@@ -277,8 +282,8 @@ public record DrivetrainGeometry(
     }
 
     /** Starts describing a type of module, one named value at a time. */
-    public static DrivetrainGeometryModuleTypeBuilder.DriveMotorStage builder() {
-      return DrivetrainGeometryModuleTypeBuilder.builder();
+    public static DrivetrainModuleBuilder.DriveMotorStage builder() {
+      return DrivetrainModuleBuilder.builder();
     }
 
     /** The tread's grip on carpet: as measured, or until it is, PathPlanner's default. */
@@ -296,14 +301,28 @@ public record DrivetrainGeometry(
       return steerInertia.orElse(DEFAULT_STEER_INERTIA);
     }
 
-    /** What drives the wheel: one drive motor. Its gearing is {@link #driveGearing}. */
-    public Actuator.Motors driveMotors() {
-      return Actuator.Motors.builder().motor(driveMotor).count(1).build();
+    /**
+     * What drives the wheel: one drive motor, driven as its controller says. Its gearing is {@link
+     * #driveGearing}. A drivetrain gives its own ({@link Drivetrain#driveMotors}).
+     */
+    public Actuator.MotorGroup driveMotors(MechanismWiring.Commutation commutation) {
+      return Actuator.MotorGroup.builder()
+          .motor(driveMotor)
+          .count(1)
+          .commutation(commutation)
+          .build();
     }
 
-    /** What turns the module: one steering motor. Its gearing is {@link #steerGearing}. */
-    public Actuator.Motors steerMotors() {
-      return Actuator.Motors.builder().motor(steerMotor).count(1).build();
+    /**
+     * What turns the module: one steering motor, driven as its controller says. Its gearing is
+     * {@link #steerGearing}. A drivetrain gives its own ({@link Drivetrain#steerMotors}).
+     */
+    public Actuator.MotorGroup steerMotors(MechanismWiring.Commutation commutation) {
+      return Actuator.MotorGroup.builder()
+          .motor(steerMotor)
+          .count(1)
+          .commutation(commutation)
+          .build();
     }
 
     /**
@@ -314,50 +333,45 @@ public record DrivetrainGeometry(
      * @param label which corner, for logs: "front-left"
      * @param at where the wheel touches the floor, from the robot's center
      */
-    public ModuleJoints joints(String label, Translation2d at) {
+    ModuleJoints joints(
+        String label,
+        Translation2d at,
+        MechanismWiring.Commutation drives,
+        MechanismWiring.Commutation steers) {
       double radius = wheelRadius.in(Meters);
-      Joint.Revolute steer =
-          Joint.Revolute.builder()
+      RevoluteJoint steer =
+          RevoluteJoint.builder()
               .label(label + " steer")
               .parent(Part.CHASSIS)
-              .origin(new Transform3d(at.getX(), at.getY(), 0, Rotation3d.ZERO))
               .axis(Vector3.UP)
               .link(disc(label + " module", steerInertiaOrDefault(), radius, Vector3.UP))
+              .place(new Transform3d(at.getX(), at.getY(), 0, Rotation3d.ZERO))
               .build();
-      Joint.Revolute wheel =
-          Joint.Revolute.builder()
+      RevoluteJoint wheel =
+          RevoluteJoint.builder()
               .label(label + " wheel")
               .parent(steer)
-              .origin(new Transform3d(0, 0, radius, Rotation3d.ZERO))
               .axis(new Vector3(0, 1, 0))
               .link(disc(label + " wheel", driveInertiaOrDefault(), radius, new Vector3(0, 1, 0)))
+              .place(new Transform3d(0, 0, radius, Rotation3d.ZERO))
               .build();
       Drive drive =
-          Drive.builder()
-              .label(label + " drive")
-              .actuator(driveMotors())
-              .transmission(
-                  Transmission.Combined.builder()
-                      .terms(terms(wheel, steer))
-                      .efficiency(driveGearing.efficiency())
-                      .build())
-              .build();
+          Drive.of(
+              label + " drive",
+              driveMotors(drives),
+              Transmission.Combined.of(terms(wheel, steer), driveGearing.efficiency()));
       Drive steering =
-          Drive.builder()
-              .label(label + " steer")
-              .actuator(steerMotors())
-              .transmission(
-                  Transmission.Geared.builder().joint(steer).gearing(steerGearing).build())
-              .build();
+          Drive.of(
+              label + " steer", steerMotors(steers), Transmission.Geared.of(steer, steerGearing));
       return new ModuleJoints(label, steer, wheel, drive, steering);
     }
 
     /** The drive motor's turns: the drive's ratio on the wheel, and the coupling's on steering. */
     private List<Transmission.Term> terms(Joint wheel, Joint steer) {
       List<Transmission.Term> terms = new ArrayList<>();
-      terms.add(Transmission.Term.builder().joint(wheel).ratio(driveGearing.ratio()).build());
+      terms.add(Transmission.Term.of(wheel, driveGearing.ratio()));
       if (couplingRatio != 0) {
-        terms.add(Transmission.Term.builder().joint(steer).ratio(couplingRatio).build());
+        terms.add(Transmission.Term.of(steer, couplingRatio));
       }
       return terms;
     }
@@ -370,23 +384,19 @@ public record DrivetrainGeometry(
     private static Link disc(String label, MomentOfInertia about, double radius, Vector3 axis) {
       double inertia = about.in(KilogramSquareMeters);
       double across = inertia / 2;
-      return Link.builder()
-          .label(label)
-          .mass(
-              MassProperties.builder()
-                  .mass(Kilograms.of(2 * inertia / (radius * radius)))
-                  .cg(Translation3d.ZERO)
-                  .inertia(
-                      Inertia.builder()
-                          .ixx(axis.x() != 0 ? inertia : across)
-                          .iyy(axis.y() != 0 ? inertia : across)
-                          .izz(axis.z() != 0 ? inertia : across)
-                          .ixy(0)
-                          .ixz(0)
-                          .iyz(0)
-                          .build())
-                  .build())
-          .build();
+      return Link.of(
+          label,
+          MassProperties.of(
+              Kilograms.of(2 * inertia / (radius * radius)),
+              Translation3d.ZERO,
+              Inertia.builder()
+                  .ixx(axis.x() != 0 ? inertia : across)
+                  .iyy(axis.y() != 0 ? inertia : across)
+                  .izz(axis.z() != 0 ? inertia : across)
+                  .ixy(0)
+                  .ixz(0)
+                  .iyz(0)
+                  .build()));
     }
 
     /** Top wheel speed at the motor's nominal voltage, with no load. The real robot is slower. */
@@ -416,7 +426,7 @@ public record DrivetrainGeometry(
    * @param steering the steering motor, through the steering's gearing
    */
   public record ModuleJoints(
-      String label, Joint.Revolute steer, Joint.Revolute wheel, Drive drive, Drive steering) {}
+      String label, RevoluteJoint steer, RevoluteJoint wheel, Drive drive, Drive steering) {}
 
   /**
    * The four modules as joints and drives, each where its corner puts it: front left, front right,
@@ -427,13 +437,43 @@ public record DrivetrainGeometry(
     List<ModuleJoints> joints = new ArrayList<>();
     for (int i = 0; i < corners.size(); i++) {
       Corner corner = corners.get(i);
-      joints.add(corner.module().joints(LABELS.get(i), corner.position()));
+      joints.add(
+          corner
+              .module()
+              .joints(LABELS.get(i), corner.position(), driveCommutation(), steerCommutation()));
     }
     return joints;
   }
 
+  /**
+   * How the four drive motors are driven: with field-oriented control when their controllers say
+   * {@code .foc()}, which all four do or none does. A drivetrain not wired runs the plain motors.
+   */
+  public MechanismWiring.Commutation driveCommutation() {
+    return wiring
+        .map(wired -> wired.modules().get(0).drive().commutation())
+        .orElse(MechanismWiring.Commutation.TRAPEZOIDAL);
+  }
+
+  /** How the four steering motors are driven, as {@link #driveCommutation} is for the drives. */
+  public MechanismWiring.Commutation steerCommutation() {
+    return wiring
+        .map(wired -> wired.modules().get(0).steering().commutation())
+        .orElse(MechanismWiring.Commutation.TRAPEZOIDAL);
+  }
+
+  /** What drives one corner's wheel, driven as its controllers say: front left is 0. */
+  public Actuator.MotorGroup driveMotors(int corner) {
+    return module(corner).driveMotors(driveCommutation());
+  }
+
+  /** What turns one corner's module, driven as its controllers say: front left is 0. */
+  public Actuator.MotorGroup steerMotors(int corner) {
+    return module(corner).steerMotors(steerCommutation());
+  }
+
   /** Each corner's type of module: front left, front right, back left, back right. */
-  public ModuleType module(int corner) {
+  public Module module(int corner) {
     return corners.get(corner).module();
   }
 
@@ -454,10 +494,37 @@ public record DrivetrainGeometry(
    * can only wait for. The real robot is slower.
    */
   public LinearVelocity freeSpeed() {
-    LinearVelocity slowest = corners.get(0).module().freeSpeed();
+    return slowest(corners).freeSpeed();
+  }
+
+  /**
+   * The drive kV (volts per meter per second) a frictionless drivetrain would have: its slowest
+   * module's ideal ({@link Module#idealDriveKv}), which its control is seeded with until the kV is
+   * tuned.
+   */
+  public double idealDriveKv() {
+    return slowest(corners).idealDriveKv();
+  }
+
+  /**
+   * Why its control's drive kV looks wrong beside the ideal, if it does: under half it or over
+   * twice it, which is likelier a unit or a ratio than the drivetrain, with the frames it was
+   * likely worked out in and entered as ({@code TunedGainDoubt.ofDriveKv}). A seeded kV is the
+   * ideal, so it never does.
+   */
+  public Optional<String> whyDriveKvIsDoubtful() {
+    Module module = slowest(corners);
+    return control
+        .flatMap(each -> each.gains().driveKv())
+        .flatMap(tuned -> TunedGainDoubt.ofDriveKv(tuned, module));
+  }
+
+  /** The module type with the lowest free speed, which the others can only wait for. */
+  private static Module slowest(List<Corner> corners) {
+    Module slowest = corners.get(0).module();
     for (Corner corner : corners) {
-      if (corner.module().freeSpeed().lt(slowest)) {
-        slowest = corner.module().freeSpeed();
+      if (corner.module().freeSpeed().lt(slowest.freeSpeed())) {
+        slowest = corner.module();
       }
     }
     return slowest;
@@ -520,10 +587,20 @@ public record DrivetrainGeometry(
   private static Optional<String> whyItCannotBeWired(List<Corner> corners, SwerveWiring wiring) {
     Set<String> reasons = new LinkedHashSet<>();
     for (Corner corner : corners) {
-      ModuleType module = corner.module();
+      Module module = corner.module();
       whyNotOnController("drive", module.driveMotor(), wiring.driveController())
           .ifPresent(reasons::add);
       whyNotOnController("steering", module.steerMotor(), wiring.steerController())
+          .ifPresent(reasons::add);
+    }
+    for (int i = 0; i < corners.size(); i++) {
+      Module module = corners.get(i).module();
+      SwerveWiring.ModuleWiring corner = wiring.modules().get(i);
+      Actuator.MotorGroup.whyNoFocCurve(module.driveMotor(), corner.drive().commutation())
+          .map(why -> "its drive motor: " + why)
+          .ifPresent(reasons::add);
+      Actuator.MotorGroup.whyNoFocCurve(module.steerMotor(), corner.steering().commutation())
+          .map(why -> "its steering motor: " + why)
           .ifPresent(reasons::add);
     }
     boolean hasSparks =

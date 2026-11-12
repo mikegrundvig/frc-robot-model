@@ -43,6 +43,8 @@ public final class FieldModel {
   private final double length;
   private final double width;
   private final Symmetry symmetry;
+  private final TagFamily tagFamily;
+  private final double tagSizeMeters;
   private final Map<Integer, Tag> tags;
   private final TagPartners partners;
   private final List<Start> starts;
@@ -53,9 +55,10 @@ public final class FieldModel {
   private final Polygon2d outline;
 
   /**
-   * A field on a WPILib layout, its tags as it gives them, with no terrain or elements.
+   * A field on its tags ({@link TagLayout#of}: a WPILib layout, its tags as it gives them), with no
+   * terrain or elements.
    *
-   * @param layout the field's size and AprilTags; the model keeps its own copy
+   * @param layout the field's size and AprilTags, and the tags' family and size
    * @param symmetry how red's half relates to blue's
    * @param starts where robots start a match, without the robot
    * @param places other named places on the floor: spots to line up on, to score or load from
@@ -64,30 +67,29 @@ public final class FieldModel {
    *     it, or has no partner on the other half), or two share a name
    */
   public FieldModel(
-      Field layout, Symmetry symmetry, List<Start> starts, List<Place> places, List<Zone> zones) {
+      TagLayout layout,
+      Symmetry symmetry,
+      List<Start> starts,
+      List<Place> places,
+      List<Zone> zones) {
     this(layout, symmetry, starts, places, zones, List.of());
   }
 
   /**
-   * A field on a WPILib layout, its tags as it gives them, with its terrain.
+   * A field on its tags, with its terrain.
    *
    * @param surfaces the raised ground on the blue alliance's half, each named as blue's drivers
    *     would ("Left bump"): the model adds each one's partner on red's half, and names them
    *     "(blue)" and "(red)" for the half each is on
    */
   public FieldModel(
-      Field layout,
+      TagLayout layout,
       Symmetry symmetry,
       List<Start> starts,
       List<Place> places,
       List<Zone> zones,
       List<? extends Surface> surfaces) {
-    this(
-        builder(TagLayout.of(layout), symmetry)
-            .starts(starts)
-            .places(places)
-            .zones(zones)
-            .surfaces(surfaces));
+    this(builder(layout, symmetry).starts(starts).places(places).zones(zones).surfaces(surfaces));
   }
 
   /**
@@ -183,6 +185,8 @@ public final class FieldModel {
     name = layout.name();
     length = layout.lengthMeters();
     width = layout.widthMeters();
+    tagFamily = layout.family();
+    tagSizeMeters = layout.tagSizeMeters();
     symmetry = field.symmetry;
     Map<Integer, Tag> byId = new LinkedHashMap<>();
     for (Tag tag : layout.tags()) {
@@ -205,6 +209,8 @@ public final class FieldModel {
     name = like.name;
     length = like.length;
     width = like.width;
+    tagFamily = like.tagFamily;
+    tagSizeMeters = like.tagSizeMeters;
     symmetry = like.symmetry;
     tags = like.tags;
     partners = like.partners;
@@ -242,6 +248,19 @@ public final class FieldModel {
 
   public Symmetry symmetry() {
     return symmetry;
+  }
+
+  /** Which AprilTag family the field's tags are printed from: what a camera must detect. */
+  public TagFamily tagFamily() {
+    return tagFamily;
+  }
+
+  /**
+   * The side of each tag's black square, in meters, as the game's manual prints them: the size a
+   * camera's software solves its poses at, and the simulator and the views draw.
+   */
+  public double tagSizeMeters() {
+    return tagSizeMeters;
   }
 
   /** Every tag, by ID: where the official layout puts it, and where a survey found it. */

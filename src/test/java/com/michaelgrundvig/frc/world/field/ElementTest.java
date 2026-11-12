@@ -23,7 +23,7 @@ import org.wpilib.math.geometry.Translation3d;
  * reaching out from it overhead, and what a field refuses.
  */
 class ElementTest {
-  private static final Material STEEL = Material.builder().name("steel").build();
+  private static final Material STEEL = Material.of("steel");
 
   /** The hub's body: 1 m square between its tags' faces at x = 4 and x = 5, 2 m tall. */
   private static final Block BODY = Block.standing(square(4, 3.5, 5, 4.5), 2, STEEL);
@@ -38,7 +38,7 @@ class ElementTest {
   }
 
   private static FieldModel.Builder field() {
-    return FieldModel.builder(TagLayout.of(TestFields.layout()), Symmetry.ROTATED);
+    return FieldModel.builder(TestFields.tagLayout(), Symmetry.ROTATED);
   }
 
   private static Element block(String name, Polygon2d outline, int... tags) {

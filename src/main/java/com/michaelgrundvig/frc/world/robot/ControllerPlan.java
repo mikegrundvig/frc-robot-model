@@ -100,7 +100,7 @@ public final class ControllerPlan {
       List<MechanismWiring.Device> controllers,
       MechanismControl control) {
     List<String> noted = new ArrayList<>();
-    if (!(drive.actuator() instanceof Actuator.Motors driving)) {
+    if (!(drive.actuator() instanceof Actuator.MotorGroup driving)) {
       throw new IllegalArgumentException(
           drive.label() + " isn't motors: a motor controller drives motors");
     }
@@ -131,7 +131,7 @@ public final class ControllerPlan {
     }
     motors = driving.count();
     rotations = MechanismRotations.of(joint, drive);
-    RobotMath.Gains seed = math.idealGains(joint);
+    RobotMath.Feedforward seed = math.idealGains(joint);
     MechanismControl.Gains gains = control.gains();
     kV = gains.kV().orElse(seed.kV());
     if (gains.kV().isPresent()) {
@@ -249,7 +249,7 @@ public final class ControllerPlan {
   }
 
   /** The stand-in controller for each of a joint's motors, its block wiring none. */
-  private static List<MechanismWiring.Device> standIns(Actuator.Motors motors) {
+  private static List<MechanismWiring.Device> standIns(Actuator.MotorGroup motors) {
     MechanismWiring.Controller controller = MechanismWiring.Controller.standIn(motors.motor());
     List<MechanismWiring.Device> standIns = new ArrayList<>();
     for (int id = 0; id < motors.count(); id++) {
@@ -336,7 +336,7 @@ public final class ControllerPlan {
 
   /** Whether it turns freely, so a position is reached the short way round, a turn being a turn. */
   public boolean turnsFreely() {
-    return joint instanceof Joint.Revolute && joint.range().isEmpty();
+    return joint instanceof RevoluteJoint && joint.range().isEmpty();
   }
 
   /** What's doubtful about it, each a sentence for a log or a test. */
@@ -411,11 +411,11 @@ public final class ControllerPlan {
     }
     Joint joint = encoder.joint();
     Range range = joint.range().orElseThrow();
-    double readingAtStow = reading(encoder, joint.restPosition());
+    double readingAtStow = reading(encoder, RobotMath.restPosition(joint));
     double bottomOfTurn = wrapPoint - 1;
     double stowFromWrap = Math.min(readingAtStow - bottomOfTurn, wrapPoint - readingAtStow);
     boolean rangeCrossesTheWrap = margin < 0;
-    String whereTheWrapIs = joint.shown(alongJoint(encoder, margin)) + " from";
+    String whereTheWrapIs = Position.Kind.of(joint).shown(alongJoint(encoder, margin)) + " from";
     if (rangeCrossesTheWrap) {
       whereTheWrapIs = "inside";
     }
@@ -427,10 +427,10 @@ public final class ControllerPlan {
         shown(wrapPoint),
         whereTheWrapIs,
         joint.label(),
-        joint.shown(range.lower()),
-        joint.shown(range.upper()),
-        joint.shown(alongJoint(encoder, stowFromWrap)),
-        joint.shown(joint.restPosition()));
+        Position.Kind.of(joint).shown(range.lower()),
+        Position.Kind.of(joint).shown(range.upper()),
+        Position.Kind.of(joint).shown(alongJoint(encoder, stowFromWrap)),
+        Position.Kind.of(joint).shown(RobotMath.restPosition(joint)));
   }
 
   /** The encoder's turns for each of its joint's turns (or meters): a magnitude. */
@@ -453,7 +453,7 @@ public final class ControllerPlan {
    * a revolute joint, a meter in a meter of a prismatic one.
    */
   private static double perRatioUnit(Joint joint) {
-    if (joint instanceof Joint.Revolute) {
+    if (joint instanceof RevoluteJoint) {
       return 2 * Math.PI;
     }
     return 1;
@@ -477,7 +477,7 @@ public final class ControllerPlan {
     }
     double kG = tuned.orElse(seed);
     Gravity found;
-    if (joint instanceof Joint.Revolute) {
+    if (joint instanceof RevoluteJoint) {
       found = new Gravity(Gravity.Kind.COSINE, kG, offsetOfGravitysCosine(math, gains));
       whyOneCosineMissesGravity(math).ifPresent(noted::add);
     } else {
@@ -543,7 +543,7 @@ public final class ControllerPlan {
                 + " angle as the request's feedforward",
             joint.label(),
             fit.misfit() * 100,
-            joint.shown(fit.worstAt())));
+            Position.Kind.of(joint).shown(fit.worstAt())));
   }
 
   /**
@@ -576,7 +576,7 @@ public final class ControllerPlan {
   private Optional<Joint> firstJointBelowThatTiltsIt(RobotMath math) {
     Part below = joint.parent();
     while (below instanceof Joint parent) {
-      if (parent instanceof Joint.Revolute && math.gravityActsOn(parent)) {
+      if (parent instanceof RevoluteJoint && math.gravityActsOn(parent)) {
         return Optional.of(parent);
       }
       below = parent.parent();

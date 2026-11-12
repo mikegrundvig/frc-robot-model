@@ -5,12 +5,14 @@ import static com.michaelgrundvig.frc.world.config.Rules.notBlank;
 import static com.michaelgrundvig.frc.world.config.Rules.shown;
 import static org.wpilib.units.Units.MetersPerSecond;
 import static org.wpilib.units.Units.RadiansPerSecond;
+import static org.wpilib.units.Units.Value;
 import static org.wpilib.units.Units.Volts;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
 import java.util.Optional;
 import org.wpilib.units.measure.AngularVelocity;
+import org.wpilib.units.measure.Dimensionless;
 import org.wpilib.units.measure.LinearVelocity;
 import org.wpilib.units.measure.Voltage;
 
@@ -112,7 +114,7 @@ public record Output(String name, Kind kind, double value, Optional<Position.Kin
   }
 
   /** Starts describing an output, one named value at a time. */
-  public static OutputBuilder.NameStage builder() {
+  static OutputBuilder.NameStage builder() {
     return OutputBuilder.builder();
   }
 
@@ -145,9 +147,17 @@ public record Output(String name, Kind kind, double value, Optional<Position.Kin
     return builder().name(name).kind(Kind.VOLTAGE).value(volts).build();
   }
 
-  /** A share of the battery's voltage, from -1 to 1: a team's {@code DutyCycleOut}. */
-  public static Output dutyCycle(String name, double share) {
-    return builder().name(name).kind(Kind.DUTY_CYCLE).value(share).build();
+  /**
+   * A share of the battery's voltage, from -100% to 100%: a team's {@code DutyCycleOut}, {@code
+   * Output.dutyCycle("eject", Percent.of(-80))}.
+   */
+  public static Output dutyCycle(String name, Dimensionless share) {
+    return builder().name(name).kind(Kind.DUTY_CYCLE).value(share.in(Value)).build();
+  }
+
+  /** A share of the battery's voltage: {@code Output.of("eject", Percent.of(-80))}. */
+  public static Output of(String name, Dimensionless share) {
+    return dutyCycle(name, share);
   }
 
   /** Whether it runs the joint at all: anything but zero. */

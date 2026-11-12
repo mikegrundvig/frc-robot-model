@@ -26,8 +26,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class InterlockChecksTest {
   // spotless:off
-  private static final Joint.Revolute GHOST = lightPivot("ghost", Optional.of(Range.degrees(-90, 90)));
-  private static final Joint.Prismatic STAGE = lightSlide("stage", Vector3.UP, Range.meters(0, 0.6));
+  private static final RevoluteJoint GHOST = lightPivot("ghost", Optional.of(Range.degrees(-90, 90)));
+  private static final PrismaticJoint STAGE = lightSlide("stage", Vector3.UP, Range.meters(0, 0.6));
   private static final Sensor.Switch BEAM = Sensor.Switch.beam("claw beam", Part.CHASSIS);
   private static final Position ARM_OUT = Position.degrees("out", 60);
 
@@ -101,10 +101,10 @@ class InterlockChecksTest {
             () -> InterlockChecks.namesOnlyTheRobotsOwn(standard(), ON_A_SENSOR), true),
         answers("one about a joint the robot has not does not",
             () -> InterlockChecks.namesOnlyTheRobotsOwn(standard(), ABOUT_A_GHOST), false),
-        answers("a configuration that leaves a ring of the robot's own in a deadlock is refused",
-            () -> ConfigurationChecks.problems(standard(), List.of(STOWED), List.of(ARM_BY_PIVOT, PIVOT_BY_ARM)).size(), 1),
+        answers("a preset that leaves a ring of the robot's own in a deadlock is refused",
+            () -> PresetChecks.problems(standard(), List.of(STOWED), List.of(ARM_BY_PIVOT, PIVOT_BY_ARM)).size(), 1),
         answers("a ring through another joint's place is not judged: its interlock is refused instead",
-            () -> ConfigurationChecks.problems(standard(), List.of(STOWED), List.of(ARM_BY_ANOTHERS_PLACE, PIVOT_BY_ARM)), List.of()),
+            () -> PresetChecks.problems(standard(), List.of(STOWED), List.of(ARM_BY_ANOTHERS_PLACE, PIVOT_BY_ARM)), List.of()),
         answers("a joint resting inside a keep-out about a ghost is not doubted",
             () -> InterlockChecks.startDoubts(standard(), List.of(
                 Interlock.that(ARM).keepsOut(Range.degrees(-30, 0)).when(GHOST.atMost(Degrees.of(10))))),

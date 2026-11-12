@@ -93,7 +93,7 @@ final class GainUnits {
   /**
    * Whether a gain given with its unit is per an angle or per a length.
    *
-   * @param gain the gain's name, as the refusal says it: "kP"
+   * @param gain the gain's name, as the refusal says it: "Gains.kP", or "SwerveGains.steerKp"
    * @param takes what this gain has to be per
    * @param loopThatDecides the control's loop, when what the gain takes depends on it, so that the
    *     refusal can say so. It is empty for a gain that takes the same in either loop.
@@ -112,8 +112,7 @@ final class GainUnits {
     String inWhichControl =
         loopThatDecides.map(loop -> " in a control for " + loop.held()).orElse("");
     throw new IllegalArgumentException(
-        "Gains."
-            + gain
+        gain
             + ": volts per "
             + unit.name()
             + " can't be one"
@@ -143,8 +142,7 @@ final class GainUnits {
       return kind;
     }
     throw new IllegalArgumentException(
-        "Gains."
-            + gain
+        gain
             + ": it's per "
             + aOrAn(kind)
             + ", and the other gains are per "

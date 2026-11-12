@@ -6,6 +6,7 @@ import com.michaelgrundvig.frc.world.config.Finding;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -14,9 +15,11 @@ import java.util.Optional;
  * pass, from where each is written, its joint's block or the robot's sensors. One sensor on each
  * input, a joint's absolute encoder on a Systemcore port among them; and a switch on a motor
  * controller's limit input only where that controller has one, on the joint whose switch it is. A
- * CANdi's or a CANrange's CAN ID is the devices' to check ({@link CanDevice#sharedIds}), and
- * whether a limit switch's input is the one for its end isn't checked: whether a SPARK's forward
- * input follows its inversion is unconfirmed (open question M22).
+ * CANdi's or a CANrange's CAN ID is the devices' to check ({@link CanDevice#sharedIds}). A joint's
+ * own limit switch on its controller's input for the other end is refused while the motor isn't
+ * reversed, the controller's forward then being the joint's way toward its upper end; with the
+ * motor reversed, whether the controller's inputs follow its inversion is unconfirmed (open
+ * question M22), so it isn't judged.
  */
 final class Inputs {
   private Inputs() {}
@@ -74,6 +77,9 @@ final class Inputs {
           on == null
               ? Optional.empty()
               : on.driven().motors().filter(each -> !each.controllers().isEmpty());
+      if (onSwitch.kind() instanceof Sensor.Switch.Limit own && motors.isPresent()) {
+        whyOnTheOtherEndsInput(label, own, limit, motors.get()).ifPresent(problems::add);
+      }
       if (motors.isEmpty()) {
         problems.add(
             Finding.refused(
@@ -90,8 +96,7 @@ final class Inputs {
                     + " on a Systemcore port or a CANdi"));
       } else if (motors.get().controllers().get(0).controller()
               == MechanismWiring.Controller.TALON_FX
-          && !motors.get().motor().equals(Motor.FALCON_500)
-          && !motors.get().motor().equals(Motor.FALCON_500_FOC)) {
+          && !motors.get().motor().equals(Motor.FALCON_500)) {
         problems.add(
             Finding.refused(
                 label,
@@ -103,6 +108,59 @@ final class Inputs {
       }
     }
     return problems;
+  }
+
+  /**
+   * Why a joint's own limit switch is refused on its controller's input for the other end, if it
+   * is: with its motor not reversed, the controller's forward input stops the joint moving toward
+   * its upper end, and its reverse input toward its lower end.
+   */
+  private static Optional<Finding> whyOnTheOtherEndsInput(
+      String label,
+      Sensor.Switch.Limit own,
+      SensorWiring.ControllerLimit limit,
+      Driven.Motors motors) {
+    if (!own.joint().label().equals(limit.joint())) {
+      return Optional.empty();
+    }
+    boolean reversed = motors.controllers().get(0).turnsClockwise();
+    if (reversed) {
+      return Optional.empty();
+    }
+    SensorWiring.Direction itsEnds = inputFor(own.end());
+    if (limit.direction() == itsEnds) {
+      return Optional.empty();
+    }
+    Sensor.Switch.Limit.End stopped =
+        own.end() == Sensor.Switch.Limit.End.LOWER
+            ? Sensor.Switch.Limit.End.UPPER
+            : Sensor.Switch.Limit.End.LOWER;
+    return Optional.of(
+        Finding.refused(
+            label,
+            label
+                + " is at "
+                + possessive(limit.joint())
+                + " "
+                + lowercase(own.end())
+                + " end, on its controller's "
+                + lowercase(limit.direction())
+                + " limit input, which stops it moving toward its "
+                + lowercase(stopped)
+                + " end: put it on Direction."
+                + itsEnds.name()));
+  }
+
+  /** The controller's input for a joint's end, with its motor not reversed. */
+  private static SensorWiring.Direction inputFor(Sensor.Switch.Limit.End end) {
+    if (end == Sensor.Switch.Limit.End.LOWER) {
+      return SensorWiring.Direction.REVERSE;
+    }
+    return SensorWiring.Direction.FORWARD;
+  }
+
+  private static String lowercase(Enum<?> value) {
+    return value.name().toLowerCase(Locale.ROOT);
   }
 
   /** An input taken by what's connected to it, or what's already there named with it. */

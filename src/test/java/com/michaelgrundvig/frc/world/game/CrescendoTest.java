@@ -8,7 +8,6 @@ import com.michaelgrundvig.frc.world.field.Alliance;
 import com.michaelgrundvig.frc.world.field.FieldModel;
 import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Symmetry;
-import com.michaelgrundvig.frc.world.field.TagLayout;
 import com.michaelgrundvig.frc.world.physical.Bumpers;
 import com.michaelgrundvig.frc.world.robot.ConfigFixtures;
 import java.util.ArrayList;
@@ -35,7 +34,8 @@ class CrescendoTest {
   @Test
   void theFieldIsNotTurnedHalfATurn() {
     FieldModel rotated =
-        FieldModel.builder(TagLayout.of(Crescendo.LAYOUT.loadField()), Symmetry.ROTATED).build();
+        FieldModel.builder(Crescendo.GAME.layout(Crescendo.LAYOUT.loadField()), Symmetry.ROTATED)
+            .build();
 
     assertThat(rotated.symmetryError()).as("the amps' tags have no partner").isGreaterThan(1);
   }

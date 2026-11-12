@@ -38,30 +38,30 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class ControllerPlanTest {
   // spotless:off
-  private static final Joint.Revolute ARM = revolute("arm", Part.CHASSIS, point(0.1, 0, 0.5), PITCH_UP,
+  private static final RevoluteJoint ARM = revolute("arm", Part.CHASSIS, point(0.1, 0, 0.5), PITCH_UP,
       Optional.of(Range.degrees(-30, 120)), Math.toRadians(-30), link("arm link", 4, point(0.3, 0, 0), point(0.6, 0.05, 0.05)));
-  private static final Joint.Revolute WRIST = revolute("wrist", ARM, point(0.6, 0, 0), PITCH_UP,
+  private static final RevoluteJoint WRIST = revolute("wrist", ARM, point(0.6, 0, 0), PITCH_UP,
       Optional.of(Range.degrees(-90, 90)), 0, link("claw", 1, point(0.1, 0, 0), point(0.2, 0.05, 0.05)));
-  private static final Joint.Prismatic ELEVATOR = prismatic("elevator", Part.CHASSIS, point(-0.2, 0, 0.1), UP,
+  private static final PrismaticJoint ELEVATOR = prismatic("elevator", Part.CHASSIS, point(-0.2, 0, 0.1), UP,
       Range.meters(0, 1.2), link("carriage", 5, point(0, 0, 0), point(0.3, 0.3, 0.1)));
-  private static final Joint.Revolute TURRET = turning("turret", Optional.of(Range.degrees(-160, 180)));
+  private static final RevoluteJoint TURRET = turning("turret", Optional.of(Range.degrees(-160, 180)));
 
   // A turning joint with no stops, reached the short way round.
-  private static final Joint.Revolute SPINNER = turning("spinner", Optional.empty());
+  private static final RevoluteJoint SPINNER = turning("spinner", Optional.empty());
 
   // An arm whose mass isn't known, so it has no ideal kG to compare a tuned one with.
-  private static final Joint.Revolute MASSLESS = Joint.pivot("massless arm", Part.CHASSIS, point(0.1, 0, 0.5), PITCH_UP)
+  private static final RevoluteJoint MASSLESS = Joint.pivot("massless arm", Part.CHASSIS, PITCH_UP).at(Meters.of(0.1), Meters.of(0), Meters.of(0.5))
       .range(Range.degrees(-30, 120)).rest(Degrees.of(-30)).carries(Link.unseen("massless link"));
 
   // An intake that swings a heavy floor at half its angle: gravity one cosine fits badly.
-  private static final Joint.Revolute INTAKE = revolute("intake", Part.CHASSIS, point(0.2, 0, 0.3), PITCH_UP,
+  private static final RevoluteJoint INTAKE = revolute("intake", Part.CHASSIS, point(0.2, 0, 0.3), PITCH_UP,
       Optional.of(Range.degrees(0, 135)), 0, link("intake arm", 1, point(0.2, 0, 0), point(0.4, 0.05, 0.05)));
-  private static final Joint.Revolute FLOOR = revolute("floor", Part.CHASSIS, point(0.2, 0, 0.3), PITCH_UP,
+  private static final RevoluteJoint FLOOR = revolute("floor", Part.CHASSIS, point(0.2, 0, 0.3), PITCH_UP,
       Optional.of(Range.degrees(0, 67.5)), 0, link("floor", 6, point(0.3, 0, 0), point(0.6, 0.05, 0.05)));
 
   // An arm as its block says, with its motor and control, wired to one controller.
   private static final MechanismWiring.Device BLOCK_CONTROLLER = MechanismWiring.Controller.TALON_FX.can(11);
-  private static final Joint.Revolute BLOCK_ARM = Joint.pivot("block arm", Part.CHASSIS, point(0.1, 0, 0.5), PITCH_UP)
+  private static final RevoluteJoint BLOCK_ARM = Joint.pivot("block arm", Part.CHASSIS, PITCH_UP).at(Meters.of(0.1), Meters.of(0), Meters.of(0.5))
       .range(Range.degrees(-30, 120)).rest(Degrees.of(-30))
       .carries(link("block arm link", 4, point(0.3, 0, 0), point(0.6, 0.05, 0.05)))
       .motors(Motor.KRAKEN_X60.through(Gearing.of(60)).on(BLOCK_CONTROLLER)).control(MechanismFixtures.stowed(30));
@@ -76,10 +76,7 @@ class ControllerPlanTest {
   private static final Drive INTAKE_MOTOR = motors(INTAKE, Motor.KRAKEN_X60, 1, gearing(30, 1));
 
   // A wrist chained through the shoulder's axle: one motor turning both joints.
-  private static final Drive WRIST_THROUGH_THE_SHOULDER = Drive.builder().label("wrist")
-      .actuator(Actuator.Motors.builder().motor(Motor.KRAKEN_X44).count(1).build())
-      .transmission(Transmission.Combined.builder().terms(List.of(term(WRIST, 25), term(ARM, 25))).efficiency(1).build())
-      .build();
+  private static final Drive WRIST_THROUGH_THE_SHOULDER = Drive.of("wrist", Actuator.MotorGroup.of(Motor.KRAKEN_X44, 1), Transmission.Combined.of(List.of(term(WRIST, 25), term(ARM, 25)), 1));
 
   private static final Sensor.Encoder ARM_ENCODER = encoder("arm encoder", ARM, 1, true);
   private static final Sensor.Encoder ARM_BACKWARDS = encoder("arm backwards", ARM, -1, true);
@@ -104,7 +101,7 @@ class ControllerPlanTest {
           MechanismWiring.Controller.TALON_FX.can(12).clockwise());
 
   /** A joint turning about this axis, three kilograms on a plate. */
-  private static Joint.Revolute turning(String label, Optional<Range> stops) {
+  private static RevoluteJoint turning(String label, Optional<Range> stops) {
     return revolute(
         label,
         Part.CHASSIS,
@@ -116,7 +113,7 @@ class ControllerPlanTest {
   }
 
   private static Transmission.Term term(Joint joint, double ratio) {
-    return Transmission.Term.builder().joint(joint).ratio(ratio).build();
+    return Transmission.Term.of(joint, ratio);
   }
 
   private static ControllerPlan arm(MechanismControl control) {

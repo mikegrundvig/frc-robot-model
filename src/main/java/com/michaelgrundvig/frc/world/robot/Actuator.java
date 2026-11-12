@@ -10,6 +10,8 @@ import static org.wpilib.units.Units.Volts;
 
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
+import io.soabase.recordbuilder.core.RecordBuilder;
+import java.util.Optional;
 import org.wpilib.math.system.DCMotor;
 
 /**
@@ -40,19 +42,78 @@ public sealed interface Actuator {
    *
    * @param motor the motor, the same for each
    * @param count how many turn it together
+   * @param commutation how their controllers drive them: with field-oriented control, they run on
+   *     the motor's FOC curve ({@link #curve})
    */
   @ConfigRecord
-  record Motors(Motor motor, int count) implements Actuator {
-    public Motors {
-      Checks.on(Motors.class).field("count", count, positive()).orThrow();
+  record MotorGroup(
+      Motor motor,
+      int count,
+      @RecordBuilder.Initializer(value = "DEFAULT_COMMUTATION", source = MotorGroup.class)
+          MechanismWiring.Commutation commutation)
+      implements Actuator {
+    /** How motors are driven unless their controllers say otherwise: the plain way. */
+    public static final MechanismWiring.Commutation DEFAULT_COMMUTATION =
+        MechanismWiring.Commutation.TRAPEZOIDAL;
+
+    public MotorGroup {
+      Motor each = motor;
+      MechanismWiring.Commutation driven = commutation;
+      Checks.on(MotorGroup.class)
+          .field("count", count, positive())
+          .whyNot("commutation", () -> whyNoFocCurve(each, driven))
+          .orThrow();
+    }
+
+    /**
+     * Why a motor can't be driven so, if it can't: WPILib has no FOC curve of it to run it on.
+     *
+     * @return the refusal, naming the motor and the ones that have a curve
+     */
+    static Optional<String> whyNoFocCurve(Motor motor, MechanismWiring.Commutation commutation) {
+      if (commutation == MechanismWiring.Commutation.TRAPEZOIDAL) {
+        return Optional.empty();
+      }
+      if (motor.focCurve().isPresent()) {
+        return Optional.empty();
+      }
+      return Optional.of(
+          "a "
+              + motor.name()
+              + " has no FOC curve to run it on: .foc() is for "
+              + Motor.withFocCurves());
+    }
+
+    /**
+     * The motor as its controllers drive it: its FOC curve under field-oriented control, otherwise
+     * the motor's own.
+     */
+    public Motor curve() {
+      if (commutation == MechanismWiring.Commutation.FOC) {
+        return motor.focCurve().orElseThrow();
+      }
+      return motor;
+    }
+
+    /**
+     * Motors of one kind, side by side on one shaft.
+     *
+     * @param motor the kind of motor
+     * @param count how many, side by side
+     */
+    public static MotorGroup of(Motor motor, int count) {
+      return builder().motor(motor).count(count).build();
     }
 
     /** Starts describing the motors, one named value at a time. */
-    public static ActuatorMotorsBuilder.MotorStage builder() {
-      return ActuatorMotorsBuilder.builder();
+    static ActuatorMotorGroupBuilder.MotorStage builder() {
+      return ActuatorMotorGroupBuilder.builder();
     }
 
-    /** The motors together, as WPILib models them: their torque, current and speed at the shaft. */
+    /**
+     * The motors together, as WPILib models them on their curve: their torque, current and speed at
+     * the shaft.
+     */
     public DCMotor model() {
       return model(1);
     }
@@ -65,12 +126,13 @@ public sealed interface Actuator {
      * @param efficiency the share of the torque that gets through, above 0 and at most 1
      */
     public DCMotor model(double efficiency) {
+      Motor driven = curve();
       return new DCMotor(
-          motor.nominalVoltage().in(Volts),
-          motor.stallTorque().in(NewtonMeters) * efficiency,
-          motor.stallCurrent().in(Amps),
-          motor.freeCurrent().in(Amps),
-          motor.freeSpeed().in(RadiansPerSecond),
+          driven.nominalVoltage().in(Volts),
+          driven.stallTorque().in(NewtonMeters) * efficiency,
+          driven.stallCurrent().in(Amps),
+          driven.freeCurrent().in(Amps),
+          driven.freeSpeed().in(RadiansPerSecond),
           count);
     }
 

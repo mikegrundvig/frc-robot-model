@@ -25,8 +25,17 @@ public record Material(String name) {
     Checks.on(Material.class).field("name", name, notBlank()).orThrow();
   }
 
+  /**
+   * A material by its name: {@code Material.of("polycarbonate")}.
+   *
+   * @param name what it's called, the same everywhere it's used
+   */
+  public static Material of(String name) {
+    return builder().name(name).build();
+  }
+
   /** Starts describing a material, one named value at a time. */
-  public static MaterialBuilder.NameStage builder() {
+  static MaterialBuilder.NameStage builder() {
     return MaterialBuilder.builder();
   }
 }

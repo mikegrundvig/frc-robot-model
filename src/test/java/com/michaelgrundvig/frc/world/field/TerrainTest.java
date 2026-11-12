@@ -23,7 +23,7 @@ class TerrainTest {
 
   private static FieldModel fieldWith(Symmetry symmetry, Surface... surfaces) {
     return new FieldModel(
-        TestFields.layout(), symmetry, List.of(), List.of(), List.of(), List.of(surfaces));
+        TestFields.tagLayout(), symmetry, List.of(), List.of(), List.of(), List.of(surfaces));
   }
 
   @ParameterizedTest(name = "{0}")

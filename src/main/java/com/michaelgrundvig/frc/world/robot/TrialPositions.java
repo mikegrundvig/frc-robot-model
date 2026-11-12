@@ -90,7 +90,7 @@ final class TrialPositions {
   /** The positions where a condition begins or ends holding. */
   static List<Double> edgesOf(Condition.OnJoint condition) {
     return switch (condition) {
-      case Condition.At at -> List.of(at.joint().position(at.name()).value());
+      case Condition.At at -> List.of(RobotMath.position(at.joint(), at.name()).value());
       case Condition.AtLeast atLeast -> List.of(atLeast.position());
       case Condition.AtMost atMost -> List.of(atMost.position());
       case Condition.Between between -> List.of(between.from(), between.to());

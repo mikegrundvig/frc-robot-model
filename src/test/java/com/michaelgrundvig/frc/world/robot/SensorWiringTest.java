@@ -9,7 +9,6 @@ import static org.wpilib.units.Units.Meters;
 
 import org.junit.jupiter.api.Test;
 import org.wpilib.math.geometry.Pose3d;
-import org.wpilib.math.geometry.Translation3d;
 
 /** Where a switch or a rangefinder is connected, and what the wiring refuses. */
 class SensorWiringTest {
@@ -51,7 +50,8 @@ class SensorWiringTest {
    */
   @Test
   void aJointsPinAndARangefinderAreWrittenByWhatTheyAre() {
-    Joint.Revolute roller = Joint.roller("roller", Part.CHASSIS, new Translation3d());
+    RevoluteJoint roller =
+        Joint.roller("roller", Part.CHASSIS).at(Meters.of(0), Meters.of(0), Meters.of(0));
     Sensor.Rangefinder hopper =
         Sensor.Rangefinder.of("hopper", Part.CHASSIS, Meters.of(1.3), Degrees.of(27))
             .at(Pose3d.ZERO)
@@ -100,7 +100,8 @@ class SensorWiringTest {
    */
   @Test
   void aSwitchsPolarityFollowsItsInput() {
-    Joint.Revolute roller = Joint.roller("roller", Part.CHASSIS, new Translation3d());
+    RevoluteJoint roller =
+        Joint.roller("roller", Part.CHASSIS).at(Meters.of(0), Meters.of(0), Meters.of(0));
 
     assertThat(CANDI.can(BUS, 30).s1().normallyOpen())
         .isEqualTo(

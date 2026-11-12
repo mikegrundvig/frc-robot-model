@@ -19,11 +19,11 @@ final class RobotDevices {
    * @param sensors every sensor of the robot, the joints' own included
    */
   static List<CanDevice> of(
-      Optional<Pdh> pdh, List<Joint> joints, DrivetrainGeometry drivetrain, List<Sensor> sensors) {
+      Optional<Pdh> pdh, List<Joint> joints, Drivetrain drivetrain, List<Sensor> sensors) {
     List<CanDevice> devices = new ArrayList<>();
     pdh.ifPresent(hub -> devices.add(device("the PDH", CanDevice.Kind.PDH, hub.bus(), hub.id())));
     drivetrain.wiring().ifPresent(wiring -> devices.addAll(wiring.devices()));
-    joints.forEach(joint -> devices.addAll(joint.devices()));
+    joints.forEach(joint -> devices.addAll(RobotMath.devices(joint)));
     for (Sensor sensor : sensors) {
       switch (sensor) {
         case Sensor.Switch onSwitch -> addItsCandi(onSwitch, devices);

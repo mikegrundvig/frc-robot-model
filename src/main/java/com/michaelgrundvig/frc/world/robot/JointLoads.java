@@ -111,10 +111,10 @@ final class JointLoads {
    * as well as anywhere.
    */
   double gravityHeld(Joint joint, int number) {
-    if (joint instanceof Joint.Revolute) {
+    if (joint instanceof RevoluteJoint) {
       return peakGravity(number);
     }
-    return gravityWithParentLevel(number, joint.restPosition());
+    return gravityWithParentLevel(number, RobotMath.restPosition(joint));
   }
 
   /**
@@ -198,7 +198,7 @@ final class JointLoads {
       }
     }
     for (Drive drive : drives) {
-      if (drive.actuator() instanceof Actuator.Motors motors) {
+      if (drive.actuator() instanceof Actuator.MotorGroup motors) {
         double shaftRate = shaftRate(drive, rates);
         double rotorInertia = motors.motor().rotorInertia().in(KilogramSquareMeters);
         inertia += motors.count() * rotorInertia * shaftRate * shaftRate;
@@ -216,7 +216,7 @@ final class JointLoads {
     List<Drive> movingNothingElse = new ArrayList<>();
     for (Drive drive : drives) {
       boolean turnsAsTheJointMoves =
-          drive.actuator() instanceof Actuator.Motors && shaftRate(drive, rates) != 0;
+          drive.actuator() instanceof Actuator.MotorGroup && shaftRate(drive, rates) != 0;
       if (!turnsAsTheJointMoves) {
         continue;
       }
@@ -268,7 +268,7 @@ final class JointLoads {
     double[] rates = tree.rates(number, atRest);
     double pushPerAmp = 0;
     for (Drive drive : motorsThatMove(rates)) {
-      Actuator.Motors motors = (Actuator.Motors) drive.actuator();
+      Actuator.MotorGroup motors = (Actuator.MotorGroup) drive.actuator();
       DCMotor together = motors.model();
       double torqueConstant = together.stallTorque / together.stallCurrent;
       double efficiency = drive.transmission().efficiency();
@@ -296,13 +296,13 @@ final class JointLoads {
    *
    * @throws IllegalArgumentException if no motors move the joint
    */
-  RobotMath.Gains idealGains(Joint joint, int number) {
+  RobotMath.Feedforward idealGains(Joint joint, int number) {
     double[] atRest = tree.positions(Map.of());
     double[] rates = tree.rates(number, atRest);
     double pushPerVolt = 0;
     double backEmfPush = 0;
     for (Drive drive : motorsThatMove(rates)) {
-      DCMotor motor = ((Actuator.Motors) drive.actuator()).model();
+      DCMotor motor = ((Actuator.MotorGroup) drive.actuator()).model();
       double shaftRate = shaftRate(drive, rates);
       double torquePerVolt = motor.stallTorque / motor.nominalVoltage;
       double efficiency = drive.transmission().efficiency();
@@ -318,6 +318,6 @@ final class JointLoads {
     double kV = backEmfPush / pushPerVolt;
     double kA = inertia(number, atRest) / pushPerVolt;
     double kG = gravityHeld(joint, number) / pushPerVolt;
-    return new RobotMath.Gains(kV, kA, kG);
+    return new RobotMath.Feedforward(kV, kA, kG);
   }
 }

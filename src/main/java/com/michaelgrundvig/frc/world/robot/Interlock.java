@@ -35,10 +35,10 @@ import java.util.Optional;
  *
  * <p>The definition checks its interlocks when it is built. Every joint and sensor must be one of
  * the robot's, and none may be a joint that follows another. No joint may be held where it cannot
- * move, or kept from a named position it could then never reach. Every configuration, and the robot
- * as it starts, must obey every interlock whose condition is on a joint's position (what a sensor
- * reads is not known until the robot runs). And no group of joints may hold each other so that none
- * can move to free another.
+ * move, or kept from a named position it could then never reach. Every preset, and the robot as it
+ * starts, must obey every interlock whose condition is on a joint's position (what a sensor reads
+ * is not known until the robot runs). And no group of joints may hold each other so that none can
+ * move to free another.
  *
  * <p>This type only declares the rules. What they allow a joint to do in any one loop is decided by
  * {@link InterlockEnforcement}.
@@ -87,7 +87,7 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
     }
 
     /** Starts describing the interlock, one named value at a time. */
-    public static InterlockRunsOnlyWhenBuilder.JointStage builder() {
+    static InterlockRunsOnlyWhenBuilder.JointStage builder() {
       return InterlockRunsOnlyWhenBuilder.builder();
     }
 
@@ -130,7 +130,7 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
     }
 
     /** Starts describing the interlock, one named value at a time. */
-    public static InterlockKeepsOutBuilder.JointStage builder() {
+    static InterlockKeepsOutBuilder.JointStage builder() {
       return InterlockKeepsOutBuilder.builder();
     }
 
@@ -242,9 +242,9 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
     public String toString() {
       return joint.label()
           + " keeps out of "
-          + joint.shown(region.lower())
+          + Position.Kind.of(joint).shown(region.lower())
           + " to "
-          + joint.shown(region.upper())
+          + Position.Kind.of(joint).shown(region.upper())
           + " while "
           + condition;
     }
@@ -349,7 +349,7 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
         + " exactly at "
         + at.name()
         + ", "
-        + at.joint().shown(at.position().orElseThrow().value())
+        + Position.Kind.of(at.joint()).shown(at.position().orElseThrow().value())
         + ", which a measured position never is, so the interlock would never hold: say the"
         + " edge where the parts clear, "
         + other
@@ -387,8 +387,14 @@ public sealed interface Interlock permits Interlock.RunsOnlyWhen, Interlock.Keep
       return Optional.empty();
     }
     Range range = joint.range().get();
-    String regionShown = joint.shown(region.lower()) + " to " + joint.shown(region.upper());
-    String rangeShown = joint.shown(range.lower()) + " to " + joint.shown(range.upper());
+    String regionShown =
+        Position.Kind.of(joint).shown(region.lower())
+            + " to "
+            + Position.Kind.of(joint).shown(region.upper());
+    String rangeShown =
+        Position.Kind.of(joint).shown(range.lower())
+            + " to "
+            + Position.Kind.of(joint).shown(range.upper());
     boolean outsideTheRange = region.upper() <= range.lower() || region.lower() >= range.upper();
     if (outsideTheRange) {
       return Optional.of(

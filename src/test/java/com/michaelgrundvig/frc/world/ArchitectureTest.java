@@ -18,10 +18,10 @@ class ArchitectureTest {
    * robot's definition know nothing of each other; the paths ({@code path}) read the field, and the
    * games ({@code game}: a season's limits, which read the robot's definition, and its field, which
    * reads the field, the physical values and the robot's body) read what they describe, and neither
-   * the paths nor the games are read by the field, the robot or the other; the writers for other
-   * tools ({@code bridges}) read all of it, and nothing reads them; the record of what a robot did
-   * ({@code record}) reads the robot's definition, to say a fact in the robot's own names, and
-   * nothing here reads it.
+   * the paths nor the games are read by the field, the robot or the other; what the build's tool
+   * writers read of the robot program ({@code tools}) reads the robot's definition, and nothing
+   * here reads it; the record of what a robot did ({@code record}) reads the robot's definition, to
+   * say a fact in the robot's own names, and nothing here reads it.
    */
   @Test
   void theModelsPackagesStayApart() {
@@ -39,23 +39,23 @@ class ArchitectureTest {
         .definedBy("com.michaelgrundvig.frc.world.path..")
         .layer("game")
         .definedBy("com.michaelgrundvig.frc.world.game..")
-        .layer("bridges")
-        .definedBy("com.michaelgrundvig.frc.world.bridges..")
+        .layer("tools")
+        .definedBy("com.michaelgrundvig.frc.world.tools..")
         .layer("record")
         .definedBy("com.michaelgrundvig.frc.world.record..")
         .whereLayer("kit")
-        .mayOnlyBeAccessedByLayers("physical", "field", "robot", "game", "bridges", "record")
+        .mayOnlyBeAccessedByLayers("physical", "field", "robot", "game", "tools", "record")
         .whereLayer("physical")
-        .mayOnlyBeAccessedByLayers("field", "robot", "game", "bridges")
+        .mayOnlyBeAccessedByLayers("field", "robot", "game", "tools")
         .whereLayer("field")
-        .mayOnlyBeAccessedByLayers("path", "game", "bridges")
+        .mayOnlyBeAccessedByLayers("path", "game")
         .whereLayer("robot")
-        .mayOnlyBeAccessedByLayers("game", "bridges", "record")
+        .mayOnlyBeAccessedByLayers("game", "tools", "record")
         .whereLayer("path")
-        .mayOnlyBeAccessedByLayers("bridges")
+        .mayNotBeAccessedByAnyLayer()
         .whereLayer("game")
-        .mayOnlyBeAccessedByLayers("bridges")
-        .whereLayer("bridges")
+        .mayNotBeAccessedByAnyLayer()
+        .whereLayer("tools")
         .mayNotBeAccessedByAnyLayer()
         .whereLayer("record")
         .mayNotBeAccessedByAnyLayer()

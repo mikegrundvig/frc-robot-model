@@ -8,7 +8,7 @@ import com.michaelgrundvig.frc.world.game.Rebuilt;
 import com.michaelgrundvig.frc.world.physical.Inertia;
 import com.michaelgrundvig.frc.world.physical.MassProperties;
 import com.michaelgrundvig.frc.world.physical.Material;
-import com.michaelgrundvig.frc.world.physical.Shape;
+import com.michaelgrundvig.frc.world.physical.Solid;
 import com.michaelgrundvig.frc.world.physical.Vector3;
 import java.util.List;
 import java.util.Optional;
@@ -25,7 +25,7 @@ import org.wpilib.units.measure.Distance;
 final class MechanismFixtures {
   private MechanismFixtures() {}
 
-  static final Material ALUMINUM = Material.builder().name("aluminum").build();
+  static final Material ALUMINUM = Material.of("aluminum");
 
   /** Turning about this, a joint whose zero points forward raises it as its position grows. */
   static final Vector3 PITCH_UP = new Vector3(0, -1, 0);
@@ -37,25 +37,14 @@ final class MechanismFixtures {
    * there, and that box its shape.
    */
   static Link link(String label, double kilograms, Translation3d cg, Translation3d size) {
-    return Link.builder()
-        .label(label)
-        .mass(
-            MassProperties.builder()
-                .mass(Kilograms.of(kilograms))
-                .cg(cg)
-                .inertia(Inertia.box(Kilograms.of(kilograms), size))
-                .build())
-        .shapes(
-            List.of(
-                Shape.Box.builder()
-                    .pose(new Pose3d(cg, Rotation3d.ZERO))
-                    .size(size)
-                    .material(ALUMINUM)
-                    .build()))
-        .build();
+    return Link.of(
+            label,
+            MassProperties.of(
+                Kilograms.of(kilograms), cg, Inertia.box(Kilograms.of(kilograms), size)))
+        .shapes(List.of(Solid.Box.of(new Pose3d(cg, Rotation3d.ZERO), size, ALUMINUM)));
   }
 
-  static Joint.Revolute revolute(
+  static RevoluteJoint revolute(
       String label,
       Part parent,
       Translation3d at,
@@ -63,14 +52,14 @@ final class MechanismFixtures {
       Optional<Range> range,
       double reference,
       Link link) {
-    return Joint.Revolute.builder()
+    return RevoluteJoint.builder()
         .label(label)
         .parent(parent)
-        .origin(new Transform3d(at, Rotation3d.ZERO))
         .axis(axis)
         .link(link)
         .range(range)
         .rest(reference)
+        .place(new Transform3d(at, Rotation3d.ZERO))
         .build();
   }
 
@@ -78,20 +67,21 @@ final class MechanismFixtures {
    * A joint as a test's fixture has it, its motors taken off for the test to give it others: a
    * block says its motors once, and a joint re-wired keeps its motor.
    */
-  static Joint.Revolute unmotored(Joint.Revolute joint) {
-    return joint.driven(DrivenBuilder.builder(joint.driven()).motors(Optional.empty()).build());
+  static RevoluteJoint unmotored(RevoluteJoint joint) {
+    return JointCopies.driven(
+        joint, DrivenBuilder.builder(joint.driven()).motors(Optional.empty()).build());
   }
 
-  static Joint.Prismatic prismatic(
+  static PrismaticJoint prismatic(
       String label, Part parent, Translation3d at, Vector3 axis, Range range, Link link) {
-    return Joint.Prismatic.builder()
+    return PrismaticJoint.builder()
         .label(label)
         .parent(parent)
-        .origin(new Transform3d(at, Rotation3d.ZERO))
         .axis(axis)
         .link(link)
         .range(range)
         .rest(range.lower())
+        .place(new Transform3d(at, Rotation3d.ZERO))
         .build();
   }
 
@@ -108,7 +98,8 @@ final class MechanismFixtures {
         .couplings(couplings)
         .drives(drives)
         .sensors(sensors)
-        .build();
+        .build()
+        .checked();
   }
 
   static RobotDefinition definition(
@@ -117,7 +108,7 @@ final class MechanismFixtures {
   }
 
   static Gearing gearing(double ratio, double efficiency) {
-    return Gearing.builder().ratio(ratio).efficiency(efficiency).build();
+    return Gearing.of(ratio).efficiency(efficiency);
   }
 
   /** An encoder on one joint: a CANcoder's 4096 counts a turn if absolute, none given if not. */
@@ -127,12 +118,9 @@ final class MechanismFixtures {
 
   static Sensor.Encoder encoder(
       String label, Joint joint, double ratio, boolean absolute, Optional<Integer> countsPerTurn) {
-    return Sensor.Encoder.builder()
-        .label(label)
-        .terms(List.of(Transmission.Term.builder().joint(joint).ratio(ratio).build()))
-        .absolute(absolute)
-        .countsPerTurn(countsPerTurn)
-        .build();
+    Sensor.Encoder encoder =
+        Sensor.Encoder.of(label, List.of(Transmission.Term.of(joint, ratio)), absolute);
+    return countsPerTurn.map(encoder::countsPerTurn).orElse(encoder);
   }
 
   static Coupling.Linear linear(Joint leader, Joint follower, double ratio) {
@@ -153,27 +141,20 @@ final class MechanismFixtures {
   }
 
   /** A joint's motors, through a gearing, as a drive of the robot's own. */
-  static Drive motors(Joint.Revolute joint, Motor motor, int count, Gearing gearing) {
-    return Drive.builder()
-        .label(joint.label())
-        .actuator(Actuator.Motors.builder().motor(motor).count(count).build())
-        .transmission(Transmission.Geared.builder().joint(joint).gearing(gearing).build())
-        .build();
+  static Drive motors(RevoluteJoint joint, Motor motor, int count, Gearing gearing) {
+    return Drive.of(
+        joint.label(),
+        Actuator.MotorGroup.of(motor, count),
+        Transmission.Geared.of(joint, gearing));
   }
 
   /** A sliding joint's motors, through a gearing onto a drum, as a drive of the robot's own. */
   static Drive motors(
-      Joint.Prismatic joint, Motor motor, int count, Gearing gearing, Distance pitchRadius) {
-    return Drive.builder()
-        .label(joint.label())
-        .actuator(Actuator.Motors.builder().motor(motor).count(count).build())
-        .transmission(
-            Transmission.Drum.builder()
-                .joint(joint)
-                .gearing(gearing)
-                .pitchRadius(pitchRadius)
-                .build())
-        .build();
+      PrismaticJoint joint, Motor motor, int count, Gearing gearing, Distance pitchRadius) {
+    return Drive.of(
+        joint.label(),
+        Actuator.MotorGroup.of(motor, count),
+        Transmission.Drum.of(joint, gearing, pitchRadius));
   }
 
   /**

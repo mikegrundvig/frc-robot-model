@@ -2,6 +2,7 @@ package com.michaelgrundvig.frc.world.field;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.params.provider.Arguments.argumentSet;
+import static org.wpilib.units.Units.Meters;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -309,7 +310,8 @@ class VenueFileEdgesTest {
             + " {\"tags\": [" + tag + "], \"field\": {" + size + "}}}";
     FieldTag official = new FieldTag(4, new Pose3d(officialX, 0, 0, Rotation3d.ZERO));
     Field base = new Field("Base", "", "", null, 0.01, 0.01, "frc", List.of(official));
-    return VenueCheck.problems(VenueFile.read(text), base, Symmetry.MIRRORED);
+    TagLayout tags = TagLayout.of(base, TagFamily.TAG_36H11, Meters.of(TestFields.TAG_SIZE_METERS));
+    return VenueCheck.problems(VenueFile.read(text), tags, Symmetry.MIRRORED);
   }
 
   /** A survey exactly on a bound is within it; a step past it is not. */

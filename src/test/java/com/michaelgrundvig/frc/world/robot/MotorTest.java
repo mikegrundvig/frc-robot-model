@@ -39,11 +39,8 @@ class MotorTest {
   static Stream<Arguments> wpilibsModels() {
     return Stream.of(
         Arguments.of(Motor.KRAKEN_X60, (IntFunction<DCMotor>) DCMotor::getKrakenX60),
-        Arguments.of(Motor.KRAKEN_X60_FOC, (IntFunction<DCMotor>) DCMotor::getKrakenX60Foc),
         Arguments.of(Motor.KRAKEN_X44, (IntFunction<DCMotor>) DCMotor::getKrakenX44),
-        Arguments.of(Motor.KRAKEN_X44_FOC, (IntFunction<DCMotor>) DCMotor::getKrakenX44Foc),
         Arguments.of(Motor.FALCON_500, (IntFunction<DCMotor>) DCMotor::getFalcon500),
-        Arguments.of(Motor.FALCON_500_FOC, (IntFunction<DCMotor>) DCMotor::getFalcon500Foc),
         Arguments.of(Motor.MINION, (IntFunction<DCMotor>) DCMotor::getMinion),
         Arguments.of(Motor.NEO, (IntFunction<DCMotor>) DCMotor::getNEO),
         Arguments.of(Motor.NEO_VORTEX, (IntFunction<DCMotor>) DCMotor::getNeoVortex),
@@ -72,17 +69,40 @@ class MotorTest {
 
   @Test
   void everyPresetIsListedOnceUnderItsOwnName() {
-    assertThat(Motor.presets()).hasSize(10).doesNotHaveDuplicates();
+    assertThat(Motor.presets()).hasSize(7).doesNotHaveDuplicates();
     assertThat(Motor.presets()).extracting(Motor::name).doesNotHaveDuplicates();
   }
 
-  @Test
-  void focTradesTopSpeedForTorque() {
-    DCMotor plain = Motor.KRAKEN_X60.model();
-    DCMotor foc = Motor.KRAKEN_X60_FOC.model();
+  /** WPILib's FOC curve of each motor it has one of, which a motor said {@code .foc()} runs on. */
+  static Stream<Arguments> wpilibsFocCurves() {
+    return Stream.of(
+        Arguments.of(Motor.KRAKEN_X60, (IntFunction<DCMotor>) DCMotor::getKrakenX60Foc),
+        Arguments.of(Motor.KRAKEN_X44, (IntFunction<DCMotor>) DCMotor::getKrakenX44Foc),
+        Arguments.of(Motor.FALCON_500, (IntFunction<DCMotor>) DCMotor::getFalcon500Foc));
+  }
 
-    assertThat(foc.stallTorque).isGreaterThan(plain.stallTorque);
-    assertThat(foc.freeSpeed).isLessThan(plain.freeSpeed);
+  /** A motor's FOC curve is WPILib's to the last bit, and trades top speed for torque. */
+  @ParameterizedTest
+  @MethodSource("wpilibsFocCurves")
+  void aMotorsFocCurveIsWpilibs(Motor motor, IntFunction<DCMotor> wpilib) {
+    DCMotor ours = motor.focCurve().orElseThrow().model();
+    DCMotor theirs = wpilib.apply(1);
+
+    assertThat(ours.stallTorque).isEqualTo(theirs.stallTorque);
+    assertThat(ours.stallCurrent).isEqualTo(theirs.stallCurrent);
+    assertThat(ours.freeCurrent).isEqualTo(theirs.freeCurrent);
+    assertThat(ours.freeSpeed).isEqualTo(theirs.freeSpeed);
+    assertThat(ours.stallTorque).isGreaterThan(motor.model().stallTorque);
+    assertThat(ours.freeSpeed).isLessThan(motor.model().freeSpeed);
+    assertThat(motor.focCurve().orElseThrow().rotorInertia()).isEqualTo(motor.rotorInertia());
+  }
+
+  /** The Minion and REV's motors have no FOC curve in WPILib. */
+  @Test
+  void onlyCtresKrakensAndFalconHaveAFocCurve() {
+    assertThat(Motor.presets())
+        .filteredOn(motor -> motor.focCurve().isPresent())
+        .containsExactly(Motor.KRAKEN_X60, Motor.KRAKEN_X44, Motor.FALCON_500);
   }
 
   /** Any DC motor, from the numbers on its datasheet. */

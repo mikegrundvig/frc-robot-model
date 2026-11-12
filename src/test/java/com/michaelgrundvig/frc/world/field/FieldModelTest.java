@@ -39,7 +39,7 @@ class FieldModelTest {
     List<FieldTag> tags = TestFields.tags();
     tags.add(extra);
     return new FieldModel(
-        TestFields.layout(tags), Symmetry.ROTATED, List.of(), List.of(), List.of());
+        TestFields.tagLayout(tags), Symmetry.ROTATED, List.of(), List.of(), List.of());
   }
 
   @Test
@@ -110,7 +110,7 @@ class FieldModelTest {
   @Test
   void theSymmetryErrorShowsWhetherTheLayoutHasTheDeclaredSymmetry() {
     var mirrored =
-        new FieldModel(TestFields.layout(), Symmetry.MIRRORED, List.of(), List.of(), List.of());
+        new FieldModel(TestFields.tagLayout(), Symmetry.MIRRORED, List.of(), List.of(), List.of());
 
     assertThat(FIELD.symmetryError()).isLessThan(1e-9);
     assertThat(mirrored.symmetryError()).as("the wrong symmetry").isGreaterThan(1);
@@ -154,7 +154,7 @@ class FieldModelTest {
   @Test
   void theBuilderLeavesOutWhatIsntGiven() {
     FieldModel model =
-        FieldModel.builder(TagLayout.of(TestFields.layout()), Symmetry.ROTATED)
+        FieldModel.builder(TestFields.tagLayout(), Symmetry.ROTATED)
             .starts(List.of(start()))
             .build();
 

@@ -4,6 +4,7 @@ import static com.michaelgrundvig.frc.world.robot.MechanismFixtures.gearing;
 import static com.michaelgrundvig.frc.world.robot.StandardRobot.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.params.provider.Arguments.argumentSet;
+import static org.wpilib.units.Units.Percent;
 import static org.wpilib.units.Units.RadiansPerSecond;
 
 import com.michaelgrundvig.frc.world.config.Finding;
@@ -33,7 +34,7 @@ class JointSpeedChecksTest {
 
   /** The standard robot's pivot and a roller with one output, on the roller's usual motor. */
   private static RobotMath rollerWith(Output output) {
-    Joint.Revolute roller = named(ROLLER, List.of(), List.of(output));
+    RevoluteJoint roller = named(ROLLER, List.of(), List.of(output));
     return RobotMath.whole(
             ConfigFixtures.body(),
             List.of(PIVOT, roller),
@@ -47,7 +48,7 @@ class JointSpeedChecksTest {
 
   /** The same roller with nothing to turn it. */
   private static RobotMath rollerWithNoMotor(Output output) {
-    Joint.Revolute roller = named(ROLLER, List.of(), List.of(output));
+    RevoluteJoint roller = named(ROLLER, List.of(), List.of(output));
     return RobotMath.whole(
             ConfigFixtures.body(),
             List.of(PIVOT, roller),
@@ -110,7 +111,7 @@ class JointSpeedChecksTest {
         finds("a voltage a rounding step past it is taken", () -> problems(rollerWith(Output.volts("pushing", JUST_AT_NOMINAL_VOLTS))), 0),
         finds("the next voltage up is refused", () -> problems(rollerWith(Output.volts("pushing", Math.nextUp(JUST_AT_NOMINAL_VOLTS)))), 1),
         finds("backward counts the same", () -> problems(rollerWith(Output.volts("pushing", -Math.nextUp(JUST_AT_NOMINAL_VOLTS)))), 1),
-        finds("a whole battery as a duty cycle is taken", () -> problems(rollerWith(Output.dutyCycle("flat out", 1))), 0),
+        finds("a whole battery as a duty cycle is taken", () -> problems(rollerWith(Output.dutyCycle("flat out", Percent.of(100)))), 0),
         finds("a joint with no motors is not checked", () -> problems(rollerWithNoMotor(speed(10 * FREE_SPEED))), 0));
   }
 
@@ -134,7 +135,7 @@ class JointSpeedChecksTest {
     return Stream.of(
         finds("a speed with no motors is unchecked", () -> JointSpeedChecks.unchecked(rollerWithNoMotor(speed(1))).size(), 1),
         finds("a voltage with no motors is unchecked", () -> JointSpeedChecks.unchecked(rollerWithNoMotor(Output.volts("pushing", 6))).size(), 1),
-        finds("a duty cycle checks itself", () -> JointSpeedChecks.unchecked(rollerWithNoMotor(Output.dutyCycle("creep", 0.2))).size(), 0),
+        finds("a duty cycle checks itself", () -> JointSpeedChecks.unchecked(rollerWithNoMotor(Output.dutyCycle("creep", Percent.of(20)))).size(), 0),
         finds("a joint with motors is checked", () -> JointSpeedChecks.unchecked(rollerWith(speed(1))).size(), 0));
   }
 

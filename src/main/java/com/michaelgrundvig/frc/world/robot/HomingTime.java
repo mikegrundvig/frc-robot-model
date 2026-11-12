@@ -61,7 +61,7 @@ final class HomingTime {
     if (joint.range().isPresent()) {
       return joint.range().get().width();
     }
-    if (joint instanceof Joint.Revolute) {
+    if (joint instanceof RevoluteJoint) {
       return 2 * Math.PI;
     }
     return spreadOfItsPlaces(joint);
@@ -69,8 +69,8 @@ final class HomingTime {
 
   /** How far apart the lowest and highest of a joint's named places and its rest position lie. */
   private static double spreadOfItsPlaces(Joint joint) {
-    double lowest = joint.restPosition();
-    double highest = joint.restPosition();
+    double lowest = RobotMath.restPosition(joint);
+    double highest = RobotMath.restPosition(joint);
     for (Position place : joint.positions()) {
       lowest = Math.min(lowest, place.value());
       highest = Math.max(highest, place.value());

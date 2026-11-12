@@ -31,7 +31,7 @@ import org.wpilib.math.geometry.Translation2d;
  * definition's lists, is caught there.
  */
 class JointTest {
-  private final Joint.Revolute arm =
+  private final RevoluteJoint arm =
       revolute(
           "arm",
           Part.CHASSIS,
@@ -48,7 +48,7 @@ class JointTest {
    */
   @Test
   void aJointShowsAPositionInItsUnits() {
-    Joint.Prismatic lift =
+    PrismaticJoint lift =
         prismatic(
             "lift",
             Part.CHASSIS,
@@ -57,12 +57,12 @@ class JointTest {
             Range.meters(0, 1.2),
             link("lift", 1, point(0, 0, 0), point(0.1, 0.1, 0.1)));
 
-    assertThat(arm.shown(Math.toRadians(130))).isEqualTo("130°");
-    assertThat(arm.shown(Math.toRadians(40.27312))).isEqualTo("40.27°");
-    assertThat(arm.shown(Math.toRadians(-5.7296))).isEqualTo("-5.73°");
-    assertThat(arm.shown(-1e-9)).as("noise about zero").isEqualTo("0°");
-    assertThat(lift.shown(Inches.of(32).in(Meters))).isEqualTo("0.8128 m");
-    assertThat(lift.shown(0.40000012)).isEqualTo("0.4 m");
+    assertThat(Position.Kind.of(arm).shown(Math.toRadians(130))).isEqualTo("130°");
+    assertThat(Position.Kind.of(arm).shown(Math.toRadians(40.27312))).isEqualTo("40.27°");
+    assertThat(Position.Kind.of(arm).shown(Math.toRadians(-5.7296))).isEqualTo("-5.73°");
+    assertThat(Position.Kind.of(arm).shown(-1e-9)).as("noise about zero").isEqualTo("0°");
+    assertThat(Position.Kind.of(lift).shown(Inches.of(32).in(Meters))).isEqualTo("0.8128 m");
+    assertThat(Position.Kind.of(lift).shown(0.40000012)).isEqualTo("0.4 m");
   }
 
   @Test
@@ -78,9 +78,9 @@ class JointTest {
                     Optional.empty(),
                     0,
                     arm.link()))
-        .withMessageContaining("Revolute[ ].label")
+        .withMessageContaining("RevoluteJoint[ ].label")
         .withMessageContaining("an axis can't be zero");
-    Joint.Revolute restingPastItsStops =
+    RevoluteJoint restingPastItsStops =
         revolute(
             "arm",
             Part.CHASSIS,
@@ -97,14 +97,14 @@ class JointTest {
     assertThatIllegalArgumentException()
         .isThrownBy(
             () ->
-                Joint.Prismatic.builder()
+                PrismaticJoint.builder()
                     .label("lift")
                     .parent(Part.CHASSIS)
-                    .origin(new Transform3d(Double.NaN, 0, 0, Rotation3d.ZERO))
                     .axis(UP)
                     .link(arm.link())
+                    .place(new Transform3d(Double.NaN, 0, 0, Rotation3d.ZERO))
                     .build())
-        .withMessageStartingWith("Prismatic[lift].origin");
+        .withMessageStartingWith("PrismaticJoint[lift].place");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> Range.meters(1, 1))
         .withMessage("a range's stops are apart, and 1 m to 1 m is one place: give them both");
@@ -123,7 +123,7 @@ class JointTest {
   /** A joint's motion: turning about its axis, or sliding along it however long the axis is. */
   @Test
   void aJointMovesAlongItsAxis() {
-    Joint.Prismatic lift =
+    PrismaticJoint lift =
         prismatic(
             "lift",
             Part.CHASSIS,
@@ -138,7 +138,7 @@ class JointTest {
 
   @Test
   void aCouplingIsAFunctionOfItsLeader() {
-    Joint.Revolute other =
+    RevoluteJoint other =
         revolute(
             "other",
             Part.CHASSIS,
@@ -195,17 +195,10 @@ class JointTest {
             .b(arm)
             .onB(point(0.2, 0, 0))
             .build();
-    Transmission.Geared geared =
-        Transmission.Geared.builder().joint(arm).gearing(gearing(10, 1)).build();
+    Transmission.Geared geared = Transmission.Geared.of(arm, gearing(10, 1));
 
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                Drive.builder()
-                    .label("arm")
-                    .actuator(Actuator.Motors.builder().motor(Motor.NEO).count(1).build())
-                    .transmission(line)
-                    .build())
+        .isThrownBy(() -> Drive.of("arm", Actuator.MotorGroup.of(Motor.NEO, 1), line))
         .withMessageContaining("motors turn a shaft");
     assertThat(line.efficiency()).isEqualTo(1);
     assertThat(line.joints()).containsExactly(arm);
@@ -220,18 +213,16 @@ class JointTest {
                     .build())
         .withMessageContaining("two different parts");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> Transmission.Combined.builder().terms(List.of()).efficiency(1).build())
+        .isThrownBy(() -> Transmission.Combined.of(List.of(), 1))
         .withMessageContaining("needs a joint");
-    Transmission.Term term = Transmission.Term.builder().joint(arm).ratio(3).build();
+    Transmission.Term term = Transmission.Term.of(arm, 3);
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () -> Transmission.Combined.builder().terms(List.of(term, term)).efficiency(1).build())
+        .isThrownBy(() -> Transmission.Combined.of(List.of(term, term), 1))
         .withMessageContaining("name each joint once, not arm");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> Transmission.Term.builder().joint(arm).ratio(0).build())
+        .isThrownBy(() -> Transmission.Term.of(arm, 0))
         .withMessageContaining("a number other than 0");
-    Transmission.Combined combined =
-        Transmission.Combined.builder().terms(List.of(term)).efficiency(0.8).build();
+    Transmission.Combined combined = Transmission.Combined.of(List.of(term), 0.8);
     assertThat(combined.efficiency()).isEqualTo(0.8);
     assertThat(combined.shaftRadiansPer(arm)).isEqualTo(3);
     assertThat(geared.shaftRadiansPer(arm)).isEqualTo(10);
@@ -269,7 +260,7 @@ class JointTest {
         .isThrownBy(() -> definition(List.of(), List.of(), List.of(drive), List.of(pivot)))
         .withMessageContaining("drive arm's joint, arm, isn't one of the robot's joints: list it")
         .withMessageContaining("sensor arm-abs' joint, arm, isn't one of the robot's joints");
-    Joint.Revolute wrist =
+    RevoluteJoint wrist =
         revolute(
             "wrist",
             arm,
@@ -285,7 +276,7 @@ class JointTest {
 
   @Test
   void labelsAreUniqueForLogsAndWriters() {
-    Joint.Revolute twin =
+    RevoluteJoint twin =
         revolute(
             "arm",
             Part.CHASSIS,
@@ -311,7 +302,7 @@ class JointTest {
 
   @Test
   void aJointFollowsOneOtherAtMostAndNeverItself() {
-    Joint.Prismatic carriage =
+    PrismaticJoint carriage =
         prismatic(
             "carriage",
             Part.CHASSIS,
@@ -319,7 +310,7 @@ class JointTest {
             UP,
             Range.meters(0, 1),
             link("carriage", 2, point(0, 0, 0.05), point(0.2, 0.2, 0.1)));
-    Joint.Prismatic stage =
+    PrismaticJoint stage =
         prismatic(
             "stage",
             Part.CHASSIS,
@@ -327,7 +318,7 @@ class JointTest {
             UP,
             Range.meters(0, 1),
             link("stage", 1, point(0, 0, 0.2), point(0.2, 0.05, 0.4)));
-    Joint.Prismatic top =
+    PrismaticJoint top =
         prismatic(
             "top",
             Part.CHASSIS,
@@ -371,7 +362,7 @@ class JointTest {
    */
   @Test
   void theLinksMustLeaveSomeOfTheRobotForTheChassis() {
-    Joint.Revolute anvil =
+    RevoluteJoint anvil =
         revolute(
             "anvil",
             Part.CHASSIS,
@@ -380,7 +371,7 @@ class JointTest {
             Optional.empty(),
             0,
             link("anvil", 45, point(0.1, 0, 0), point(0.2, 0.2, 0.2)));
-    Joint.Revolute hammer =
+    RevoluteJoint hammer =
         revolute(
             "hammer",
             Part.CHASSIS,
@@ -400,7 +391,7 @@ class JointTest {
   /** What's left once the links are off must still turn as a body does. */
   @Test
   void theChassisLeftOnceTheLinksAreOffMustBeABody() {
-    Joint.Revolute boom =
+    RevoluteJoint boom =
         revolute(
             "boom",
             Part.CHASSIS,
@@ -443,7 +434,7 @@ class JointTest {
   /** An absolute encoder's range must fit one turn somewhere Phoenix can wrap it. */
   @Test
   void anAbsoluteEncodersRangeMustFitWherePhoenixCanWrapIt() {
-    Joint.Revolute hood =
+    RevoluteJoint hood =
         revolute(
             "hood",
             Part.CHASSIS,
@@ -509,15 +500,14 @@ class JointTest {
    */
   @Test
   void aCombinedTransmissionsSlideNamesItsPinion() {
-    Joint.Prismatic lift =
+    PrismaticJoint lift =
         prismatic("lift", Part.CHASSIS, point(0, 0, 0), UP, Range.meters(0, 1), arm.link());
-    Transmission.Term bare = Transmission.Term.builder().joint(lift).ratio(400).build();
+    Transmission.Term bare = Transmission.Term.of(lift, 400);
     Transmission.Term pinion =
         Transmission.Term.builder().joint(lift).ratio(5).pitchRadius(Inches.of(0.5)).build();
 
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () -> Transmission.Combined.builder().terms(List.of(bare)).efficiency(1).build())
+        .isThrownBy(() -> Transmission.Combined.of(List.of(bare), 1))
         .withMessageContaining(
             "a shaft slides lift through a drum, a sprocket or a pinion: name its pitch radius");
     assertThatIllegalArgumentException()
@@ -528,23 +518,17 @@ class JointTest {
     assertThat(bare.perTurnOrMeter()).as("read straight off the slide").isEqualTo(400);
     assertThat(pinion.perTurnOrMeter())
         .isCloseTo(5 / (2 * Math.PI * Inches.of(0.5).in(Meters)), within(1e-9));
-    Transmission.Combined combined =
-        Transmission.Combined.builder().terms(List.of(pinion)).efficiency(1).build();
+    Transmission.Combined combined = Transmission.Combined.of(List.of(pinion), 1);
     assertThat(combined.shaftRadiansPer(lift))
         .as("as a drum's")
         .isCloseTo(
-            Transmission.Drum.builder()
-                .joint(lift)
-                .gearing(gearing(5, 1))
-                .pitchRadius(Inches.of(0.5))
-                .build()
-                .shaftRadiansPer(lift),
+            Transmission.Drum.of(lift, gearing(5, 1), Inches.of(0.5)).shaftRadiansPer(lift),
             within(1e-9));
   }
 
   /** A hood from one angle to another, its absolute encoder on its shaft. */
   private static RobotDefinition encoded(double lowerDegrees, double upperDegrees) {
-    Joint.Revolute hood =
+    RevoluteJoint hood =
         revolute(
             "hood",
             Part.CHASSIS,

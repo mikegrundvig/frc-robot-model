@@ -15,8 +15,8 @@
  *
  * <p>It also names the robot's places and the interlocks between its joints: each joint's named
  * positions and outputs ({@link com.michaelgrundvig.frc.world.robot.Position}, {@link
- * com.michaelgrundvig.frc.world.robot.Output}), the configurations the robot takes ({@link
- * com.michaelgrundvig.frc.world.robot.Configuration}: several joints, each at a named place), and
+ * com.michaelgrundvig.frc.world.robot.Output}), the presets the robot takes ({@link
+ * com.michaelgrundvig.frc.world.robot.Preset}: several joints, each at a named place), and
  * joint-to-joint interlocks ({@link com.michaelgrundvig.frc.world.robot.Interlock}, on {@link
  * com.michaelgrundvig.frc.world.robot.Condition}s: a joint at a named place, at least or at most a
  * position, or between two). These are facts about the robot, where its intake is out and that its
@@ -30,12 +30,12 @@
  * <p>What a definition means for a program is worked out here too, as plain functions of its values
  * and of readings handed in: where a joint is driven and where it stops braking ({@link
  * com.michaelgrundvig.frc.world.robot.Travel}), how far its encoder and its motor's count may
- * disagree ({@link com.michaelgrundvig.frc.world.robot.EncoderGap}), whether a limit switch reads
- * as it should ({@link com.michaelgrundvig.frc.world.robot.SwitchDoubt}), which limits its motor
- * controller reads ({@link com.michaelgrundvig.frc.world.robot.ControllerPins}), and the volts that
- * hold it from its encoder ({@link com.michaelgrundvig.frc.world.robot.EncoderLoop}). None keeps
- * anything between calls, and none reads a clock: what to remember from one loop to the next is the
- * robot program's.
+ * disagree ({@link com.michaelgrundvig.frc.world.robot.EncoderGapCheck}), whether a limit switch
+ * reads as it should ({@link com.michaelgrundvig.frc.world.robot.SwitchDoubt}), which limits its
+ * motor controller reads ({@link com.michaelgrundvig.frc.world.robot.ControllerPins}), and the
+ * volts that hold it from its encoder ({@link com.michaelgrundvig.frc.world.robot.EncoderLoop}).
+ * None keeps anything between calls, and none reads a clock: what to remember from one loop to the
+ * next is the robot program's.
  *
  * <p>It's a description, read by everything that needs to know the robot: the mechanisms' code,
  * localization (where the wheels and sensors sit), the simulator (all of it), Pitwall, and the
@@ -46,8 +46,8 @@
  * game's limits are checked against a definition in {@code com.michaelgrundvig.frc.world.game},
  * which reads this, as its fields read a robot's body).
  *
- * <p>A robot's joints, their places and its configurations are constants in {@code Robots}, each
- * joint written in one block: {@code Joint.pivot(...).range(...).positions(...).motors(...)
+ * <p>A robot's joints, their places and its presets are constants in {@code Robots}, each joint
+ * written in one block: {@code Joint.pivot(...).range(...).positions(...).motors(...)
  * .control(...)}. Behavior code names the constants themselves ({@code joints.of(PIVOT)}, {@code
  * pivot.goTo(PIVOT_OUT)}), so a part missing or misnamed fails to compile, and nothing is ever
  * found by its label. Each block says each thing once. A practice robot of the same design is the
@@ -60,7 +60,7 @@
  * com.michaelgrundvig.frc.world.config}), and {@code RobotDefinition} checks across them (wheels
  * inside the frame, cameras and IMUs inside the robot, a drive's joints among the robot's, named
  * outputs within what its motors can do, each joint's control fitting it, one sensor on each input,
- * configurations obeying the interlocks), each saying what it finds ({@link
+ * presets obeying the interlocks), each saying what it finds ({@link
  * com.michaelgrundvig.frc.world.config.Finding}). How each joint is driven (gains, limits: {@link
  * com.michaelgrundvig.frc.world.robot.MechanismControl}) and wired (CAN IDs, encoder offsets:
  * {@link com.michaelgrundvig.frc.world.robot.MechanismWiring}, {@link

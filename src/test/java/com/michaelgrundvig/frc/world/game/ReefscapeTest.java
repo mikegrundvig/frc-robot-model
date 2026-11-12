@@ -9,7 +9,6 @@ import com.michaelgrundvig.frc.world.field.Alliance;
 import com.michaelgrundvig.frc.world.field.FieldModel;
 import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Symmetry;
-import com.michaelgrundvig.frc.world.field.TagLayout;
 import com.michaelgrundvig.frc.world.physical.Bumpers;
 import com.michaelgrundvig.frc.world.robot.ConfigFixtures;
 import org.junit.jupiter.api.Test;
@@ -43,7 +42,8 @@ class ReefscapeTest {
   @Test
   void theFieldIsNotAMirrorImage() {
     FieldModel mirrored =
-        FieldModel.builder(TagLayout.of(Reefscape.LAYOUT.loadField()), Symmetry.MIRRORED).build();
+        FieldModel.builder(Reefscape.GAME.layout(Reefscape.LAYOUT.loadField()), Symmetry.MIRRORED)
+            .build();
 
     assertThat(mirrored.symmetryError())
         .as("the processors' tags have no partner")

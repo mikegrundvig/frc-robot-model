@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 /** The volts that hold a joint at its profile's point, from where its encoder says it is. */
 class EncoderLoopTest {
-  private static final Joint.Revolute PIVOT =
+  private static final RevoluteJoint PIVOT =
       StandardRobot.PIVOT
           .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(25, 1)))
           .control(

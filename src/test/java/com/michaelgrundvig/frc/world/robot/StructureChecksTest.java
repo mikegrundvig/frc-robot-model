@@ -25,8 +25,8 @@ import org.wpilib.math.geometry.Translation3d;
  * that positions add up exactly: {@code A} slides along x, {@code B} along y and {@code C} along z.
  */
 class StructureChecksTest {
-  private static Joint.Prismatic slide(String label, Part parent, Vector3 axis, double rest) {
-    Joint.Prismatic slide =
+  private static PrismaticJoint slide(String label, Part parent, Vector3 axis, double rest) {
+    PrismaticJoint slide =
         prismatic(
             label,
             parent,
@@ -34,26 +34,26 @@ class StructureChecksTest {
             axis,
             Range.meters(-1, 1),
             link(label + " link", 1, point(0, 0, 0), point(0.1, 0.1, 0.1)));
-    return JointPrismaticBuilder.builder(slide).rest(rest).build();
+    return PrismaticJointBuilder.builder(slide).rest(rest).build();
   }
 
   private static final Vector3 X = new Vector3(1, 0, 0);
   private static final Vector3 Y = new Vector3(0, 1, 0);
 
   // Three slides on the chassis, for couplings.
-  private static final Joint.Prismatic A = slide("a", Part.CHASSIS, X, 0);
-  private static final Joint.Prismatic B = slide("b", Part.CHASSIS, Y, 0);
-  private static final Joint.Prismatic C = slide("c", Part.CHASSIS, UP, 0);
+  private static final PrismaticJoint A = slide("a", Part.CHASSIS, X, 0);
+  private static final PrismaticJoint B = slide("b", Part.CHASSIS, Y, 0);
+  private static final PrismaticJoint C = slide("c", Part.CHASSIS, UP, 0);
 
   // Three slides stacked: the top rides on the middle, which rides on the bottom.
-  private static final Joint.Prismatic BOTTOM = slide("bottom", Part.CHASSIS, X, 0);
-  private static final Joint.Prismatic MIDDLE = slide("middle", BOTTOM, Y, 0);
-  private static final Joint.Prismatic TOP = slide("top", MIDDLE, UP, 0);
+  private static final PrismaticJoint BOTTOM = slide("bottom", Part.CHASSIS, X, 0);
+  private static final PrismaticJoint MIDDLE = slide("middle", BOTTOM, Y, 0);
+  private static final PrismaticJoint TOP = slide("top", MIDDLE, UP, 0);
 
-  private static final Joint.Prismatic NOT_LISTED = slide("stray", Part.CHASSIS, X, 0);
+  private static final PrismaticJoint NOT_LISTED = slide("stray", Part.CHASSIS, X, 0);
 
   /** A slide on the chassis that rests this far from where a coupling to {@code A} puts it. */
-  private static Joint.Prismatic restingOff(double off) {
+  private static PrismaticJoint restingOff(double off) {
     return slide("off", Part.CHASSIS, Y, off);
   }
 
@@ -90,7 +90,7 @@ class StructureChecksTest {
 
   /** Every label is used once, and every joint a part names is one the robot lists. */
   static Stream<Arguments> references() {
-    Joint.Prismatic sharesALink = prismatic("d", Part.CHASSIS, point(0, 0, 0), X, Range.meters(-1, 1), A.link());
+    PrismaticJoint sharesALink = prismatic("d", Part.CHASSIS, point(0, 0, 0), X, Range.meters(-1, 1), A.link());
     return Stream.of(
         row("joints that name only each other are sound", () -> problems(List.of(BOTTOM, MIDDLE, TOP), List.of()), List.of()),
         row("two links with one label", () -> problems(List.of(A, sharesALink), List.of()), List.of("two links are labeled a link")),

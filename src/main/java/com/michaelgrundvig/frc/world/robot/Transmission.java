@@ -48,9 +48,19 @@ public sealed interface Transmission {
    * @param gearing the actuator's turns for each of the joint's, and what it loses
    */
   @ConfigRecord
-  record Geared(Joint.Revolute joint, Gearing gearing) implements Transmission {
+  record Geared(RevoluteJoint joint, Gearing gearing) implements Transmission {
+    /**
+     * A joint turned through a gearing.
+     *
+     * @param joint the joint it turns
+     * @param gearing between the motors and the joint
+     */
+    public static Geared of(RevoluteJoint joint, Gearing gearing) {
+      return builder().joint(joint).gearing(gearing).build();
+    }
+
     /** Starts describing a geared transmission, one named value at a time. */
-    public static TransmissionGearedBuilder.JointStage builder() {
+    static TransmissionGearedBuilder.JointStage builder() {
       return TransmissionGearedBuilder.builder();
     }
 
@@ -80,14 +90,24 @@ public sealed interface Transmission {
    *     joint moves this far, times 2π, for each of the drum's turns
    */
   @ConfigRecord
-  record Drum(Joint.Prismatic joint, Gearing gearing, Distance pitchRadius)
-      implements Transmission {
+  record Drum(PrismaticJoint joint, Gearing gearing, Distance pitchRadius) implements Transmission {
     public Drum {
       Checks.on(Drum.class, joint.label()).field("pitchRadius", pitchRadius, positive()).orThrow();
     }
 
+    /**
+     * A sliding joint pulled through a gearing onto a drum.
+     *
+     * @param joint the joint it slides
+     * @param gearing between the motors and the drum
+     * @param pitchRadius the drum's radius where the belt or rope runs
+     */
+    public static Drum of(PrismaticJoint joint, Gearing gearing, Distance pitchRadius) {
+      return builder().joint(joint).gearing(gearing).pitchRadius(pitchRadius).build();
+    }
+
     /** Starts describing a drum, one named value at a time. */
-    public static TransmissionDrumBuilder.JointStage builder() {
+    static TransmissionDrumBuilder.JointStage builder() {
       return TransmissionDrumBuilder.builder();
     }
 
@@ -128,8 +148,18 @@ public sealed interface Transmission {
           .orThrow();
     }
 
+    /**
+     * Joints moved together, each by its share of the motors' turn.
+     *
+     * @param terms each joint and its share
+     * @param efficiency the share of the torque that arrives
+     */
+    public static Combined of(List<Term> terms, double efficiency) {
+      return builder().terms(terms).efficiency(efficiency).build();
+    }
+
     /** Starts describing a combined transmission, one named value at a time. */
-    public static TransmissionCombinedBuilder.TermsStage builder() {
+    static TransmissionCombinedBuilder.TermsStage builder() {
       return TransmissionCombinedBuilder.builder();
     }
 
@@ -146,7 +176,7 @@ public sealed interface Transmission {
     public double shaftRadiansPer(Joint joint) {
       for (Term term : terms) {
         if (term.joint().equals(joint)) {
-          return joint instanceof Joint.Revolute
+          return joint instanceof RevoluteJoint
               ? term.ratio()
               : 2 * Math.PI * term.perTurnOrMeter();
         }
@@ -185,7 +215,7 @@ public sealed interface Transmission {
     private static Optional<String> whyAShaftCannotSlideThem(List<Term> terms) {
       List<String> slidingWithNoRadius = new ArrayList<>();
       for (Term term : terms) {
-        if (term.joint() instanceof Joint.Prismatic && term.pitchRadius().isEmpty()) {
+        if (term.joint() instanceof PrismaticJoint && term.pitchRadius().isEmpty()) {
           slidingWithNoRadius.add(term.joint().label());
         }
       }
@@ -230,14 +260,24 @@ public sealed interface Transmission {
           .check(
               "pitchRadius",
               () ->
-                  joint instanceof Joint.Revolute && pitchRadius.isPresent()
+                  joint instanceof RevoluteJoint && pitchRadius.isPresent()
                       ? joint.label() + " turns: its ratio is per turn, through no drum"
                       : null)
           .orThrow();
     }
 
+    /**
+     * One joint's share of a turn: its motors' turns for each of its own.
+     *
+     * @param joint the joint
+     * @param ratio the turns for each of its own
+     */
+    public static Term of(Joint joint, double ratio) {
+      return builder().joint(joint).ratio(ratio).build();
+    }
+
     /** Starts describing a term, one named value at a time. */
-    public static TransmissionTermBuilder.JointStage builder() {
+    static TransmissionTermBuilder.JointStage builder() {
       return TransmissionTermBuilder.builder();
     }
 
@@ -271,7 +311,7 @@ public sealed interface Transmission {
     }
 
     /** Starts describing a line between parts, one named value at a time. */
-    public static TransmissionBetweenBuilder.AStage builder() {
+    static TransmissionBetweenBuilder.AStage builder() {
       return TransmissionBetweenBuilder.builder();
     }
 

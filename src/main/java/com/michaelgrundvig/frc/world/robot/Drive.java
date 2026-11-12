@@ -30,8 +30,19 @@ public record Drive(String label, Actuator actuator, Transmission transmission) 
         .orThrow();
   }
 
+  /**
+   * What moves a mechanism: an actuator's force, through a transmission.
+   *
+   * @param label what logs call it: unique among the robot's drives
+   * @param actuator what makes the force
+   * @param transmission where it goes
+   */
+  public static Drive of(String label, Actuator actuator, Transmission transmission) {
+    return builder().label(label).actuator(actuator).transmission(transmission).build();
+  }
+
   /** Starts describing a drive, one named value at a time. */
-  public static DriveBuilder.LabelStage builder() {
+  static DriveBuilder.LabelStage builder() {
     return DriveBuilder.builder();
   }
 
@@ -46,7 +57,7 @@ public record Drive(String label, Actuator actuator, Transmission transmission) 
    * @throws IllegalStateException if it isn't motors, which alone have a rotor
    */
   public Sensor.Encoder rotor() {
-    if (!(actuator instanceof Actuator.Motors)) {
+    if (!(actuator instanceof Actuator.MotorGroup)) {
       throw new IllegalStateException(label + " has no rotor: it isn't motors");
     }
     List<Transmission.Term> terms =
@@ -59,7 +70,7 @@ public record Drive(String label, Actuator actuator, Transmission transmission) 
           case Transmission.Between line ->
               throw new IllegalStateException(label + " pushes along a line: it has no rotor");
         };
-    return Sensor.Encoder.builder().label(label + " rotor").terms(terms).absolute(false).build();
+    return Sensor.Encoder.of(label + " rotor", terms, false);
   }
 
   private static Transmission.Term term(Joint joint, double ratio, Optional<Distance> pitchRadius) {
@@ -72,7 +83,7 @@ public record Drive(String label, Actuator actuator, Transmission transmission) 
    */
   private static Optional<String> whyTheyDoNotGoTogether(
       Actuator actuator, Transmission transmission) {
-    boolean isMotors = actuator instanceof Actuator.Motors;
+    boolean isMotors = actuator instanceof Actuator.MotorGroup;
     boolean isALine = transmission instanceof Transmission.Between;
     if (isMotors && isALine) {
       return Optional.of(

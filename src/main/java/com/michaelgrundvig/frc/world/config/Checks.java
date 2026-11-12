@@ -48,15 +48,21 @@ public final class Checks {
   /** The names of the values that have broken a rule, whose later rules are skipped. */
   private final Set<String> brokeARule = new HashSet<>();
 
+  /**
+   * What each rule or check that threw threw, in order: bugs in them, kept so the refusal carries
+   * the first as its cause, with its stack trace, and the rest suppressed beside it.
+   */
+  private final List<RuntimeException> bugs = new ArrayList<>();
+
   private Checks(String record) {
     this.record = record;
   }
 
   /**
-   * Checks for a record, whose violations are named after it: {@code Gains.steerKp}, or for a check
-   * across its values, by the path from it, {@code Arm.limits.top} (an arm's record holding its
-   * limits). Keep that form: Pitwall reads each line's name back to the value it names, to show the
-   * reason beside it on its page (see its {@code LiveConfig}).
+   * Checks for a record, whose violations are named after it: {@code SwerveGains.steerKp}, or for a
+   * check across its values, by the path from it, {@code Arm.limits.top} (an arm's record holding
+   * its limits). Keep that form: Pitwall reads each line's name back to the value it names, to show
+   * the reason beside it on its page (see its {@code LiveConfig}).
    */
   public static Checks on(Class<? extends Record> record) {
     return new Checks(record.getSimpleName());
@@ -93,6 +99,7 @@ public final class Checks {
     try {
       whyNot = reason.get();
     } catch (RuntimeException e) {
+      bugs.add(e);
       whyNot = Optional.of(COULD_NOT_BE_CHECKED + e);
     }
     if (whyNot.isPresent()) {
@@ -145,7 +152,8 @@ public final class Checks {
    * Runs the checks across values, if every value passed its own rule, then throws if anything was
    * found wrong.
    *
-   * @throws ConfigException listing every violation
+   * @throws ConfigException listing every violation; caused by what the first rule or check that
+   *     threw threw, if one did, with any others suppressed
    */
   public void orThrow() {
     boolean everyValuePassed = violations.isEmpty();
@@ -154,9 +162,15 @@ public final class Checks {
         run(check);
       }
     }
-    if (!violations.isEmpty()) {
-      throw new ConfigException(violations);
+    if (violations.isEmpty()) {
+      return;
     }
+    ConfigException refused = new ConfigException(violations);
+    if (!bugs.isEmpty()) {
+      refused.initCause(bugs.get(0));
+      bugs.subList(1, bugs.size()).forEach(refused::addSuppressed);
+    }
+    throw refused;
   }
 
   /**
@@ -169,6 +183,7 @@ public final class Checks {
     try {
       found = check.found().get();
     } catch (RuntimeException e) {
+      bugs.add(e);
       found = List.of(Finding.refused(record, COULD_NOT_BE_CHECKED + e));
     }
     for (Finding finding : found) {

@@ -45,7 +45,7 @@ import org.wpilib.units.measure.Distance;
 @ConfigRecord
 public record Driven(
     Optional<Motors> motors,
-    @RecordBuilder.Initializer(value = "of", source = List.class) List<Servo> servos,
+    @RecordBuilder.Initializer(value = "of", source = List.class) List<ServoMount> servos,
     Optional<AbsoluteEncoder> absoluteEncoder,
     @RecordBuilder.Initializer(value = "of", source = List.class) List<LimitSwitch> limitSwitches,
     Optional<MechanismControl> control,
@@ -62,7 +62,7 @@ public record Driven(
   }
 
   /** Starts describing how a joint is driven, one named value at a time. */
-  public static DrivenBuilder.DrivenBuilderStage builder() {
+  static DrivenBuilder.DrivenBuilderStage builder() {
     return DrivenBuilder.builder();
   }
 
@@ -92,11 +92,24 @@ public record Driven(
           .whyNot("controllers", () -> whyNotOneEach(count, each))
           .whyNot("controllers", () -> whyNotOneKind(each))
           .whyNot("controllers", () -> whyControllerCannotDrive(motor, each))
+          .whyNot("controllers", () -> whyNotOneCommutation(each))
+          .whyNot("controllers", () -> whyNoFocCurve(motor, each))
           .orThrow();
     }
 
+    /**
+     * How the controllers drive the motors: with field-oriented control when they say {@code
+     * .foc()}, which they all do or none does. Motors on no controller run as the plain motor.
+     */
+    public MechanismWiring.Commutation commutation() {
+      if (controllers.isEmpty()) {
+        return MechanismWiring.Commutation.TRAPEZOIDAL;
+      }
+      return controllers.get(0).commutation();
+    }
+
     /** Starts describing motors, one named value at a time. */
-    public static DrivenMotorsBuilder.MotorStage builder() {
+    static DrivenMotorsBuilder.MotorStage builder() {
       return DrivenMotorsBuilder.builder();
     }
 
@@ -177,6 +190,46 @@ public record Driven(
     }
 
     /**
+     * Why the controllers don't drive their motors one way, if they don't: a joint's motors turn
+     * one shaft, so every controller says {@code .foc()} or none does.
+     */
+    private static Optional<String> whyNotOneCommutation(List<MechanismWiring.Device> controllers) {
+      if (controllers.isEmpty()) {
+        return Optional.empty();
+      }
+      MechanismWiring.Device leader = controllers.get(0);
+      for (MechanismWiring.Device device : controllers) {
+        if (device.commutation() != leader.commutation()) {
+          return Optional.of(
+              "a joint's motors are all driven with FOC or none is: its leader "
+                  + saysFoc(leader)
+                  + ", and CAN ID "
+                  + device.id()
+                  + " "
+                  + saysFoc(device)
+                  + ": say .foc() on every controller or on none");
+        }
+      }
+      return Optional.empty();
+    }
+
+    private static String saysFoc(MechanismWiring.Device device) {
+      return switch (device.commutation()) {
+        case FOC -> "says .foc()";
+        case TRAPEZOIDAL -> "doesn't";
+      };
+    }
+
+    /** Why the motor can't be driven as its controllers say, if it can't: it has no FOC curve. */
+    private static Optional<String> whyNoFocCurve(
+        Motor motor, List<MechanismWiring.Device> controllers) {
+      if (controllers.isEmpty() || whyNotOneCommutation(controllers).isPresent()) {
+        return Optional.empty();
+      }
+      return Actuator.MotorGroup.whyNoFocCurve(motor, controllers.get(0).commutation());
+    }
+
+    /**
      * Why the controllers cannot drive the motor, if they cannot: each kind of controller drives
      * only some motors, and the message lists the kinds that drive this one. Controllers that are
      * not all of one kind are reported by {@link #whyNotOneKind} instead.
@@ -216,10 +269,10 @@ public record Driven(
    * @param onLink where its rod meets the link, in the joint's frame
    */
   @ConfigRecord
-  public record Servo(
+  public record ServoMount(
       String label, Actuator.Servo servo, Translation3d onParent, Translation3d onLink) {
-    public Servo {
-      Checks.on(Servo.class, label).field("label", label, notBlank()).orThrow();
+    public ServoMount {
+      Checks.on(ServoMount.class, label).field("label", label, notBlank()).orThrow();
     }
   }
 

@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import static org.assertj.core.api.Assertions.within;
 import static org.wpilib.units.Units.Inches;
 
-import com.michaelgrundvig.frc.world.physical.MassProperties;
 import com.michaelgrundvig.frc.world.physical.Vector3;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -19,22 +18,22 @@ import org.wpilib.math.geometry.Translation3d;
  * drum's, and the gains with them.
  */
 class MechanismRotationsTest {
-  private static final Joint.Revolute ARM =
-      Joint.Revolute.builder()
+  private static final RevoluteJoint ARM =
+      RevoluteJoint.builder()
           .label("arm")
           .parent(Part.CHASSIS)
-          .origin(Transform3d.ZERO)
           .axis(Vector3.UP)
           .link(link("arm link"))
+          .place(Transform3d.ZERO)
           .build();
 
-  private static final Joint.Prismatic LIFT =
-      Joint.Prismatic.builder()
+  private static final PrismaticJoint LIFT =
+      PrismaticJoint.builder()
           .label("lift")
           .parent(Part.CHASSIS)
-          .origin(Transform3d.ZERO)
           .axis(Vector3.UP)
           .link(link("hook"))
+          .place(Transform3d.ZERO)
           .build();
 
   /** 100:1 on a ½ in spool: a quarter of an inch of radius. */
@@ -91,21 +90,17 @@ class MechanismRotationsTest {
   @Test
   void aSlideThroughACombinedTransmissionIsInItsPinionsRotations() {
     Drive combined =
-        Drive.builder()
-            .label("slide motor")
-            .actuator(Actuator.Motors.builder().motor(Motor.KRAKEN_X60).count(1).build())
-            .transmission(
-                Transmission.Combined.builder()
-                    .terms(
-                        List.of(
-                            Transmission.Term.builder()
-                                .joint(LIFT)
-                                .ratio(5)
-                                .pitchRadius(Inches.of(0.5))
-                                .build()))
-                    .efficiency(1)
-                    .build())
-            .build();
+        Drive.of(
+            "slide motor",
+            Actuator.MotorGroup.of(Motor.KRAKEN_X60, 1),
+            Transmission.Combined.of(
+                List.of(
+                    Transmission.Term.builder()
+                        .joint(LIFT)
+                        .ratio(5)
+                        .pitchRadius(Inches.of(0.5))
+                        .build()),
+                1));
     double circumference = 2 * Math.PI * 0.5 * 0.0254;
 
     MechanismRotations slide = MechanismRotations.of(LIFT, combined);
@@ -118,17 +113,15 @@ class MechanismRotationsTest {
   @Test
   void aSlideNoShaftTurnsHasNoRotation() {
     Drive cylinder =
-        Drive.builder()
-            .label("cylinder")
-            .actuator(Actuator.Servo.builder().from(0.1).to(0.2).force(50).speed(0.03).build())
-            .transmission(
-                Transmission.Between.builder()
-                    .a(Part.CHASSIS)
-                    .onA(Translation3d.ZERO)
-                    .b(LIFT)
-                    .onB(Translation3d.ZERO)
-                    .build())
-            .build();
+        Drive.of(
+            "cylinder",
+            Actuator.Servo.builder().from(0.1).to(0.2).force(50).speed(0.03).build(),
+            Transmission.Between.builder()
+                .a(Part.CHASSIS)
+                .onA(Translation3d.ZERO)
+                .b(LIFT)
+                .onB(Translation3d.ZERO)
+                .build());
 
     assertThatIllegalArgumentException()
         .isThrownBy(() -> MechanismRotations.of(LIFT, cylinder))
@@ -136,6 +129,6 @@ class MechanismRotationsTest {
   }
 
   private static Link link(String label) {
-    return Link.builder().label(label).mass(MassProperties.NONE).build();
+    return Link.unseen(label);
   }
 }

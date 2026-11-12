@@ -12,6 +12,7 @@ import static org.wpilib.units.Units.Inch;
 import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.InchesPerSecond;
 import static org.wpilib.units.Units.InchesPerSecondPerSecond;
+import static org.wpilib.units.Units.Meter;
 import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.MetersPerSecond;
 import static org.wpilib.units.Units.Percent;
@@ -41,44 +42,52 @@ class MechanismControlTest {
     assertThat(gains.kP()).isZero();
   }
 
+  /**
+   * A gain is never negative, but kG may be, and a refusal names the joint that takes the gains:
+   * gains aren't checked as they're made, since only the joint knows which joint's they are.
+   */
   @Test
-  void aGainIsNeverNegativeButKgMayBe() {
+  void aGainIsNeverNegativeButKgMayBeRefusedUnderItsJoint() {
+    RevoluteJoint pivot =
+        Joint.pivot("pivot", Part.CHASSIS, Joint.PITCH_UP)
+            .at(Meters.of(0), Meters.of(0), Meters.of(0));
+    MechanismControl.Gains wrong =
+        MechanismControl.Gains.builder().kP(-1).kI(0).kD(0).kS(0).kV(-0.1).kG(Double.NaN).build();
+
+    assertThatThrownBy(() -> pivot.control(MechanismControl.position(-30)))
+        .hasMessage("Gains[pivot].kP: -30 must be zero or more");
     assertThatThrownBy(
             () ->
-                MechanismControl.Gains.builder()
-                    .kP(-1)
-                    .kI(0)
-                    .kD(0)
-                    .kS(0)
-                    .kV(-0.1)
-                    .kG(Double.NaN)
-                    .build())
+                pivot.control(
+                    MechanismControlBuilder.builder(MechanismControl.position(1))
+                        .gains(wrong)
+                        .build()))
         .hasMessage(
-            "Gains.kP: -1 must be zero or more\n"
-                + "Gains.kV: -0.1 must be zero or more\n"
-                + "Gains.kG: NaN must be a finite number");
+            "Gains[pivot].kP: -1 must be zero or more\n"
+                + "Gains[pivot].kV: -0.1 must be zero or more\n"
+                + "Gains[pivot].kG: NaN must be a finite number");
     assertThat(
-            MechanismControl.Gains.builder()
-                .kP(0)
-                .kI(0)
-                .kD(0)
-                .kS(0)
-                .kG(-0.4) // a counterbalance stronger than the arm
-                .build()
+            pivot
+                .control(
+                    MechanismControl.position(1)
+                        .withKg(-0.4)) // a counterbalance stronger than the arm
+                .driven()
+                .control()
+                .orElseThrow()
+                .gains()
                 .kG())
         .contains(-0.4);
   }
 
   @Test
   void softLimitsGoUp() {
-    assertThatThrownBy(() -> MechanismControl.SoftLimits.builder().lower(1).upper(1).build())
+    assertThatThrownBy(() -> MechanismControl.SoftLimits.of(1, 1))
         .hasMessage("SoftLimits.upper: 1 must be above the lower limit (1)");
   }
 
   @Test
   void aProfileMoves() {
-    assertThatThrownBy(
-            () -> MechanismControl.Profile.builder().cruiseVelocity(0).acceleration(-1).build())
+    assertThatThrownBy(() -> MechanismControl.Profile.of(0, -1))
         .hasMessage(
             "Profile.cruiseVelocity: 0 must be positive\nProfile.acceleration: -1 must be positive");
   }
@@ -106,12 +115,12 @@ class MechanismControlTest {
     assertThat(arm.gains().kV()).as("seeded from the definition").isEmpty();
     assertThat(arm.gains().kG()).isEmpty();
     assertThat(arm.profile()).isEmpty();
-    assertThat(arm.currentLimits()).isEqualTo(MechanismControl.CurrentLimits.DEFAULTS);
+    assertThat(arm.currentLimits()).isEqualTo(MechanismControl.CurrentLimits.defaults());
     assertThat(arm.neutralMode()).isEqualTo(MechanismControl.NeutralMode.BRAKE);
     assertThat(arm.homing()).isEmpty();
     assertThat(roller.neutralMode()).isEqualTo(MechanismControl.NeutralMode.BRAKE);
     assertThat(roller.coasting().neutralMode()).isEqualTo(MechanismControl.NeutralMode.COAST);
-    assertThat(MechanismControl.CurrentLimits.DEFAULTS.stator()).isEqualTo(Amps.of(40));
+    assertThat(MechanismControl.CurrentLimits.defaults().stator()).isEqualTo(Amps.of(40));
   }
 
   /**
@@ -151,7 +160,7 @@ class MechanismControlTest {
     assertThat(arm.bands().orElseThrow().stay()).isEqualTo(0.05);
     assertThat(MechanismControl.velocity(0.02).withBands(Percent.of(3), Percent.of(6)).bands())
         .as("a roller's, shares of its speed")
-        .contains(MechanismControl.Bands.builder().enter(0.03).stay(0.06).build());
+        .contains(MechanismControl.Bands.of(0.03, 0.06));
     assertThatIllegalArgumentException()
         .isThrownBy(() -> arm.withBands(Degrees.of(4), Degrees.of(2)))
         .withMessage(
@@ -296,11 +305,12 @@ class MechanismControlTest {
 
   /**
    * A joint refuses a control whose values were given as the other kind, each saying how to give
-   * it: an elevator's soft limits in degrees, an arm's profile in inches per second.
+   * it: each kind of joint against each value that has a kind, its gains, soft limits, profile and
+   * bands. Given as its own kind, each is taken.
    */
   @Test
   void aJointRefusesAControlOfTheOtherKind() {
-    Joint.Prismatic elevator =
+    PrismaticJoint elevator =
         MechanismFixtures.prismatic(
             "elevator",
             Part.CHASSIS,
@@ -308,7 +318,7 @@ class MechanismControlTest {
             MechanismFixtures.UP,
             Range.meters(0, 1.2),
             Link.unseen("carriage"));
-    Joint.Revolute arm =
+    RevoluteJoint arm =
         MechanismFixtures.revolute(
             "arm",
             Part.CHASSIS,
@@ -317,35 +327,99 @@ class MechanismControlTest {
             Optional.of(Range.degrees(0, 135)),
             0,
             Link.unseen("arm"));
-
-    assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                elevator.control(
-                    MechanismControl.position(Volts.per(Rotation).of(188))
-                        .withSoftLimits(Range.degrees(5, 130))))
-        .withMessage(
-            "Prismatic[elevator].driven.control: its gains are per angle, and the joint slides:"
-                + " give them per length, Volts.per(Meter) or Volts.per(Inch); a gain per turn of"
-                + " its drum is that per the drum's circumference; its soft limits are angles, and"
-                + " the joint slides: give them in lengths, Range.meters(...) or"
-                + " Range.of(Inches.of(...), Inches.of(...))");
-    assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                arm.control(
-                    MechanismControl.position(30)
-                        .withProfile(InchesPerSecond.of(50), InchesPerSecondPerSecond.of(100))
-                        .withBands(Inches.of(1), Inches.of(2))))
-        .withMessage(
-            "Revolute[arm].driven.control: its profile is in lengths, and the joint turns: give it"
-                + " in angles, DegreesPerSecond.of(...) and DegreesPerSecondPerSecond.of(...); its"
-                + " bands are lengths, and the joint turns: give them in angles, Degrees.of(...)");
+    record Case(String name, Joint joint, MechanismControl control, String says) {}
+    String onElevator = "PrismaticJoint[elevator].driven.control: ";
+    String onArm = "RevoluteJoint[arm].driven.control: ";
+    List<Case> cases =
+        List.of(
+            new Case(
+                "a slide's gains per angle",
+                elevator,
+                MechanismControl.position(Volts.per(Rotation).of(188)),
+                onElevator
+                    + "its gains are per angle, and the joint slides: give them per length,"
+                    + " Volts.per(Meter) or Volts.per(Inch); a gain per turn of its drum is that per"
+                    + " the drum's circumference"),
+            new Case(
+                "a slide's soft limits in angles",
+                elevator,
+                MechanismControl.position(30).withSoftLimits(Range.degrees(5, 130)),
+                onElevator
+                    + "its soft limits are angles, and the joint slides: give them in lengths,"
+                    + " Range.meters(...) or Range.of(Inches.of(...), Inches.of(...))"),
+            new Case(
+                "a slide's profile in angles",
+                elevator,
+                MechanismControl.position(30)
+                    .withProfile(DegreesPerSecond.of(90), DegreesPerSecondPerSecond.of(180)),
+                onElevator
+                    + "its profile is in angles, and the joint slides: give it in lengths,"
+                    + " InchesPerSecond.of(...) and InchesPerSecondPerSecond.of(...)"),
+            new Case(
+                "a slide's bands in angles",
+                elevator,
+                MechanismControl.position(30).withBands(Degrees.of(1), Degrees.of(2)),
+                onElevator
+                    + "its bands are angles, and the joint slides: give them in lengths,"
+                    + " Inches.of(...)"),
+            new Case(
+                "a turning joint's gains per length",
+                arm,
+                MechanismControl.position(Volts.per(Meter).of(30)),
+                onArm
+                    + "its gains are per length, and the joint turns: give them per angle,"
+                    + " Volts.per(Rotation)"),
+            new Case(
+                "a turning joint's soft limits in lengths",
+                arm,
+                MechanismControl.position(30).withSoftLimits(Range.meters(0.1, 0.5)),
+                onArm
+                    + "its soft limits are lengths, and the joint turns: give them in angles,"
+                    + " Range.degrees(...)"),
+            new Case(
+                "a turning joint's profile in lengths",
+                arm,
+                MechanismControl.position(30)
+                    .withProfile(InchesPerSecond.of(50), InchesPerSecondPerSecond.of(100)),
+                onArm
+                    + "its profile is in lengths, and the joint turns: give it in angles,"
+                    + " DegreesPerSecond.of(...) and DegreesPerSecondPerSecond.of(...)"),
+            new Case(
+                "a turning joint's bands in lengths",
+                arm,
+                MechanismControl.position(30).withBands(Inches.of(1), Inches.of(2)),
+                onArm
+                    + "its bands are lengths, and the joint turns: give them in angles,"
+                    + " Degrees.of(...)"));
+    for (Case c : cases) {
+      assertThatIllegalArgumentException()
+          .as(c.name())
+          .isThrownBy(() -> withControl(c.joint(), c.control()))
+          .withMessage(c.says());
+    }
     assertThat(
             arm.control(MechanismControl.position(30).withSoftLimits(Range.degrees(5, 130)))
                 .driven()
                 .control())
         .isPresent();
+    assertThat(
+            elevator
+                .control(
+                    MechanismControl.position(Volts.per(Meter).of(30))
+                        .withSoftLimits(Range.meters(0.1, 1.1))
+                        .withProfile(InchesPerSecond.of(50), InchesPerSecondPerSecond.of(100))
+                        .withBands(Inches.of(1), Inches.of(2)))
+                .driven()
+                .control())
+        .isPresent();
+  }
+
+  /** A joint with this control, whichever kind it is. */
+  private static Joint withControl(Joint joint, MechanismControl control) {
+    if (joint instanceof PrismaticJoint prismatic) {
+      return prismatic.control(control);
+    }
+    return ((RevoluteJoint) joint).control(control);
   }
 
   /**
@@ -363,8 +437,11 @@ class MechanismControlTest {
     assertThat(hanging.gains().gravityAngle()).contains(Degrees.of(-90));
     assertThat(hanging.withKg(0).gains().gravityAngle()).contains(Degrees.of(-90));
     assertThat(hanging.gains().kP()).isEqualTo(30);
-    assertThatThrownBy(() -> level.withKg(0.4, Degrees.of(Double.NaN)))
-        .hasMessageStartingWith("Gains.gravityAngle: ")
+    RevoluteJoint arm =
+        Joint.pivot("arm", Part.CHASSIS, Joint.PITCH_UP)
+            .at(Meters.of(0), Meters.of(0), Meters.of(0));
+    assertThatThrownBy(() -> arm.control(level.withKg(0.4, Degrees.of(Double.NaN))))
+        .hasMessageStartingWith("Gains[arm].gravityAngle: ")
         .hasMessageEndingWith("must be a finite number");
   }
 
@@ -376,7 +453,7 @@ class MechanismControlTest {
    */
   @Test
   void aHomingsTimeoutLeftToItsJointComesFromItsTravel() {
-    Joint.Prismatic elevator =
+    PrismaticJoint elevator =
         MechanismFixtures.prismatic(
             "elevator",
             Part.CHASSIS,
@@ -384,7 +461,7 @@ class MechanismControlTest {
             MechanismFixtures.UP,
             Range.meters(0, 1.2),
             Link.unseen("carriage"));
-    Joint.Revolute turret =
+    RevoluteJoint turret =
         MechanismFixtures.revolute(
             "turret",
             Part.CHASSIS,
@@ -393,8 +470,8 @@ class MechanismControlTest {
             Optional.empty(),
             0,
             Link.unseen("turret"));
-    Joint.Prismatic slide =
-        JointPrismaticBuilder.builder(elevator)
+    PrismaticJoint slide =
+        PrismaticJointBuilder.builder(elevator)
             .label("slide")
             .range(Optional.empty())
             .rest(0.2)
@@ -428,9 +505,7 @@ class MechanismControlTest {
     double turning = kraken.freeSpeed / 50 * 1 / 12; // rad/s at 1 V
 
     double elevatorTravel = MechanismControl.Homing.travelSeconds(math, elevator, 2);
-    var derived =
-        (MechanismControl.Homing.ToHardStop)
-            MechanismControl.Homing.toHardStop(Sensor.Switch.Limit.End.LOWER);
+    var derived = MechanismControl.Homing.toHardStop(Sensor.Switch.Limit.End.LOWER);
     var given =
         (MechanismControl.Homing.ToSwitch)
             MechanismControl.Homing.toSwitch(Sensor.Switch.Limit.End.UPPER, Seconds.of(5));
@@ -451,6 +526,19 @@ class MechanismControlTest {
                     .timeout(Seconds.of(0))
                     .build())
         .hasMessage("ToSwitch.timeout: 0 s must be positive");
+    assertThat(derived.stallShare()).isEmpty();
+    for (double share : new double[] {0, 1.5}) {
+      assertThatThrownBy(
+              () ->
+                  MechanismControl.Homing.toHardStop(Sensor.Switch.Limit.End.LOWER)
+                      .stallShare(share))
+          .hasMessageStartingWith("ToHardStop.stallShare: ");
+    }
+    MechanismControl.Homing.ToHardStop lower =
+        MechanismControl.Homing.toHardStop(Sensor.Switch.Limit.End.LOWER).stallShare(0.3);
+    assertThat(lower.stallShare()).contains(0.3);
+    assertThatThrownBy(() -> lower.stallShare(0.4))
+        .hasMessage("ToHardStop.stallShare is given already, as 0.3: give it once");
   }
 
   /**
@@ -463,10 +551,10 @@ class MechanismControlTest {
     MechanismControl control = MechanismControl.position(30);
     MechanismControl tuned = control.withDeadChannel(Amps.of(3), Amps.of(1), Seconds.of(0.25));
 
-    assertThat(control.deadChannel()).isEqualTo(MechanismControl.DeadChannel.DEFAULTS);
-    assertThat(MechanismControl.DeadChannel.DEFAULTS.drawing()).isEqualTo(Amps.of(2));
-    assertThat(MechanismControl.DeadChannel.DEFAULTS.dead()).isEqualTo(Amps.of(0.5));
-    assertThat(MechanismControl.DeadChannel.DEFAULTS.time()).isEqualTo(Seconds.of(0.5));
+    assertThat(control.deadChannel()).isEqualTo(MechanismControl.DeadChannel.defaults());
+    assertThat(MechanismControl.DeadChannel.defaults().drawing()).isEqualTo(Amps.of(2));
+    assertThat(MechanismControl.DeadChannel.defaults().dead()).isEqualTo(Amps.of(0.5));
+    assertThat(MechanismControl.DeadChannel.defaults().time()).isEqualTo(Seconds.of(0.5));
     assertThat(tuned.deadChannel().drawing()).isEqualTo(Amps.of(3));
     assertThat(tuned.deadChannel().dead()).isEqualTo(Amps.of(1));
     assertThat(tuned.deadChannel().time()).isEqualTo(Seconds.of(0.25));

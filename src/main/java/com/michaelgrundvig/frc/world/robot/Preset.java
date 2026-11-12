@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
  * it names only the joints it sets, and leaves the rest where they are, so the joints it names are
  * what a command moving to it requires.
  *
- * {@snippet class=com.michaelgrundvig.frc.world.examples.ExampleJoints region=configurations}
+ * {@snippet class=com.michaelgrundvig.frc.world.examples.ExampleJoints region=presets}
  *
  * <p>The robot's definition checks each against the rest of it: every joint one of the robot's,
  * none that follows another (its leader is set instead), every interlock obeyed with the joints it
@@ -29,26 +29,26 @@ import java.util.stream.Collectors;
  * @param targets each joint it sets, at one of its named positions or outputs, each joint once
  */
 @ConfigRecord
-public record Configuration(String name, List<Condition.At> targets) {
-  public Configuration {
+public record Preset(String name, List<Condition.At> targets) {
+  public Preset {
     targets = List.copyOf(targets);
     List<Condition.At> set = targets;
-    Checks.on(Configuration.class, name)
+    Checks.on(Preset.class, name)
         .field("name", name, notBlank())
-        .field("targets", set, Rule.of(Configuration::whyNotOnceEach))
+        .field("targets", set, Rule.of(Preset::whyNotOnceEach))
         .orThrow();
   }
 
-  /** Starts describing a configuration, one named value at a time. */
-  public static ConfigurationBuilder.NameStage builder() {
-    return ConfigurationBuilder.builder();
+  /** Starts describing a preset, one named value at a time. */
+  static PresetBuilder.NameStage builder() {
+    return PresetBuilder.builder();
   }
 
   /**
-   * A configuration of joints at named places: {@code Configuration.of("feeding",
-   * FEEDER.at(FEEDER_FEEDING), INDEXER.at(INDEXER_FEEDING))}.
+   * A preset of joints at named places: {@code Preset.of("feeding", FEEDER.at(FEEDER_FEEDING),
+   * INDEXER.at(INDEXER_FEEDING))}.
    */
-  public static Configuration of(String name, Condition.At... targets) {
+  public static Preset of(String name, Condition.At... targets) {
     return builder().name(name).targets(List.of(targets)).build();
   }
 
@@ -66,8 +66,8 @@ public record Configuration(String name, List<Condition.At> targets) {
   }
 
   /**
-   * Why a configuration's targets cannot be what it sets, if they cannot: it has to set at least
-   * one joint, and no joint twice.
+   * Why a preset's targets cannot be what it sets, if they cannot: it has to set at least one
+   * joint, and no joint twice.
    */
   private static Optional<String> whyNotOnceEach(List<Condition.At> targets) {
     if (targets.isEmpty()) {

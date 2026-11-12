@@ -3,8 +3,8 @@ package com.michaelgrundvig.frc.world.examples;
 import static com.michaelgrundvig.frc.world.robot.MechanismWiring.Controller.TALON_FX;
 import static org.wpilib.units.Units.Degrees;
 import static org.wpilib.units.Units.Inches;
+import static org.wpilib.units.Units.Meters;
 
-import com.michaelgrundvig.frc.world.robot.Configuration;
 import com.michaelgrundvig.frc.world.robot.Gearing;
 import com.michaelgrundvig.frc.world.robot.Joint;
 import com.michaelgrundvig.frc.world.robot.MechanismControl;
@@ -12,8 +12,10 @@ import com.michaelgrundvig.frc.world.robot.Motor;
 import com.michaelgrundvig.frc.world.robot.Output;
 import com.michaelgrundvig.frc.world.robot.Part;
 import com.michaelgrundvig.frc.world.robot.Position;
+import com.michaelgrundvig.frc.world.robot.Preset;
+import com.michaelgrundvig.frc.world.robot.PrismaticJoint;
 import com.michaelgrundvig.frc.world.robot.Range;
-import org.wpilib.math.geometry.Translation3d;
+import com.michaelgrundvig.frc.world.robot.RevoluteJoint;
 
 /**
  * A few joints as a robot's definition writes them: an intake that swings out with a roller on its
@@ -26,8 +28,9 @@ final class ExampleJoints {
   static final Position PIVOT_IN = Position.degrees("in", 1.5);
   static final Position PIVOT_OUT = Position.degrees("out", 130);
 
-  static final Joint.Revolute PIVOT =
-      Joint.pivot("pivot", Part.CHASSIS, new Translation3d(0.25, 0, 0.32), Joint.PITCH_DOWN)
+  static final RevoluteJoint PIVOT =
+      Joint.pivot("pivot", Part.CHASSIS, Joint.PITCH_DOWN)
+          .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
           .range(Range.degrees(0, 135))
           .rest(PIVOT_IN)
           .positions(PIVOT_IN, PIVOT_OUT)
@@ -36,8 +39,9 @@ final class ExampleJoints {
 
   static final Output INTAKING = Output.rpm("intaking", 2000);
 
-  static final Joint.Revolute ROLLER =
-      Joint.roller("roller", PIVOT, new Translation3d(0, 0, 0.35))
+  static final RevoluteJoint ROLLER =
+      Joint.roller("roller", PIVOT)
+          .at(Meters.of(0), Meters.of(0), Meters.of(0.35))
           .outputs(INTAKING)
           .motors(Motor.KRAKEN_X60.through(Gearing.of(3)).on(TALON_FX.can(31)))
           // @start region=runs-only-when
@@ -48,8 +52,9 @@ final class ExampleJoints {
 
   static final Position ELEVATOR_DOWN = Position.of("down", Inches.of(0));
 
-  static final Joint.Prismatic ELEVATOR =
-      Joint.elevator("elevator", Part.CHASSIS, new Translation3d(0, 0, 0.1))
+  static final PrismaticJoint ELEVATOR =
+      Joint.elevator("elevator", Part.CHASSIS)
+          .at(Meters.of(0), Meters.of(0), Meters.of(0.1))
           .range(Range.meters(0, 1.2))
           .rest(ELEVATOR_DOWN)
           .positions(ELEVATOR_DOWN)
@@ -59,8 +64,9 @@ final class ExampleJoints {
 
   static final Position ARM_STOWED = Position.degrees("stowed", -45);
 
-  static final Joint.Revolute ARM =
-      Joint.pivot("arm", ELEVATOR, new Translation3d(0.1, 0, 0.3), Joint.PITCH_UP)
+  static final RevoluteJoint ARM =
+      Joint.pivot("arm", ELEVATOR, Joint.PITCH_UP)
+          .at(Meters.of(0.1), Meters.of(0), Meters.of(0.3))
           .range(Range.degrees(-60, 150))
           .rest(ARM_STOWED)
           .positions(ARM_STOWED)
@@ -72,13 +78,11 @@ final class ExampleJoints {
           // @end
           .control(MechanismControl.position(30));
 
-  // @start region=configurations
-  static final Configuration INTAKE =
-      Configuration.of("intake", PIVOT.at(PIVOT_OUT), ROLLER.at(INTAKING));
+  // @start region=presets
+  static final Preset INTAKE = Preset.of("intake", PIVOT.at(PIVOT_OUT), ROLLER.at(INTAKING));
 
-  static final Configuration STOWED =
-      Configuration.of(
-          "stowed", PIVOT.at(PIVOT_IN), ELEVATOR.at(ELEVATOR_DOWN), ARM.at(ARM_STOWED));
+  static final Preset STOWED =
+      Preset.of("stowed", PIVOT.at(PIVOT_IN), ELEVATOR.at(ELEVATOR_DOWN), ARM.at(ARM_STOWED));
 
   // @end
 }

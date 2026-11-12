@@ -1,9 +1,10 @@
 // The world model: what the field and the robot are. Its packages, which ArchitectureTest keeps
 // apart: the validation kit every configuration record is built with (config), what the field and
 // the robot are both made of (physical), the field with its tags, places, and terrain (field), the
-// robot's definition (robot), and the writers for other tools (bridges). It reads WPILib's math,
-// units, field layouts and JSON library and nothing more, so everything can read it, the robot
-// itself, the simulator, localization, and the views, without reaching anything else of theirs.
+// robot's definition (robot), and what the build's tool writers read of a program (tools). It
+// reads WPILib's math, units, field layouts and JSON library and nothing more, so everything can
+// read it, the robot itself, the simulator, localization, and the views, without reaching anything
+// else of theirs.
 
 plugins {
     id "java-library"
@@ -94,6 +95,8 @@ tasks.named("compileJava") {
 
 tasks.named("test") {
     useJUnitPlatform()
+    // Where the generated builders' sources are, for BuilderDocsTest to read their setters' text.
+    systemProperty "builderSources", layout.buildDirectory.dir("generated/sources/annotationProcessor/java/main").get().asFile.path
 }
 
 apply from: file("gradle/quality.gradle")
@@ -106,6 +109,8 @@ ext.published = [
     license: "BSD 3-Clause License",
 ]
 apply from: file("gradle/publishing.gradle")
+apply from: file("gradle/built-with.gradle")
+apply from: file("gradle/builder-docs.gradle")
 
 // Mutation testing: PIT changes the model's compiled code a little at a time (a comparison turned
 // round, a returned value emptied, a call removed) and runs the tests that cover each change. A

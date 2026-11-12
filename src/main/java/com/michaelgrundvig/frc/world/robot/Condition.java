@@ -13,12 +13,12 @@ import org.wpilib.units.measure.Distance;
  * Something that is true of the robot or is not: a joint is at one of its named positions, a joint
  * is at least or at most a position or between two, a joint runs at least a speed, or a sensor
  * reads something. An interlock restricts a joint while a condition holds ({@link Interlock}), and
- * a configuration is a set of joints each at a named position or output ({@link Configuration}).
+ * a preset is a set of joints each at a named position or output ({@link Preset}).
  *
  * <p>A condition is written from the joint or the sensor it is about: {@code
  * PIVOT.atLeast(Degrees.of(110))}, {@code ELEVATOR.atMost(Inches.of(32))}, {@code
  * ELEVATOR.atMost(ELEVATOR_CLEAR)} and {@code SHOOTER.upToSpeed(RPM.of(3000))} for an interlock,
- * and {@code ARM.at(ARM_SCORING)} for a configuration.
+ * and {@code ARM.at(ARM_SCORING)} for a preset.
  *
  * <p>A condition is a fixed fact about positions. It does not depend on which way the joint is
  * moving or on where the joint rests, so it means the same on every robot of the design. A
@@ -28,7 +28,7 @@ import org.wpilib.units.measure.Distance;
  *
  * <p>A condition keeps a place it names just as the code named it. Whether that place is the
  * joint's own is for whatever uses the condition to say ({@link
- * RobotDefinition#whyNotOwn(Condition)}): the definition refuses an interlock or a configuration on
+ * RobotDefinition#whyNotOwn(Condition)}): the definition refuses an interlock or a preset on
  * another joint's place, and the running robot refuses a gate on one, as it refuses a move to one.
  * So {@code PIVOT.atLeast(ELEVATOR_CLEAR)} can be built while the robot runs; its gate then holds
  * false and says why.
@@ -36,8 +36,8 @@ import org.wpilib.units.measure.Distance;
 public sealed interface Condition
     permits Condition.OnJoint, Condition.OnSensor, Condition.UpToSpeed {
   /**
-   * A condition on where a joint is. Interlocks and configurations are made of these, and they are
-   * the only conditions the definition can judge before the robot runs.
+   * A condition on where a joint is. Interlocks and presets are made of these, and they are the
+   * only conditions the definition can judge before the robot runs.
    */
   sealed interface OnJoint extends Condition
       permits Condition.At, Condition.AtLeast, Condition.AtMost, Condition.Between {
@@ -155,10 +155,10 @@ public sealed interface Condition
 
   /**
    * A joint at one of its named positions or outputs: {@code ARM.at(ARM_STOWED)}, {@code
-   * FEEDER.at(FEEDER_FEEDING)}, {@code FEEDER.at(Output.STOPPED)}. A configuration is made of
-   * these. An interlock refuses one. At a named position it would hold only with the joint exactly
-   * there, and a measured position never is, so an interlock is written with an edge instead:
-   * {@link AtLeast}, {@link AtMost} or {@link Between}.
+   * FEEDER.at(FEEDER_FEEDING)}, {@code FEEDER.at(Output.STOPPED)}. A preset is made of these. An
+   * interlock refuses one. At a named position it would hold only with the joint exactly there, and
+   * a measured position never is, so an interlock is written with an edge instead: {@link AtLeast},
+   * {@link AtMost} or {@link Between}.
    *
    * @param joint the joint
    * @param position one of its positions, as the code names it; empty for an output
@@ -175,7 +175,7 @@ public sealed interface Condition
     }
 
     /** Starts describing a joint at a named place, one named value at a time. */
-    public static ConditionAtBuilder.JointStage builder() {
+    static ConditionAtBuilder.JointStage builder() {
       return ConditionAtBuilder.builder();
     }
 
@@ -194,7 +194,7 @@ public sealed interface Condition
       if (isOutput()) {
         throw new IllegalStateException(this + " is an output, not a position");
       }
-      return at == joint.position(name()).value();
+      return at == RobotMath.position(joint, name()).value();
     }
 
     @Override
@@ -224,7 +224,7 @@ public sealed interface Condition
     }
 
     /** Starts describing a joint at least at a position, one named value at a time. */
-    public static ConditionAtLeastBuilder.JointStage builder() {
+    static ConditionAtLeastBuilder.JointStage builder() {
       return ConditionAtLeastBuilder.builder();
     }
 
@@ -260,7 +260,7 @@ public sealed interface Condition
     }
 
     /** Starts describing a joint at most at a position, one named value at a time. */
-    public static ConditionAtMostBuilder.JointStage builder() {
+    static ConditionAtMostBuilder.JointStage builder() {
       return ConditionAtMostBuilder.builder();
     }
 
@@ -299,7 +299,7 @@ public sealed interface Condition
     }
 
     /** Starts describing a joint between two positions, one named value at a time. */
-    public static ConditionBetweenBuilder.JointStage builder() {
+    static ConditionBetweenBuilder.JointStage builder() {
       return ConditionBetweenBuilder.builder();
     }
 
@@ -333,7 +333,7 @@ public sealed interface Condition
     }
 
     /** Starts describing a joint running at least a speed, one named value at a time. */
-    public static ConditionUpToSpeedBuilder.JointStage builder() {
+    static ConditionUpToSpeedBuilder.JointStage builder() {
       return ConditionUpToSpeedBuilder.builder();
     }
 
@@ -344,7 +344,7 @@ public sealed interface Condition
 
     @Override
     public String toString() {
-      return joint.label() + " at least " + joint.shownSpeed(speed);
+      return joint.label() + " at least " + Position.Kind.of(joint).shownSpeed(speed);
     }
   }
 
@@ -355,12 +355,13 @@ public sealed interface Condition
       return Optional.empty();
     }
     return Optional.of(
-        "a speed to reach must be forward, and more than none: " + joint.shownSpeed(speed));
+        "a speed to reach must be forward, and more than none: "
+            + Position.Kind.of(joint).shownSpeed(speed));
   }
 
   /** A position as a message shows it: by its name when the code named it, or else its value. */
   private static String shown(Joint joint, double position, Optional<Position> place) {
-    return place.map(Position::name).orElseGet(() -> joint.shown(position));
+    return place.map(Position::name).orElseGet(() -> Position.Kind.of(joint).shown(position));
   }
 
   /**
@@ -369,7 +370,7 @@ public sealed interface Condition
    * uses the condition, which can say whose place it is.
    */
   private static boolean isOwn(Joint joint, Optional<Position> place) {
-    return place.isEmpty() || joint.whyNotOwn(place.get()).isEmpty();
+    return place.isEmpty() || JointNames.whyNotOwn(joint, place.get()).isEmpty();
   }
 
   /**
@@ -398,12 +399,17 @@ public sealed interface Condition
       return Optional.empty();
     }
     String name = place.get().name();
-    double placedAt = joint.position(name).value();
+    double placedAt = RobotMath.position(joint, name).value();
     boolean atItsPlace = Math.abs(placedAt - position) <= Range.EDGE;
     if (atItsPlace) {
       return Optional.empty();
     }
-    return Optional.of(name + " is " + joint.shown(placedAt) + ", not " + joint.shown(position));
+    return Optional.of(
+        name
+            + " is "
+            + Position.Kind.of(joint).shown(placedAt)
+            + ", not "
+            + Position.Kind.of(joint).shown(position));
   }
 
   /** Why a position is outside a joint's range, if the joint has a range and it is. */
@@ -418,9 +424,9 @@ public sealed interface Condition
             + " is outside "
             + possessive(joint.label())
             + " range, "
-            + joint.shown(range.lower())
+            + Position.Kind.of(joint).shown(range.lower())
             + " to "
-            + joint.shown(range.upper()));
+            + Position.Kind.of(joint).shown(range.upper()));
   }
 
   /**

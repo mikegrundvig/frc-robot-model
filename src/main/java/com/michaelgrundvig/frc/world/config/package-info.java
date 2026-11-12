@@ -31,19 +31,24 @@
  *   <li>Physical quantities are WPILib units types ({@code Inches.of(27.5)}, {@code
  *       Pounds.of(135)}), so a value written in inches can never be read as meters. Code that runs
  *       every loop converts once, when it is built, and keeps plain SI values.
- *   <li>Every value is set by name, through the builder generated for each {@link
- *       com.michaelgrundvig.frc.world.config.ConfigRecord}: {@code
- *       Body.builder().frameLength(...)...build()}. The builder asks in turn for each value the
- *       record can't do without, so none can be left out or put in the wrong place; one a robot may
- *       not have (an {@code Optional}, a list its record lets be empty) is set by name after them,
- *       or left out. The architecture tests reject building one any other way.
+ *   <li>A value starts from a static factory that takes exactly what must be given, {@code of}
+ *       where there is one way to start it ({@code Gearing.of(25)}) and a word where there are
+ *       several ({@code Body.frame(...)}, {@code Joint.pivot(...)}); everything else is a verb on
+ *       the value, which returns a new one. A plain verb says a thing once and is refused if said
+ *       twice ({@code .bumpers(...)}); a {@code with...} verb replaces or adds ({@code
+ *       .withCameras(...)}). Underneath, every {@link
+ *       com.michaelgrundvig.frc.world.config.ConfigRecord} is built by name through its generated
+ *       builder, public only where every part must be given and there are too many, or they are too
+ *       alike, to read in one call ({@code Lens.builder().width(...)...build()}). The architecture
+ *       tests reject building one any other way. {@code X.defaults()} is the whole value you get if
+ *       you say nothing, and {@code DEFAULT_<PART>} the value one part takes.
  *   <li>Every record checks its values when it is built, with {@link
  *       com.michaelgrundvig.frc.world.config.Checks}: each value with its {@link
  *       com.michaelgrundvig.frc.world.config.Rule} ({@code positive()}, {@code
  *       between(Degrees.of(-90), Degrees.of(90))}, or any lambda), then checks across its values.
- *       Every problem is reported at once, each naming its value ({@code Gains.steerKp: -3 must be
- *       zero or more}). A bad value fails at startup, and first in the tests, which build every
- *       robot's configuration.
+ *       Every problem is reported at once, each naming its value ({@code SwerveGains.steerKp: -3
+ *       must be zero or more}). A bad value fails at startup, and first in the tests, which build
+ *       every robot's configuration.
  *   <li>Physical measurements have no defaults: every robot states its own.
  *   <li>Derived values (the bumper outline, wheel positions, free speed) are computed, never
  *       written down twice.

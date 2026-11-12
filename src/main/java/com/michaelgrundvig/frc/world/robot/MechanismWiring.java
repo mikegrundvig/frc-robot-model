@@ -48,20 +48,25 @@ public final class MechanismWiring {
   public static final DataPort DATA_PORT = new DataPort();
 
   /**
+   * How a motor controller drives its motor's windings, in CTRE's two words. Field-oriented control
+   * draws more current at the same voltage, for more torque and power at a slightly lower top
+   * speed; its torque for each amp is the same, so it adds nothing where a current limit is what
+   * caps the motor. CTRE sells it as part of Phoenix Pro.
+   */
+  public enum Commutation {
+    /** The plain way, which every controller runs and Phoenix 6 needs no license for. */
+    TRAPEZOIDAL,
+    /** Field-oriented control, said on the controller with {@code .foc()}. */
+    FOC
+  }
+
+  /**
    * The kind of motor controller a mechanism's motors are on, and the motors each can drive, as its
    * maker says.
    */
   public enum Controller {
     /** CTRE's TalonFX, built into a Kraken or a Falcon. */
-    TALON_FX(
-        "a TalonFX",
-        Set.of(
-            Motor.KRAKEN_X60,
-            Motor.KRAKEN_X60_FOC,
-            Motor.KRAKEN_X44,
-            Motor.KRAKEN_X44_FOC,
-            Motor.FALCON_500,
-            Motor.FALCON_500_FOC)),
+    TALON_FX("a TalonFX", Set.of(Motor.KRAKEN_X60, Motor.KRAKEN_X44, Motor.FALCON_500)),
     /**
      * CTRE's TalonFXS: a Minion, or REV's motors by their JST connectors (Phoenix's {@code
      * MotorArrangementValue}).
@@ -120,7 +125,12 @@ public final class MechanismWiring {
 
     /** This kind of controller on a CAN bus, at an ID: {@code TALON_FX.can(CANIVORE, 23)}. */
     public Device can(CanBus bus, int id) {
-      return new Device(this, bus, id, false, Optional.empty());
+      return new Device(this, bus, id, false, Commutation.TRAPEZOIDAL, Optional.empty());
+    }
+
+    /** Whether it can drive its motor with field-oriented control: CTRE's two can, REV's can't. */
+    boolean hasFoc() {
+      return kind() != CanDevice.Kind.SPARK;
     }
 
     /**
@@ -162,17 +172,46 @@ public final class MechanismWiring {
    * @param bus the CAN bus it's on
    * @param id its CAN ID
    * @param turnsClockwise whether its motor turns clockwise for positive, seen facing its shaft
+   * @param commutation how it drives its motor's windings: {@link Commutation#FOC} once its block
+   *     says {@code .foc()}, otherwise {@link Commutation#TRAPEZOIDAL}
    * @param feed the PDH channel it's powered from, and its breaker, if its block says
    */
   public record Device(
-      Controller controller, CanBus bus, int id, boolean turnsClockwise, Optional<Pdh.Feed> feed) {
-    public Device {
-      Checks.on(Device.class).field("id", id, between(0, 62)).orThrow();
-    }
+      Controller controller,
+      CanBus bus,
+      int id,
+      boolean turnsClockwise,
+      Commutation commutation,
+      Optional<Pdh.Feed> feed) {
+    // Its ID is checked by what holds it, a joint's motors or a swerve module's corner, so that a
+    // refusal names which joint or corner it's in.
 
     /** The same controller, its motor turning clockwise for positive, seen facing its shaft. */
     public Device clockwise() {
-      return new Device(controller, bus, id, true, feed);
+      return new Device(controller, bus, id, true, commutation, feed);
+    }
+
+    /**
+     * The same controller, driving its motor with field-oriented control (CTRE's FOC), which needs
+     * a Phoenix Pro license: {@code TALON_FX.can(32).clockwise().foc()}. Every request the program
+     * sends it asks for FOC, and the simulator runs the motor on its FOC curve. Every controller of
+     * a joint says it or none does, and so do a drivetrain's four drives and its four steerings.
+     *
+     * @throws IllegalArgumentException if it says so already, or it is a SPARK, which has no FOC
+     */
+    public Device foc() {
+      if (commutation == Commutation.FOC) {
+        throw new IllegalArgumentException(
+            controller.shown() + " at CAN ID " + id + " already says .foc(): say it once");
+      }
+      if (!controller.hasFoc()) {
+        throw new IllegalArgumentException(
+            controller.shown()
+                + " at CAN ID "
+                + id
+                + " has no FOC, which is CTRE's: drop .foc(), or put the motor on a TalonFX");
+      }
+      return new Device(controller, bus, id, turnsClockwise, Commutation.FOC, feed);
     }
 
     /**
@@ -182,7 +221,12 @@ public final class MechanismWiring {
      */
     public Device pdh(int channel, Current breaker) {
       return new Device(
-          controller, bus, id, turnsClockwise, Optional.of(Pdh.feed(channel, breaker)));
+          controller,
+          bus,
+          id,
+          turnsClockwise,
+          commutation,
+          Optional.of(Pdh.feed(channel, breaker)));
     }
   }
 
@@ -224,16 +268,12 @@ public final class MechanismWiring {
   @ConfigRecord
   public record Cancoder(
       CanBus bus, int id, Angle offset, boolean turnsClockwise, Feedback feedback)
-      implements EncoderWiring {
-    public Cancoder {
-      Checks.on(Cancoder.class)
-          .field("id", id, between(0, 62))
-          .field("offset", offset, between(Rotations.of(-1), Rotations.of(1)))
-          .orThrow();
-    }
+      implements EncoderWiring, SwerveWiring.ModuleEncoder {
+    // Its ID and offset are checked by what holds it, a joint's absolute encoder or a swerve
+    // module's corner, so that a refusal names which joint or corner it's in.
 
     /** Starts describing a CANcoder, one named value at a time. */
-    public static MechanismWiringCancoderBuilder.BusStage builder() {
+    static MechanismWiringCancoderBuilder.BusStage builder() {
       return MechanismWiringCancoderBuilder.builder();
     }
 
@@ -323,15 +363,12 @@ public final class MechanismWiring {
    */
   @ConfigRecord
   public record DataPortEncoder(Angle offset, boolean reversed, boolean closedLoop)
-      implements EncoderWiring {
-    public DataPortEncoder {
-      Checks.on(DataPortEncoder.class)
-          .field("offset", offset, between(Rotations.of(-1), Rotations.of(1)))
-          .orThrow();
-    }
+      implements EncoderWiring, SwerveWiring.ModuleEncoder {
+    // Its offset is checked by what holds it, a joint's absolute encoder or a swerve module's
+    // corner, so that a refusal names which joint or corner it's in.
 
     /** Starts describing a data-port encoder, one named value at a time. */
-    public static MechanismWiringDataPortEncoderBuilder.OffsetStage builder() {
+    static MechanismWiringDataPortEncoderBuilder.OffsetStage builder() {
       return MechanismWiringDataPortEncoderBuilder.builder();
     }
 

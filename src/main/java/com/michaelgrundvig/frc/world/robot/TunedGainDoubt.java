@@ -1,6 +1,7 @@
 package com.michaelgrundvig.frc.world.robot;
 
 import static com.michaelgrundvig.frc.world.config.Rules.shown;
+import static org.wpilib.units.Units.Meters;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,9 +11,9 @@ import java.util.Optional;
 /**
  * Whether a gain that a team tuned looks as if it belongs to the mechanism the definition
  * describes. The definition works out an ideal value for a joint's kV and kG from its motors, its
- * gearing and its mass. Friction and losses put a real gain above the ideal, but rarely past twice
- * it. A tuned gain further off than that is more likely a mistake in a unit or a ratio than a
- * property of the mechanism, and is noted.
+ * gearing and its mass, and for a drivetrain's drive kV from its modules. Friction and losses put a
+ * real gain above the ideal, but rarely past twice it. A tuned gain further off than that is more
+ * likely a mistake in a unit or a ratio than a property of the mechanism, and is noted.
  *
  * <p>For a kV, the commonest mistake is a gain worked out in one frame and entered in another: per
  * turn of the joint, say, and entered as if per turn of its rotor. When a tuned kV is off by about
@@ -23,6 +24,9 @@ final class TunedGainDoubt {
 
   /** Meters in an inch, for a gain worked out per inch. */
   private static final double INCH = 0.0254;
+
+  /** Meters in a foot, for a drive gain worked out per foot. */
+  private static final double FOOT = 0.3048;
 
   /**
    * A unit a gain may have been worked out per.
@@ -42,7 +46,8 @@ final class TunedGainDoubt {
   static Optional<String> ofKv(
       Joint joint, double tuned, double ideal, MechanismRotations rotations, double rotorRatio) {
     String speed = unitOf(joint) + "/s";
-    Optional<String> doubt = whyFarFromIdeal(joint, "kV", tuned, ideal, " V/(" + speed + ")");
+    Optional<String> doubt =
+        whyFarFromIdeal(joint.label(), "kV", tuned, ideal, " V/(" + speed + ")");
     if (doubt.isEmpty()) {
       return doubt;
     }
@@ -57,7 +62,27 @@ final class TunedGainDoubt {
    * are no frames to mix up.
    */
   static Optional<String> ofKg(Joint joint, double tuned, double ideal) {
-    return whyFarFromIdeal(joint, "kG", tuned, ideal, " V");
+    return whyFarFromIdeal(joint.label(), "kG", tuned, ideal, " V");
+  }
+
+  /**
+   * The doubt about a drivetrain's tuned drive kV, if there is one. Its ideal is per meter per
+   * second of the robot's speed. Tuner X holds a drive motor's gains per turn a second of its
+   * rotor, so a kV copied from it is off by about the ratio between the two, which the note names.
+   *
+   * @param tuned the tuned kV, in volts per meter per second
+   * @param module the module whose ideal the kV is compared with: the drivetrain's slowest
+   */
+  static Optional<String> ofDriveKv(double tuned, Drivetrain.Module module) {
+    double ideal = module.idealDriveKv();
+    Optional<String> doubt = whyFarFromIdeal("drivetrain", "driveKv", tuned, ideal, " V/(m/s)");
+    if (doubt.isEmpty()) {
+      return doubt;
+    }
+    double timesTheIdeal = tuned / ideal;
+    String framesMixedUp =
+        whichFramesWereMixedUp(timesTheIdeal, framesForADrive(module)).orElse("");
+    return Optional.of(doubt.get() + framesMixedUp);
   }
 
   /**
@@ -65,10 +90,11 @@ final class TunedGainDoubt {
    * over twice it. With no ideal to compare with (it is 0 for a joint whose links have no mass)
    * nothing is doubted.
    *
+   * @param label what the gain drives, as the note names it: a joint's label, or "drivetrain"
    * @param unit the gain's unit as the note shows it after a value, with its leading space
    */
   private static Optional<String> whyFarFromIdeal(
-      Joint joint, String gain, double tuned, double ideal, String unit) {
+      String label, String gain, double tuned, double ideal, String unit) {
     if (ideal == 0) {
       return Optional.empty();
     }
@@ -82,7 +108,7 @@ final class TunedGainDoubt {
         String.format(
             Locale.ROOT,
             "%s's tuned %s, %s, is %s times the ideal, %s, from its motors and what it moves",
-            joint.label(),
+            label,
             gain,
             shown(tuned) + unit,
             shown(timesTheIdeal),
@@ -130,10 +156,23 @@ final class TunedGainDoubt {
     return named;
   }
 
+  /**
+   * The frames a drive gain is commonly worked out in: per meter or per foot of the robot's travel,
+   * per turn of its wheel, or per turn of its drive motor's rotor, as Tuner X holds it.
+   */
+  private static List<Frame> framesForADrive(Drivetrain.Module module) {
+    double wheelTurnsPerMeter = 1 / (2 * Math.PI * module.wheelRadius().in(Meters));
+    return List.of(
+        new Frame("meter", 1),
+        new Frame("foot", 1 / FOOT),
+        new Frame("turn of its wheel", wheelTurnsPerMeter),
+        new Frame("turn of its rotor", module.driveGearing().ratio() * wheelTurnsPerMeter));
+  }
+
   /** The frames a gain for a joint is commonly worked out in. */
   private static List<Frame> framesFor(
       Joint joint, MechanismRotations rotations, double rotorRatio) {
-    if (joint instanceof Joint.Revolute) {
+    if (joint instanceof RevoluteJoint) {
       return List.of(
           new Frame("radian", 1),
           new Frame("degree", 180 / Math.PI),

@@ -81,7 +81,7 @@ public record MechanismControl(
     DeadChannel deadChannel,
     Optional<EncoderGap> encoderGap) {
   /** Starts describing how a mechanism is driven, one named value at a time. */
-  public static MechanismControlBuilder.LoopStage builder() {
+  static MechanismControlBuilder.LoopStage builder() {
     return MechanismControlBuilder.builder();
   }
 
@@ -109,7 +109,7 @@ public record MechanismControl(
    * @throws IllegalArgumentException for a kP per anything but an angle or a length
    */
   public static MechanismControl position(Measure<? extends PerUnit<VoltageUnit, ?>> kP) {
-    Position.Kind per = GainUnits.kindOf("kP", kP, GainUnits.Per.POSITION, Optional.empty());
+    Position.Kind per = GainUnits.kindOf("Gains.kP", kP, GainUnits.Per.POSITION, Optional.empty());
     return defaults(Loop.POSITION, kP.baseUnitMagnitude(), Optional.of(per));
   }
 
@@ -134,7 +134,7 @@ public record MechanismControl(
    * @throws IllegalArgumentException for a kP per anything but a speed
    */
   public static MechanismControl velocity(Measure<? extends PerUnit<VoltageUnit, ?>> kP) {
-    Position.Kind per = GainUnits.kindOf("kP", kP, GainUnits.Per.SPEED, Optional.empty());
+    Position.Kind per = GainUnits.kindOf("Gains.kP", kP, GainUnits.Per.SPEED, Optional.empty());
     return defaults(Loop.VELOCITY, kP.baseUnitMagnitude(), Optional.of(per));
   }
 
@@ -377,9 +377,9 @@ public record MechanismControl(
     return builder()
         .loop(loop)
         .gains(MechanismControlGainsBuilder.builder(Gains.seeded()).kP(kP).kind(per).build())
-        .currentLimits(CurrentLimits.DEFAULTS)
+        .currentLimits(CurrentLimits.defaults())
         .neutralMode(NeutralMode.BRAKE)
-        .deadChannel(DeadChannel.DEFAULTS)
+        .deadChannel(DeadChannel.defaults())
         .build();
   }
 
@@ -427,7 +427,7 @@ public record MechanismControl(
       Measure<? extends PerUnit<VoltageUnit, ?>> value,
       GainUnits.Per takes,
       Optional<Loop> loopThatDecides) {
-    return GainUnits.kindAgreeingWith(gains.kind(), gain, value, takes, loopThatDecides);
+    return GainUnits.kindAgreeingWith(gains.kind(), "Gains." + gain, value, takes, loopThatDecides);
   }
 
   /**
@@ -492,8 +492,16 @@ public record MechanismControl(
       Optional<Double> kG,
       Optional<Angle> gravityAngle,
       Optional<Position.Kind> kind) {
-    public Gains {
-      Checks.on(Gains.class)
+    /**
+     * Checks the gains for the joint that takes them, under its name: {@code Gains[pivot].kP: -30
+     * must be zero or more}. They aren't checked as they're made, since only the joint can say
+     * which joint's they are.
+     *
+     * @param joint the joint's name, which its refusals carry
+     * @throws com.michaelgrundvig.frc.world.config.ConfigException listing every gain that's wrong
+     */
+    void checkOn(String joint) {
+      Checks.on(Gains.class, joint)
           .field("kP", kP, nonNegative())
           .field("kI", kI, nonNegative())
           .field("kD", kD, nonNegative())
@@ -506,7 +514,7 @@ public record MechanismControl(
     }
 
     /** Starts describing the gains, one named value at a time. */
-    public static MechanismControlGainsBuilder.KPStage builder() {
+    static MechanismControlGainsBuilder.KPStage builder() {
       return MechanismControlGainsBuilder.builder();
     }
 
@@ -544,8 +552,18 @@ public record MechanismControl(
       return Optional.of(shown(upper) + " must be above the lower limit (" + shown(lower) + ")");
     }
 
+    /**
+     * Soft limits in the joint's own units, radians or meters, as the program works them out.
+     *
+     * @param lower the lowest position it drives the joint to
+     * @param upper the highest
+     */
+    public static SoftLimits of(double lower, double upper) {
+      return builder().lower(lower).upper(upper).build();
+    }
+
     /** Starts describing soft limits, one named value at a time. */
-    public static MechanismControlSoftLimitsBuilder.LowerStage builder() {
+    static MechanismControlSoftLimitsBuilder.LowerStage builder() {
       return MechanismControlSoftLimitsBuilder.builder();
     }
   }
@@ -569,8 +587,19 @@ public record MechanismControl(
           .orThrow();
     }
 
+    /**
+     * A profile in the joint's own units, radians or meters, per second, as the program works them
+     * out.
+     *
+     * @param cruiseVelocity the fastest it moves
+     * @param acceleration how fast it gets there
+     */
+    public static Profile of(double cruiseVelocity, double acceleration) {
+      return builder().cruiseVelocity(cruiseVelocity).acceleration(acceleration).build();
+    }
+
     /** Starts describing a profile, one named value at a time. */
-    public static MechanismControlProfileBuilder.CruiseVelocityStage builder() {
+    static MechanismControlProfileBuilder.CruiseVelocityStage builder() {
       return MechanismControlProfileBuilder.builder();
     }
   }
@@ -583,20 +612,21 @@ public record MechanismControl(
    * @param stator the most current through the motor, which caps its torque
    * @param supply the most it draws from the battery, for at most {@code supplyLowerTime} at a time
    * @param supplyLower its supply limit after that, until it draws less again: no more than its
-   *     breaker's rating
+   *     breaker's rating, which its joint checks against each motor whose PDH feed it says
    * @param supplyLowerTime how long it may draw {@code supply} before the limit steps down
    */
   @ConfigRecord
   public record CurrentLimits(
       Current stator, Current supply, Current supplyLower, Time supplyLowerTime) {
     /** What {@link #position} and {@link #velocity} start from: 40 A, 60 A, then 40 A after 1 s. */
-    public static final CurrentLimits DEFAULTS =
-        builder()
-            .stator(Amps.of(40))
-            .supply(Amps.of(60))
-            .supplyLower(Amps.of(40))
-            .supplyLowerTime(Seconds.of(1))
-            .build();
+    public static CurrentLimits defaults() {
+      return builder()
+          .stator(Amps.of(40))
+          .supply(Amps.of(60))
+          .supplyLower(Amps.of(40))
+          .supplyLowerTime(Seconds.of(1))
+          .build();
+    }
 
     public CurrentLimits {
       Checks.on(CurrentLimits.class)
@@ -611,7 +641,7 @@ public record MechanismControl(
     }
 
     /** Starts describing the current limits, one named value at a time. */
-    public static MechanismControlCurrentLimitsBuilder.StatorStage builder() {
+    static MechanismControlCurrentLimitsBuilder.StatorStage builder() {
       return MechanismControlCurrentLimitsBuilder.builder();
     }
   }
@@ -655,7 +685,17 @@ public record MechanismControl(
     }
 
     /** Starts describing bands, one named value at a time. */
-    public static MechanismControlBandsBuilder.EnterStage builder() {
+    /**
+     * Bands in the joint's own units, radians or meters, as the program works them out.
+     *
+     * @param enter the most it may be off to come to be there
+     * @param stay the most it may be off to stay there: at least {@code enter}
+     */
+    public static Bands of(double enter, double stay) {
+      return builder().enter(enter).stay(stay).build();
+    }
+
+    static MechanismControlBandsBuilder.EnterStage builder() {
       return MechanismControlBandsBuilder.builder();
     }
   }
@@ -680,7 +720,7 @@ public record MechanismControl(
     }
 
     /** Starts describing an encoder gap, one named value at a time. */
-    public static MechanismControlEncoderGapBuilder.MarginStage builder() {
+    static MechanismControlEncoderGapBuilder.MarginStage builder() {
       return MechanismControlEncoderGapBuilder.builder();
     }
   }
@@ -703,8 +743,9 @@ public record MechanismControl(
   @ConfigRecord
   public record DeadChannel(Current drawing, Current dead, Time time) {
     /** The template's: 2 A drawing, under 0.5 A on the channel, for half a second. */
-    public static final DeadChannel DEFAULTS =
-        builder().drawing(Amps.of(2)).dead(Amps.of(0.5)).time(Seconds.of(0.5)).build();
+    public static DeadChannel defaults() {
+      return builder().drawing(Amps.of(2)).dead(Amps.of(0.5)).time(Seconds.of(0.5)).build();
+    }
 
     public DeadChannel {
       Checks.on(DeadChannel.class)
@@ -731,7 +772,7 @@ public record MechanismControl(
     }
 
     /** Starts describing when a channel is dead, one named value at a time. */
-    public static MechanismControlDeadChannelBuilder.DrawingStage builder() {
+    static MechanismControlDeadChannelBuilder.DrawingStage builder() {
       return MechanismControlDeadChannelBuilder.builder();
     }
   }
@@ -753,7 +794,7 @@ public record MechanismControl(
      * there is the stop's: 2 V, for as long as its model says crossing its range takes at that
      * push, twice over and half a second more ({@link #secondsAllowed}).
      */
-    static Homing toHardStop(Sensor.Switch.Limit.End end) {
+    static ToHardStop toHardStop(Sensor.Switch.Limit.End end) {
       return ToHardStop.builder().end(end).volts(2).build();
     }
 
@@ -761,7 +802,7 @@ public record MechanismControl(
      * The same, for at most this long: for a joint slower than its model says, such as one pushed
      * up against its weight.
      */
-    static Homing toHardStop(Sensor.Switch.Limit.End end, Time timeout) {
+    static ToHardStop toHardStop(Sensor.Switch.Limit.End end, Time timeout) {
       return ToHardStop.builder().end(end).volts(2).timeout(timeout).build();
     }
 
@@ -809,21 +850,31 @@ public record MechanismControl(
 
     /**
      * Pushed into a hard stop on the first enable, the joint is there once it has stopped moving
-     * for a quarter of a second; if it hasn't by the timeout, it's faulted, and its moves refused.
+     * for a quarter of a second while its motor draws the current of a push held still; if it
+     * hasn't by the timeout, it's faulted, and its moves refused.
      *
      * @param end which end's hard stop
      * @param volts how hard it's pushed: enough to move it, against gravity if the stop is above
      * @param timeout how long it may take; empty to work it out from the joint ({@link
      *     Homing#secondsAllowed})
+     * @param stallShare how much of the current a push held still draws (its volts over the motor's
+     *     windings, up to its stator limit) the motor must draw for a still joint to count as
+     *     pushing on its stop; empty for the program's own share
      */
     @ConfigRecord
-    record ToHardStop(Sensor.Switch.Limit.End end, double volts, Optional<Time> timeout)
+    record ToHardStop(
+        Sensor.Switch.Limit.End end,
+        double volts,
+        Optional<Time> timeout,
+        Optional<Double> stallShare)
         implements Homing {
       public ToHardStop {
         Checks.on(ToHardStop.class)
             .field("volts", volts, positive())
             .field("volts", volts, atMost(Motor.NOMINAL_VOLTS))
             .field("timeout", timeout, given(positive()))
+            .field("stallShare", stallShare, given(positive()))
+            .field("stallShare", stallShare, given(atMost(1.0)))
             .orThrow();
       }
 
@@ -832,8 +883,26 @@ public record MechanismControl(
         return Homing.secondsAllowed(timeout, volts, math, joint);
       }
 
+      /**
+       * The same homing, a still joint counting as on its stop once its motor draws this share of
+       * the current a push held still draws: {@code Homing.toHardStop(End.LOWER).stallShare(0.3)}.
+       *
+       * @param stallShare above 0, at most 1; lower it only if a healthy joint on its stop reads
+       *     under half
+       * @throws IllegalArgumentException if its stall share is given already
+       */
+      public ToHardStop stallShare(double stallShare) {
+        if (this.stallShare.isPresent()) {
+          throw new IllegalArgumentException(
+              "ToHardStop.stallShare is given already, as "
+                  + this.stallShare.get()
+                  + ": give it once");
+        }
+        return MechanismControlHomingToHardStopBuilder.builder(this).stallShare(stallShare).build();
+      }
+
       /** Starts describing the homing, one named value at a time. */
-      public static MechanismControlHomingToHardStopBuilder.EndStage builder() {
+      static MechanismControlHomingToHardStopBuilder.EndStage builder() {
         return MechanismControlHomingToHardStopBuilder.builder();
       }
     }
@@ -865,7 +934,7 @@ public record MechanismControl(
       }
 
       /** Starts describing the homing, one named value at a time. */
-      public static MechanismControlHomingToSwitchBuilder.EndStage builder() {
+      static MechanismControlHomingToSwitchBuilder.EndStage builder() {
         return MechanismControlHomingToSwitchBuilder.builder();
       }
     }

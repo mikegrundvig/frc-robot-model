@@ -7,43 +7,43 @@ import java.util.Set;
 
 /**
  * Where the robot's joints are put for a check, and which of them run: either as the robot starts,
- * or as one configuration puts them. The definition judges its interlocks against a placement,
- * because that is all it can know before the robot runs.
+ * or as one preset puts them. The definition judges its interlocks against a placement, because
+ * that is all it can know before the robot runs.
  *
  * @param positions where each joint is, in its own units. A joint that is missing is where it
  *     rests.
- * @param named the joints whose positions a configuration gives. Every other joint is where it
- *     rests, and a message about it says so.
- * @param running the joints a configuration runs at an output, each with the speed it runs at. The
- *     speed is empty for a voltage or a duty cycle, because how fast those turn the joint is not
- *     known until the robot runs. A joint that is missing is still.
+ * @param named the joints whose positions a preset gives. Every other joint is where it rests, and
+ *     a message about it says so.
+ * @param running the joints a preset runs at an output, each with the speed it runs at. The speed
+ *     is empty for a voltage or a duty cycle, because how fast those turn the joint is not known
+ *     until the robot runs. A joint that is missing is still.
  */
-record Placement(
+record TrialPlacement(
     Map<Joint, Double> positions, Set<Joint> named, Map<Joint, OptionalDouble> running) {
   /** The robot as it starts: every joint where it rests, and none running. */
-  static Placement asTheRobotStarts(RobotMath math) {
-    return new Placement(math.positions(Map.of()), Set.of(), Map.of());
+  static TrialPlacement asTheRobotStarts(RobotMath math) {
+    return new TrialPlacement(math.positions(Map.of()), Set.of(), Map.of());
   }
 
   /**
-   * The robot as a configuration puts it: the joints it names at their named positions or running
-   * at their named outputs, and every other joint where it rests.
+   * The robot as a preset puts it: the joints it names at their named positions or running at their
+   * named outputs, and every other joint where it rests.
    */
-  static Placement of(RobotMath math, Configuration configuration) {
+  static TrialPlacement of(RobotMath math, Preset preset) {
     Map<Joint, Double> given = new LinkedHashMap<>();
     Map<Joint, OptionalDouble> running = new LinkedHashMap<>();
-    for (Condition.At target : configuration.targets()) {
+    for (Condition.At target : preset.targets()) {
       Joint joint = target.joint();
       if (!target.isOutput()) {
-        given.put(joint, joint.position(target.name()).value());
+        given.put(joint, RobotMath.position(joint, target.name()).value());
         continue;
       }
-      Output output = joint.output(target.name());
+      Output output = RobotMath.output(joint, target.name());
       if (output.runs()) {
         running.put(joint, speedOf(output));
       }
     }
-    return new Placement(math.positions(given), given.keySet(), running);
+    return new TrialPlacement(math.positions(given), given.keySet(), running);
   }
 
   /** The speed an output runs its joint at, when the output is a speed. */
@@ -56,25 +56,25 @@ record Placement(
 
   /** Where a joint is, in its own units. */
   double positionOf(Joint joint) {
-    return positions.getOrDefault(joint, joint.restPosition());
+    return positions.getOrDefault(joint, RobotMath.restPosition(joint));
   }
 
-  /** Whether a configuration runs a joint at an output. */
+  /** Whether a preset runs a joint at an output. */
   boolean runs(Joint joint) {
     return running.containsKey(joint);
   }
 
-  /** Whether a configuration puts a joint anywhere or runs it, so that it is not simply at rest. */
+  /** Whether a preset puts a joint anywhere or runs it, so that it is not simply at rest. */
   boolean sets(Joint joint) {
     return named.contains(joint) || runs(joint);
   }
 
   /**
    * Where a joint is, as a message says it: "pivot is at 130°", with ", where it rests" added for a
-   * joint no configuration put there.
+   * joint no preset put there.
    */
   String where(Joint joint) {
-    String where = joint.label() + " is at " + joint.shown(positionOf(joint));
+    String where = joint.label() + " is at " + Position.Kind.of(joint).shown(positionOf(joint));
     if (named.contains(joint)) {
       return where;
     }

@@ -27,8 +27,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class DeadlockTest {
   // spotless:off
-  private static final Joint.Revolute LEFT = lightPivot("left", Optional.empty());
-  private static final Joint.Revolute RIGHT = lightPivot("right", Optional.empty());
+  private static final RevoluteJoint LEFT = lightPivot("left", Optional.empty());
+  private static final RevoluteJoint RIGHT = lightPivot("right", Optional.empty());
   private static final Sensor.Switch BEAM = Sensor.Switch.beam("claw beam", Part.CHASSIS);
 
   // Each wheel kept out of a band above where it rests while the other is at or below that band.
@@ -41,8 +41,8 @@ class DeadlockTest {
   private static final Interlock RIGHT_BELOW_WHILE_LEFT_WELL_BELOW = Interlock.that(RIGHT).keepsOut(Range.degrees(60, 120)).when(LEFT.atMost(Degrees.of(59)));
 
   // Two slides, 1 m long, each resting on its bottom stop and kept out of a region while the other is anywhere at all.
-  private static final Joint.Prismatic NEAR = lightSlide("near", new Vector3(1, 0, 0), Range.meters(0, 1));
-  private static final Joint.Prismatic FAR = lightSlide("far", new Vector3(1, 0, 0), Range.meters(0, 1));
+  private static final PrismaticJoint NEAR = lightSlide("near", new Vector3(1, 0, 0), Range.meters(0, 1));
+  private static final PrismaticJoint FAR = lightSlide("far", new Vector3(1, 0, 0), Range.meters(0, 1));
   private static final Condition NEAR_ANYWHERE = NEAR.between(Meters.of(0), Meters.of(1));
   private static final Condition FAR_ANYWHERE = FAR.between(Meters.of(0), Meters.of(1));
 
@@ -67,10 +67,10 @@ class DeadlockTest {
   private static final Interlock ROLLER_BY_BEAM = Interlock.that(ROLLER).runsOnlyWhen(BEAM.tripped());
 
   private static final Condition.UpToSpeed ROLLER_SPUN_UP = ROLLER.upToSpeed(RPM.of(1500));
-  private static final Joint.Revolute PUSHING_ROLLER = named(ROLLER, List.of(), List.of(Output.volts("pushing", 6), Output.rpm("slow", 1000)));
+  private static final RevoluteJoint PUSHING_ROLLER = named(ROLLER, List.of(), List.of(Output.volts("pushing", 6), Output.rpm("slow", 1000)));
   // spotless:on
 
-  private static final Placement AT_REST = new Placement(Map.of(), Set.of(), Map.of());
+  private static final TrialPlacement AT_REST = new TrialPlacement(Map.of(), Set.of(), Map.of());
 
   private static List<InterlockRing> rings(Interlock... interlocks) {
     return InterlockRing.among(List.of(interlocks));
@@ -80,15 +80,15 @@ class DeadlockTest {
     return new InterlockRing(List.of(interlocks));
   }
 
-  /** The standard robot as a configuration puts it. */
-  private static Placement placed(Condition.At... targets) {
-    return Placement.of(competition().math(), Configuration.of("placed", targets));
+  /** The standard robot as a preset puts it. */
+  private static TrialPlacement placed(Condition.At... targets) {
+    return TrialPlacement.of(competition().math(), Preset.of("placed", targets));
   }
 
-  /** The standard robot with a roller that also runs at a voltage, as a configuration puts it. */
-  private static Placement placedWithAPushingRoller(Condition.At... targets) {
+  /** The standard robot with a roller that also runs at a voltage, as a preset puts it. */
+  private static TrialPlacement placedWithAPushingRoller(Condition.At... targets) {
     RobotDefinition robot = robotOf(PIVOT, PUSHING_ROLLER);
-    return Placement.of(robot.math(), Configuration.of("placed", targets));
+    return TrialPlacement.of(robot.math(), Preset.of("placed", targets));
   }
 
   @ParameterizedTest
@@ -144,7 +144,7 @@ class DeadlockTest {
   /** Where a placement puts the joints, which it runs, and what a condition reads there. */
   static Stream<Arguments> placements() {
     return Stream.of(
-        answers("a joint a configuration names is where it puts it",
+        answers("a joint a preset names is where it puts it",
             () -> placed(PIVOT.at(PIVOT_OUT)).where(PIVOT), "pivot is at 130°"),
         answers("a joint it does not name is where it rests, and said to be",
             () -> placed(PIVOT.at(PIVOT_OUT)).where(ARM), "arm is at -20°, where it rests"),
@@ -161,10 +161,10 @@ class DeadlockTest {
         answers("a joint run at a speed past the one to reach has reached it",
             () -> placed(ROLLER.at(ROLLER_INTAKING)).reading(ROLLER_SPUN_UP), ConditionReading.HOLDS),
         answers("a joint run at a speed short of the one to reach has not",
-            () -> placedWithAPushingRoller(PUSHING_ROLLER.at(PUSHING_ROLLER.output("slow")))
+            () -> placedWithAPushingRoller(PUSHING_ROLLER.at(RobotMath.output(PUSHING_ROLLER, "slow")))
                 .reading(PUSHING_ROLLER.upToSpeed(RPM.of(1500))), ConditionReading.DOES_NOT_HOLD),
         answers("how fast a voltage runs a joint is not known",
-            () -> placedWithAPushingRoller(PUSHING_ROLLER.at(PUSHING_ROLLER.output("pushing")))
+            () -> placedWithAPushingRoller(PUSHING_ROLLER.at(RobotMath.output(PUSHING_ROLLER, "pushing")))
                 .reading(PUSHING_ROLLER.upToSpeed(RPM.of(1500))), ConditionReading.UNKNOWN),
         answers("what a sensor reads is not known",
             () -> placed(PIVOT.at(PIVOT_OUT)).reading(BEAM.tripped()), ConditionReading.UNKNOWN));

@@ -71,9 +71,49 @@ public record ImuMount(
         .orThrow();
   }
 
-  /** Starts describing an IMU's mount, one named value at a time. */
-  public static ImuMountBuilder.ForwardStage builder() {
-    return ImuMountBuilder.builder();
+  /**
+   * An IMU sitting here, from the robot's origin, mounted level with its x axis forward, its
+   * accelerometer not yet checked: {@code ImuMount.at(Meters.of(0), Meters.of(0), Inches.of(3))}.
+   * {@link #turned} says how it's turned, and {@link #accelerometerCheckPassed} that it's been
+   * checked.
+   *
+   * @param forward how far ahead of the center it sits (negative: behind it)
+   * @param left how far left of the center (negative: to the right)
+   * @param up how far above the floor
+   */
+  public static ImuMount at(Distance forward, Distance left, Distance up) {
+    return ImuMountBuilder.builder(UNCHECKED).forward(forward).left(left).up(up).build();
+  }
+
+  /**
+   * The same IMU, turned on the robot: {@code .turned(new Rotation3d(0, 0, Math.PI / 2))} for one
+   * turned to face left.
+   *
+   * @param orientation the rotation that takes its own axes (the x, y and z printed on its case or
+   *     board) into the robot's (forward, left, up): a half turn about x ({@code new Rotation3d(
+   *     Math.PI, 0, 0)}) for one mounted upside down
+   * @throws IllegalArgumentException if it's turned already
+   */
+  public ImuMount turned(Rotation3d orientation) {
+    if (!this.orientation.equals(Rotation3d.ZERO)) {
+      throw new IllegalArgumentException(
+          "ImuMount.orientation is given already, as " + this.orientation + ": give it once");
+    }
+    return ImuMountBuilder.builder(this).orientation(orientation).build();
+  }
+
+  /**
+   * The same IMU, its accelerometer checked to read along the robot's axes: this robot has passed
+   * the accelerometer check for it (docs/calibration.md).
+   *
+   * @throws IllegalArgumentException if it says so already
+   */
+  public ImuMount accelerometerCheckPassed() {
+    if (accelerometerChecked) {
+      throw new IllegalArgumentException(
+          "ImuMount.accelerometerChecked is given already: give it once");
+    }
+    return ImuMountBuilder.builder(this).accelerometerChecked(true).build();
   }
 
   /** Where it sits, from the robot's origin. */

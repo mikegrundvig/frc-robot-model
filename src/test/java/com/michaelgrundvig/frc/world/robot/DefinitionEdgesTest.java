@@ -49,13 +49,12 @@ class DefinitionEdgesTest {
 
   /** The test robot's drivetrain with one corner's wheel moved. */
   private static String cornerAt(int corner, double x, double y) {
-    List<DrivetrainGeometry.Corner> corners =
-        new ArrayList<>(ConfigFixtures.drivetrain().corners());
-    DrivetrainGeometry.ModuleType module = corners.get(corner).module();
+    List<Drivetrain.Corner> corners = new ArrayList<>(ConfigFixtures.drivetrain().corners());
+    Drivetrain.Module module = corners.get(corner).module();
     return built(
         () -> {
-          corners.set(corner, new DrivetrainGeometry.Corner(module, new Translation2d(x, y)));
-          DrivetrainGeometry.builder().corners(corners).build();
+          corners.set(corner, new Drivetrain.Corner(module, new Translation2d(x, y)));
+          Drivetrain.builder().corners(corners).build();
         });
   }
 

@@ -83,8 +83,32 @@ public sealed interface Sensor permits Sensor.Encoder, Sensor.Placed {
           .orThrow();
     }
 
+    /**
+     * An encoder reading some joints by its own ratios.
+     *
+     * @param label what logs call it
+     * @param terms the joints it reads, each by its ratio
+     * @param absolute whether it reads where it is from power-on
+     */
+    public static Encoder of(String label, List<Transmission.Term> terms, boolean absolute) {
+      return builder().label(label).terms(terms).absolute(absolute).build();
+    }
+
+    /**
+     * The same encoder, counting this many times a turn of its own shaft.
+     *
+     * @throws IllegalArgumentException if its counts are given already
+     */
+    public Encoder countsPerTurn(int counts) {
+      if (countsPerTurn.isPresent()) {
+        throw new IllegalArgumentException(
+            label + " has its counts per turn already: give them once");
+      }
+      return SensorEncoderBuilder.builder(this).countsPerTurn(counts).build();
+    }
+
     /** Starts describing an encoder, one named value at a time. */
-    public static SensorEncoderBuilder.LabelStage builder() {
+    static SensorEncoderBuilder.LabelStage builder() {
       return SensorEncoderBuilder.builder();
     }
 
@@ -94,10 +118,10 @@ public sealed interface Sensor permits Sensor.Encoder, Sensor.Placed {
      *
      * @param countsPerTurn its resolution, from its datasheet: a CANcoder's 4096
      */
-    static Encoder absolute(String label, Joint.Revolute joint, int countsPerTurn) {
+    static Encoder absolute(String label, RevoluteJoint joint, int countsPerTurn) {
       return builder()
           .label(label)
-          .terms(List.of(Transmission.Term.builder().joint(joint).ratio(1).build()))
+          .terms(List.of(Transmission.Term.of(joint, 1)))
           .absolute(true)
           .countsPerTurn(countsPerTurn)
           .build();
@@ -162,8 +186,19 @@ public sealed interface Sensor permits Sensor.Encoder, Sensor.Placed {
       Checks.on(Switch.class, label).field("label", label, notBlank()).orThrow();
     }
 
+    /**
+     * A switch on a part, of a kind.
+     *
+     * @param label what logs call it
+     * @param part what it's on
+     * @param kind what it senses
+     */
+    public static Switch of(String label, Part part, Switch.Kind kind) {
+      return builder().label(label).part(part).kind(kind).build();
+    }
+
     /** Starts describing a switch, one named value at a time. */
-    public static SensorSwitchBuilder.LabelStage builder() {
+    static SensorSwitchBuilder.LabelStage builder() {
       return SensorSwitchBuilder.builder();
     }
 
@@ -331,7 +366,7 @@ public sealed interface Sensor permits Sensor.Encoder, Sensor.Placed {
     }
 
     /** Starts describing a rangefinder, one named value at a time. */
-    public static SensorRangefinderBuilder.LabelStage builder() {
+    static SensorRangefinderBuilder.LabelStage builder() {
       return SensorRangefinderBuilder.builder();
     }
 

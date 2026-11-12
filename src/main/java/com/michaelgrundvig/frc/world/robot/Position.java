@@ -32,11 +32,14 @@ public record Position(String name, Kind kind, double value) {
     /** A length, in meters: a prismatic joint's. */
     LENGTH;
 
-    /** A joint's: an angle for one that turns, a length for one that slides. */
-    static Kind of(Joint joint) {
+    /**
+     * A joint's: an angle for one that turns, a length for one that slides. A position on a joint
+     * is shown in its kind's words: {@code Position.Kind.of(PIVOT).shown(radians)}.
+     */
+    public static Kind of(Joint joint) {
       return switch (joint) {
-        case Joint.Revolute turning -> ANGLE;
-        case Joint.Prismatic sliding -> LENGTH;
+        case RevoluteJoint turning -> ANGLE;
+        case PrismaticJoint sliding -> LENGTH;
       };
     }
 
@@ -48,7 +51,7 @@ public record Position(String name, Kind kind, double value) {
      *
      * @param value in a joint's units: radians, or meters
      */
-    String shown(double value) {
+    public String shown(double value) {
       return switch (this) {
         case ANGLE -> Rules.shown(roundedTo(0.01, Math.toDegrees(value))) + "°";
         case LENGTH -> Rules.shown(roundedTo(0.0001, value)) + " m";
@@ -61,7 +64,7 @@ public record Position(String name, Kind kind, double value) {
      *
      * @param value in a joint's units a second: radians, or meters
      */
-    String shownSpeed(double value) {
+    public String shownSpeed(double value) {
       return switch (this) {
         case ANGLE -> Rules.shown(value * 60 / (2 * Math.PI)) + " rpm";
         case LENGTH -> Rules.shown(value) + " m/s";
@@ -89,7 +92,7 @@ public record Position(String name, Kind kind, double value) {
   }
 
   /** Starts describing a position, one named value at a time. */
-  public static PositionBuilder.NameStage builder() {
+  static PositionBuilder.NameStage builder() {
     return PositionBuilder.builder();
   }
 

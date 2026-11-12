@@ -26,18 +26,21 @@ final class JointParts {
   static List<Drive> drives(Joint joint) {
     List<Drive> drives = new ArrayList<>();
     joint.driven().motors().ifPresent(motors -> drives.add(motorDrive(joint, motors)));
-    for (Driven.Servo servo : joint.driven().servos()) {
+    for (Driven.ServoMount servo : joint.driven().servos()) {
       drives.add(servoDrive(joint, servo));
     }
     return drives;
   }
 
   private static Drive motorDrive(Joint joint, Driven.Motors motors) {
-    return Drive.builder()
-        .label(joint.label())
-        .actuator(Actuator.Motors.builder().motor(motors.motor()).count(motors.count()).build())
-        .transmission(transmission(joint, motors))
-        .build();
+    return Drive.of(
+        joint.label(),
+        Actuator.MotorGroup.builder()
+            .motor(motors.motor())
+            .count(motors.count())
+            .commutation(motors.commutation())
+            .build(),
+        transmission(joint, motors));
   }
 
   /**
@@ -46,14 +49,9 @@ final class JointParts {
    */
   private static Transmission transmission(Joint joint, Driven.Motors motors) {
     return switch (joint) {
-      case Joint.Revolute turning ->
-          Transmission.Geared.builder().joint(turning).gearing(motors.gearing()).build();
-      case Joint.Prismatic sliding ->
-          Transmission.Drum.builder()
-              .joint(sliding)
-              .gearing(motors.gearing())
-              .pitchRadius(motors.pitchRadius().orElseThrow())
-              .build();
+      case RevoluteJoint turning -> Transmission.Geared.of(turning, motors.gearing());
+      case PrismaticJoint sliding ->
+          Transmission.Drum.of(sliding, motors.gearing(), motors.pitchRadius().orElseThrow());
     };
   }
 
@@ -62,22 +60,19 @@ final class JointParts {
    * where the servo's body is fixed from the joint's origin, and the transmission wants it in the
    * parent's frame, so it is moved there.
    */
-  private static Drive servoDrive(Joint joint, Driven.Servo servo) {
-    return Drive.builder()
-        .label(servo.label())
-        .actuator(servo.servo())
-        .transmission(
-            Transmission.Between.builder()
-                .a(joint.parent())
-                .onA(
-                    joint
-                        .origin()
-                        .getTranslation()
-                        .plus(servo.onParent().rotateBy(joint.origin().getRotation())))
-                .b(joint)
-                .onB(servo.onLink())
-                .build())
-        .build();
+  private static Drive servoDrive(Joint joint, Driven.ServoMount servo) {
+    return Drive.of(
+        servo.label(),
+        servo.servo(),
+        Transmission.Between.builder()
+            .a(joint.parent())
+            .onA(
+                RobotMath.origin(joint)
+                    .getTranslation()
+                    .plus(servo.onParent().rotateBy(RobotMath.origin(joint).getRotation())))
+            .b(joint)
+            .onB(servo.onLink())
+            .build());
   }
 
   /**
@@ -107,30 +102,28 @@ final class JointParts {
       return Optional.empty();
     }
     Optional<Distance> drum = drumOf(joint);
-    boolean turnsWithADrum = joint instanceof Joint.Prismatic;
+    boolean turnsWithADrum = joint instanceof PrismaticJoint;
     if (turnsWithADrum && drum.isEmpty()) {
       return Optional.empty();
     }
     double turnsForEachOfTheJoints = encoder.get().ratio() / encoder.get().turnsPerSignal();
     return Optional.of(
-        Sensor.Encoder.builder()
-            .label(joint.label() + " absolute encoder")
-            .terms(
-                List.of(
-                    Transmission.Term.builder()
-                        .joint(joint)
-                        .ratio(turnsForEachOfTheJoints)
-                        .pitchRadius(drum)
-                        .build()))
-            .absolute(true)
-            .build());
+        Sensor.Encoder.of(
+            joint.label() + " absolute encoder",
+            List.of(
+                Transmission.Term.builder()
+                    .joint(joint)
+                    .ratio(turnsForEachOfTheJoints)
+                    .pitchRadius(drum)
+                    .build()),
+            true));
   }
 
   /** The pitch radius of the drum a sliding joint's motors wind onto. A turning joint has none. */
   private static Optional<Distance> drumOf(Joint joint) {
     return switch (joint) {
-      case Joint.Revolute turning -> Optional.empty();
-      case Joint.Prismatic sliding -> sliding.driven().motors().flatMap(Driven.Motors::pitchRadius);
+      case RevoluteJoint turning -> Optional.empty();
+      case PrismaticJoint sliding -> sliding.driven().motors().flatMap(Driven.Motors::pitchRadius);
     };
   }
 

@@ -2,9 +2,9 @@ package com.michaelgrundvig.frc.world.record;
 
 /**
  * How the latest run of a move ended, for one of the joints it moved. A move of several joints, a
- * configuration's, has one of these for each joint, and they agree on everything that is the
- * move's: {@code result}, {@code task}, {@code progress}, {@code seconds}, {@code configuration},
- * {@code reason} and {@code reasonJoint}.
+ * preset's, has one of these for each joint, and they agree on everything that is the move's:
+ * {@code result}, {@code task}, {@code progress}, {@code seconds}, {@code preset}, {@code reason}
+ * and {@code reasonJoint}.
  *
  * <p>Under each joint the robot logs every joint's part of the last move that ended on it, in the
  * move's order ({@code Joints/<label>/Outcome}), so one key holds the whole move. Beside it are the
@@ -22,8 +22,8 @@ package com.michaelgrundvig.frc.world.record;
  * @param joint which joint this is the part of: its index in the definition's {@code joints()}. A
  *     move that moves no joint the robot drives, which is always refused, has one part that is no
  *     joint's: {@link Identity#NONE}.
- * @param configuration the configuration the move goes to or stays at: its index in the
- *     definition's {@code configurations()}, or {@link Identity#NONE} for a move of one joint
+ * @param preset the preset the move goes to or stays at: its index in the definition's {@code
+ *     presets()}, or {@link Identity#NONE} for a move of one joint
  * @param target what kind of thing the move sent this joint to or ran it at
  * @param targetIndex which one: for {@link MoveTarget#PLACE} its index in the joint's {@code
  *     positions()}, for {@link MoveTarget#OUTPUT} its index in the joint's {@code outputs()}, and
@@ -49,7 +49,7 @@ public record MoveOutcome(
     MoveProgress progress,
     double seconds,
     int joint,
-    int configuration,
+    int preset,
     MoveTarget target,
     int targetIndex,
     double targetNumber,
@@ -59,9 +59,9 @@ public record MoveOutcome(
     MoveReason reason,
     int reasonJoint) {
 
-  /** Whether the move was of a configuration's joints, and not one joint's own. */
-  public boolean isOfAConfiguration() {
-    return Identity.isSome(configuration);
+  /** Whether the move was of a preset's joints, and not one joint's own. */
+  public boolean isOfAPreset() {
+    return Identity.isSome(preset);
   }
 
   /** Whether this joint was run at an output, where every other target positions the joint. */

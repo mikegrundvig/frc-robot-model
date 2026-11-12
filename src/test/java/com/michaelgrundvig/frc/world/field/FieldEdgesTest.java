@@ -224,7 +224,7 @@ class FieldEdgesTest {
             () -> {
               Ramp acrossTheWall = new Ramp("Ramp", xy(3, 7.9), xy(3.5, 7.9), 1, 0.2);
               try {
-                return new FieldModel(TestFields.layout(), Symmetry.ROTATED, List.of(), List.of(), List.of(), List.of(acrossTheWall)).name();
+                return new FieldModel(TestFields.tagLayout(), Symmetry.ROTATED, List.of(), List.of(), List.of(), List.of(acrossTheWall)).name();
               } catch (IllegalArgumentException e) {
                 return String.valueOf(e.getMessage());
               }

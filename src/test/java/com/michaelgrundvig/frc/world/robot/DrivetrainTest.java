@@ -4,6 +4,9 @@ import static com.michaelgrundvig.frc.world.robot.ConfigFixtures.body;
 import static com.michaelgrundvig.frc.world.robot.ConfigFixtures.drivetrain;
 import static com.michaelgrundvig.frc.world.robot.ConfigFixtures.gearing;
 import static com.michaelgrundvig.frc.world.robot.ConfigFixtures.modules;
+import static com.michaelgrundvig.frc.world.robot.MechanismWiring.Controller.SPARK_FLEX;
+import static com.michaelgrundvig.frc.world.robot.MechanismWiring.Controller.SPARK_MAX;
+import static com.michaelgrundvig.frc.world.robot.MechanismWiring.Controller.TALON_FX;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.within;
@@ -12,7 +15,6 @@ import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Kilograms;
 import static org.wpilib.units.Units.Meters;
 import static org.wpilib.units.Units.MetersPerSecond;
-import static org.wpilib.units.Units.Rotations;
 
 import com.michaelgrundvig.frc.world.physical.MassProperties;
 import java.util.ArrayList;
@@ -22,16 +24,16 @@ import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.wpilib.math.geometry.Translation2d;
 
-class DrivetrainGeometryTest {
+class DrivetrainTest {
+  private static final MechanismWiring.Commutation PLAIN = MechanismWiring.Commutation.TRAPEZOIDAL;
+
   @Test
   void keepsItsSettings() {
-    DrivetrainGeometry drivetrain = drivetrain();
+    Drivetrain drivetrain = drivetrain();
 
-    assertThat(drivetrain.corners())
-        .extracting(DrivetrainGeometry.Corner::module)
-        .containsOnly(modules());
+    assertThat(drivetrain.corners()).extracting(Drivetrain.Corner::module).containsOnly(modules());
 
-    DrivetrainGeometry.ModuleType modules = drivetrain.module(0);
+    Drivetrain.Module modules = drivetrain.module(0);
     assertThat(modules.driveMotor()).isEqualTo(Motor.KRAKEN_X60);
     assertThat(modules.steerMotor()).isEqualTo(Motor.KRAKEN_X44);
     assertThat(modules.wheelRadius().in(Inches)).isCloseTo(2, within(1e-9));
@@ -48,16 +50,17 @@ class DrivetrainGeometryTest {
    * as hard as those, and a measured tread beside it still slips first at its own grip.
    */
   @Test
-  void aModuleTypeLeftUnmeasuredTakesTheDefaults() {
-    DrivetrainGeometry.ModuleType unmeasured =
+  void aModuleLeftUnmeasuredTakesTheDefaults() {
+    Drivetrain.Module unmeasured =
         changeModules()
             .wheelCoefficientOfFriction(Optional.empty())
             .driveInertia(Optional.empty())
             .steerInertia(Optional.empty())
             .build();
-    DrivetrainGeometry.ModuleJoints corner = unmeasured.joints("here", new Translation2d(0.3, 0.2));
-    DrivetrainGeometry worn =
-        DrivetrainGeometry.builder()
+    Drivetrain.ModuleJoints corner =
+        unmeasured.joints("here", new Translation2d(0.3, 0.2), PLAIN, PLAIN);
+    Drivetrain worn =
+        Drivetrain.builder()
             .corners(
                 List.of(
                     corner(unmeasured, new Translation2d(0.3, 0.2)),
@@ -73,9 +76,7 @@ class DrivetrainGeometryTest {
     assertThat(unmeasured.steerInertiaOrDefault().in(KilogramSquareMeters)).isEqualTo(0.004);
     assertThat(corner.wheel().link().mass().inertia().iyy()).isCloseTo(0.001, within(1e-12));
     assertThat(corner.steer().link().mass().inertia().izz()).isCloseTo(0.004, within(1e-12));
-    assertThat(
-            DrivetrainGeometry.inset(unmeasured, body(), Inches.of(2.625))
-                .wheelCoefficientOfFriction())
+    assertThat(Drivetrain.inset(unmeasured, body(), Inches.of(2.625)).wheelCoefficientOfFriction())
         .isEqualTo(1.2);
     assertThat(worn.wheelCoefficientOfFriction()).as("the measured tread's, least").isEqualTo(1.0);
     assertThat(modules().wheelCoefficientOfFrictionOrDefault()).as("as measured").isEqualTo(1.2);
@@ -95,10 +96,9 @@ class DrivetrainGeometryTest {
   /** The drive and the steering are each one motor through their own gearing. */
   @Test
   void eachWheelIsDrivenAndTurnedByOneMotor() {
-    assertThat(modules().driveMotors())
-        .isEqualTo(Actuator.Motors.builder().motor(Motor.KRAKEN_X60).count(1).build());
-    assertThat(modules().steerMotors().motor()).isEqualTo(Motor.KRAKEN_X44);
-    assertThat(modules().steerMotors().count()).isEqualTo(1);
+    assertThat(drivetrain().driveMotors(0)).isEqualTo(Actuator.MotorGroup.of(Motor.KRAKEN_X60, 1));
+    assertThat(drivetrain().steerMotors(0).motor()).isEqualTo(Motor.KRAKEN_X44);
+    assertThat(drivetrain().steerMotors(0).count()).isEqualTo(1);
   }
 
   @Test
@@ -114,8 +114,7 @@ class DrivetrainGeometryTest {
             new Translation2d(x, -y),
             new Translation2d(-x, y),
             new Translation2d(-x, -y));
-    assertThat(
-            DrivetrainGeometry.uniform(modules(), Meters.of(x), Meters.of(y)).moduleTranslations())
+    assertThat(Drivetrain.uniform(modules(), Meters.of(x), Meters.of(y)).moduleTranslations())
         .as("the same, as Tuner X's swerve project gives them")
         .containsExactly(drivetrain().moduleTranslations());
   }
@@ -127,16 +126,16 @@ class DrivetrainGeometryTest {
    */
   @Test
   void eachCornerHasItsOwnModule() {
-    DrivetrainGeometry.ModuleType back =
-        DrivetrainGeometryModuleTypeBuilder.builder(modules())
+    Drivetrain.Module back =
+        DrivetrainModuleBuilder.builder(modules())
             .steerGearing(gearing(26.09))
             .driveGearing(gearing(7.5))
             .wheelCoefficientOfFriction(1.0)
             .build();
-    List<DrivetrainGeometry.Corner> corners = new ArrayList<>(drivetrain().corners());
+    List<Drivetrain.Corner> corners = new ArrayList<>(drivetrain().corners());
     corners.set(2, corner(back, corners.get(2).position()));
     corners.set(3, corner(back, corners.get(3).position()));
-    DrivetrainGeometry mixed = DrivetrainGeometry.builder().corners(corners).build();
+    Drivetrain mixed = Drivetrain.builder().corners(corners).build();
 
     assertThat(mixed.module(0)).isEqualTo(modules());
     assertThat(mixed.module(3)).isEqualTo(back);
@@ -155,22 +154,19 @@ class DrivetrainGeometryTest {
   @Test
   void wheelsMustFitInsideTheFrameEachInItsCorner() {
     // The frame is 28 in long and 24 in wide: a 12 in inset meets in the middle side to side.
-    DrivetrainGeometry wide = DrivetrainGeometry.uniform(modules(), Inches.of(11), Inches.of(13));
+    Drivetrain wide = Drivetrain.uniform(modules(), Inches.of(11), Inches.of(13));
 
     assertThat(wide.whyWheelsDontFit(body()).orElseThrow())
         .contains("wheels outside the frame (28 in by 24 in): front-left's");
     assertThat(drivetrain().whyWheelsDontFit(body())).isEmpty();
-    assertRejected(
-        "DrivetrainGeometry.corners",
-        () -> DrivetrainGeometry.inset(modules(), body(), Inches.of(12)));
-    List<DrivetrainGeometry.Corner> swapped = new ArrayList<>(drivetrain().corners());
+    assertRejected("Drivetrain.corners", () -> Drivetrain.inset(modules(), body(), Inches.of(12)));
+    List<Drivetrain.Corner> swapped = new ArrayList<>(drivetrain().corners());
     swapped.set(0, drivetrain().corners().get(1));
     swapped.set(1, drivetrain().corners().get(0));
+    assertRejected("Drivetrain.corners", () -> Drivetrain.builder().corners(swapped).build());
     assertRejected(
-        "DrivetrainGeometry.corners", () -> DrivetrainGeometry.builder().corners(swapped).build());
-    assertRejected(
-        "DrivetrainGeometry.corners: needs four",
-        () -> DrivetrainGeometry.builder().corners(swapped.subList(0, 3)).build());
+        "Drivetrain.corners: needs four",
+        () -> Drivetrain.builder().corners(swapped.subList(0, 3)).build());
   }
 
   /**
@@ -184,26 +180,25 @@ class DrivetrainGeometryTest {
     String outside = "wheels outside the frame (28 in by 24 in): front-left's, at ";
 
     assertThat(
-            DrivetrainGeometry.uniform(modules(), Meters.of(halfLength), Meters.of(0.2))
+            Drivetrain.uniform(modules(), Meters.of(halfLength), Meters.of(0.2))
                 .whyWheelsDontFit(body())
                 .orElseThrow())
         .as("on the front edge")
         .startsWith(outside);
     assertThat(
-            DrivetrainGeometry.uniform(modules(), Meters.of(0.2), Meters.of(halfWidth))
+            Drivetrain.uniform(modules(), Meters.of(0.2), Meters.of(halfWidth))
                 .whyWheelsDontFit(body())
                 .orElseThrow())
         .as("on the side edge")
         .startsWith(outside);
     assertThat(
-            DrivetrainGeometry.uniform(modules(), Meters.of(halfLength * 1.2), Meters.of(0.2))
+            Drivetrain.uniform(modules(), Meters.of(halfLength * 1.2), Meters.of(0.2))
                 .whyWheelsDontFit(body())
                 .orElseThrow())
         .as("past half its length, inside all of it")
         .startsWith(outside);
     assertThat(
-            DrivetrainGeometry.uniform(
-                    modules(), Meters.of(halfLength - 0.01), Meters.of(halfWidth - 0.01))
+            Drivetrain.uniform(modules(), Meters.of(halfLength - 0.01), Meters.of(halfWidth - 0.01))
                 .whyWheelsDontFit(body()))
         .as("just inside both")
         .isEmpty();
@@ -215,23 +210,23 @@ class DrivetrainGeometryTest {
    */
   @Test
   void eachWheelMustSitInItsOwnQuarterOffTheCentersLines() {
-    List<DrivetrainGeometry.Corner> corners = drivetrain().corners();
-    List<DrivetrainGeometry.Corner> opposite = new ArrayList<>();
+    List<Drivetrain.Corner> corners = drivetrain().corners();
+    List<Drivetrain.Corner> opposite = new ArrayList<>();
     for (int i = 0; i < 4; i++) {
       opposite.add(corner(modules(), corners.get(3 - i).position()));
     }
-    List<DrivetrainGeometry.Corner> onLines = new ArrayList<>(corners);
+    List<Drivetrain.Corner> onLines = new ArrayList<>(corners);
     onLines.set(0, corner(modules(), new Translation2d(0, corners.get(0).position().getY())));
     onLines.set(3, corner(modules(), new Translation2d(corners.get(3).position().getX(), 0)));
 
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> DrivetrainGeometry.builder().corners(opposite).build())
+        .isThrownBy(() -> Drivetrain.builder().corners(opposite).build())
         .withMessageContaining("front-left must be ahead of the center and left of it, not at ")
         .withMessageContaining("front-right must be ahead of the center and right of it, not at ")
         .withMessageContaining("back-left must be behind the center and left of it, not at ")
         .withMessageContaining("back-right must be behind the center and right of it, not at ");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> DrivetrainGeometry.builder().corners(onLines).build())
+        .isThrownBy(() -> Drivetrain.builder().corners(onLines).build())
         .withMessageContaining("front-left must be ahead of the center and left of it, not at ")
         .withMessageContaining("back-right must be behind the center and right of it, not at ");
   }
@@ -243,7 +238,7 @@ class DrivetrainGeometryTest {
    */
   @Test
   void eachModulesPartsAreDiscsAsHardToTurnAsItsInertiasSay() {
-    DrivetrainGeometry.ModuleJoints corner = drivetrain().joints().get(0);
+    Drivetrain.ModuleJoints corner = drivetrain().joints().get(0);
     double radius = modules().wheelRadius().in(Meters);
 
     MassProperties wheel = corner.wheel().link().mass();
@@ -260,53 +255,53 @@ class DrivetrainGeometryTest {
 
   /**
    * How a drivetrain is driven and wired isn't what it is, nor is what only the simulator reads: a
-   * re-tuned, re-wired drivetrain, or one whose modules' inertias are measured otherwise, is the
-   * same one, and one whose modules differ is not.
+   * re-tuned or re-wired drivetrain, or one whose modules' inertias are measured otherwise, has the
+   * same hardware, and one whose modules differ has not. Equality is a record's, every value the
+   * same, so the re-tuned and the re-wired ones aren't equal to it.
    */
   @Test
-  void aDrivetrainIsTheSameOneHoweverItIsDrivenWiredOrWeighed() {
-    DrivetrainGeometry plain = drivetrain();
-    DrivetrainGeometry driven = plain.control(DrivetrainControlTest.control());
-    DrivetrainGeometry heavier =
-        DrivetrainGeometry.inset(
+  void aDrivetrainIsTheSameHardwareHoweverItIsDrivenWiredOrWeighed() {
+    Drivetrain plain = drivetrain();
+    Drivetrain driven = plain.control(DrivetrainControlTest.control());
+    Drivetrain wired = wired(plain, CanBus.SYSTEMCORE, TALON_FX, TALON_FX);
+    Drivetrain heavier =
+        Drivetrain.inset(
             changeModules().driveInertia(KilogramSquareMeters.of(0.002)).build(),
             body(),
             Inches.of(2.625));
-    DrivetrainGeometry faster =
-        DrivetrainGeometry.inset(
+    Drivetrain faster =
+        Drivetrain.inset(
             changeModules().driveGearing(gearing(6)).build(), body(), Inches.of(2.625));
 
     assertThat(driven.control()).contains(DrivetrainControlTest.control());
-    assertThat(driven).isEqualTo(plain).hasSameHashCodeAs(plain);
-    assertThat(heavier).isEqualTo(plain).hasSameHashCodeAs(plain);
-    assertThat(faster).isNotEqualTo(plain);
-    assertThat(plain).isNotEqualTo("a drivetrain");
+    assertThat(List.of(driven, wired, heavier)).allMatch(same -> same.sameHardwareAs(plain));
+    assertThat(faster.sameHardwareAs(plain)).isFalse();
+    assertThat(List.of(driven, wired, heavier, faster)).noneMatch(plain::equals);
+    assertThat(drivetrain()).isEqualTo(plain).hasSameHashCodeAs(plain);
   }
 
   @Test
   void rejectsImpossibleModuleValues() {
+    assertRejected("Module.wheelRadius", () -> changeModules().wheelRadius(Inches.of(0)).build());
     assertRejected(
-        "ModuleType.wheelRadius", () -> changeModules().wheelRadius(Inches.of(0)).build());
-    assertRejected(
-        "ModuleType.wheelCoefficientOfFriction",
+        "Module.wheelCoefficientOfFriction",
         () -> changeModules().wheelCoefficientOfFriction(Double.NaN).build());
     assertRejected(
-        "ModuleType.driveInertia",
+        "Module.driveInertia",
         () -> changeModules().driveInertia(KilogramSquareMeters.of(0)).build());
     assertRejected(
-        "ModuleType.steerInertia",
+        "Module.steerInertia",
         () -> changeModules().steerInertia(KilogramSquareMeters.of(-0.004)).build());
-    assertRejected("ModuleType.couplingRatio", () -> changeModules().couplingRatio(-1).build());
+    assertRejected("Module.couplingRatio", () -> changeModules().couplingRatio(-1).build());
     assertRejected("Corner.position", () -> corner(modules(), new Translation2d(Double.NaN, 0.2)));
   }
 
-  private static DrivetrainGeometryModuleTypeBuilder changeModules() {
-    return DrivetrainGeometryModuleTypeBuilder.builder(modules());
+  private static DrivetrainModuleBuilder changeModules() {
+    return DrivetrainModuleBuilder.builder(modules());
   }
 
-  private static DrivetrainGeometry.Corner corner(
-      DrivetrainGeometry.ModuleType module, Translation2d position) {
-    return DrivetrainGeometry.Corner.builder().module(module).position(position).build();
+  private static Drivetrain.Corner corner(Drivetrain.Module module, Translation2d position) {
+    return Drivetrain.Corner.builder().module(module).position(position).build();
   }
 
   /**
@@ -315,12 +310,12 @@ class DrivetrainGeometryTest {
    */
   @Test
   void eachCornersDriveMotorTurnsItsWheelAndThroughTheCouplingItsSteering() {
-    DrivetrainGeometry.ModuleJoints uncoupled = drivetrain().joints().get(1);
-    DrivetrainGeometry.ModuleJoints coupled =
-        DrivetrainGeometryModuleTypeBuilder.builder(modules())
+    Drivetrain.ModuleJoints uncoupled = drivetrain().joints().get(1);
+    Drivetrain.ModuleJoints coupled =
+        DrivetrainModuleBuilder.builder(modules())
             .couplingRatio(3.5)
             .build()
-            .joints("here", new Translation2d(0.3, 0.2));
+            .joints("here", new Translation2d(0.3, 0.2), PLAIN, PLAIN);
 
     assertThat(uncoupled.label()).isEqualTo("front-right");
     assertThat(uncoupled.drive().transmission().joints()).containsExactly(uncoupled.wheel());
@@ -342,43 +337,33 @@ class DrivetrainGeometryTest {
    */
   @Test
   void aSwervesWiringMustDriveItsMotors() {
-    DrivetrainGeometry ours = drivetrain();
-    DrivetrainGeometry.ModuleType maxSwerve =
-        DrivetrainGeometryModuleTypeBuilder.builder(ours.corners().get(0).module())
+    Drivetrain ours = drivetrain();
+    Drivetrain.Module maxSwerve =
+        DrivetrainModuleBuilder.builder(ours.corners().get(0).module())
             .driveMotor(Motor.NEO_VORTEX)
             .steerMotor(Motor.NEO_550)
             .build();
-    DrivetrainGeometry rev =
-        DrivetrainGeometryBuilder.builder(ours)
+    Drivetrain rev =
+        DrivetrainBuilder.builder(ours)
             .corners(
                 ours.corners().stream()
                     .map(
-                        corner ->
-                            DrivetrainGeometryCornerBuilder.builder(corner)
-                                .module(maxSwerve)
-                                .build())
+                        corner -> DrivetrainCornerBuilder.builder(corner).module(maxSwerve).build())
                     .toList())
             .build();
-    SwerveWiring talons =
-        wiring(MechanismWiring.Controller.TALON_FX, MechanismWiring.Controller.TALON_FX, true);
-    SwerveWiring sparks =
-        wiring(MechanismWiring.Controller.SPARK_FLEX, MechanismWiring.Controller.SPARK_MAX, false);
+    CanBus systemcore = CanBus.SYSTEMCORE;
+    CanBus canivore = CanBus.canivore("canivore");
 
-    assertThat(ours.wired(talons).wiring()).contains(talons);
-    assertThat(rev.wired(sparks).wiring()).contains(sparks);
+    assertThat(wired(ours, systemcore, TALON_FX, TALON_FX).wiring()).isPresent();
+    assertThat(wired(rev, systemcore, SPARK_FLEX, SPARK_MAX).wiring()).isPresent();
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> rev.wired(talons))
+        .isThrownBy(() -> wired(rev, systemcore, TALON_FX, TALON_FX))
         .withMessageContaining(
             "its drive's NEO Vortex is on a TalonFX, which doesn't drive one: a TalonFXS or a"
                 + " SPARK MAX or a SPARK Flex does; its steering's NEO 550 is on a TalonFX, which"
                 + " doesn't drive one: a TalonFXS or a SPARK MAX or a SPARK Flex does");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                rev.wired(
-                    SwerveWiringBuilder.builder(sparks)
-                        .canBus(CanBus.canivore("canivore"))
-                        .build()))
+        .isThrownBy(() -> wired(rev, canivore, SPARK_FLEX, SPARK_MAX))
         .withMessageContaining("its SPARKs are on a CANivore: a SPARK is on Systemcore's own CAN");
   }
 
@@ -389,72 +374,35 @@ class DrivetrainGeometryTest {
    */
   @Test
   void aSwerveWithASparkOnOneMotorAndATalonOnTheOtherIsOnSystemcoresCan() {
+    CanBus systemcore = CanBus.SYSTEMCORE;
     CanBus canivore = CanBus.canivore("canivore");
-    DrivetrainGeometry.ModuleType sparkDrive =
+    Drivetrain.Module sparkDrive =
         changeModules().driveMotor(Motor.NEO_VORTEX).steerMotor(Motor.KRAKEN_X44).build();
-    DrivetrainGeometry.ModuleType sparkSteer =
+    Drivetrain.Module sparkSteer =
         changeModules().driveMotor(Motor.KRAKEN_X60).steerMotor(Motor.NEO_550).build();
-    DrivetrainGeometry sparkDriven =
-        DrivetrainGeometry.uniform(sparkDrive, Inches.of(11), Inches.of(9));
-    DrivetrainGeometry sparkSteered =
-        DrivetrainGeometry.uniform(sparkSteer, Inches.of(11), Inches.of(9));
-    SwerveWiring driveOnSpark =
-        wiring(MechanismWiring.Controller.SPARK_FLEX, MechanismWiring.Controller.TALON_FX, true);
-    SwerveWiring steerOnSpark =
-        wiring(MechanismWiring.Controller.TALON_FX, MechanismWiring.Controller.SPARK_MAX, false);
+    Drivetrain sparkDriven = Drivetrain.uniform(sparkDrive, Inches.of(11), Inches.of(9));
+    Drivetrain sparkSteered = Drivetrain.uniform(sparkSteer, Inches.of(11), Inches.of(9));
 
-    assertThat(sparkDriven.wired(driveOnSpark).wiring()).contains(driveOnSpark);
-    assertThat(sparkSteered.wired(steerOnSpark).wiring()).contains(steerOnSpark);
+    assertThat(wired(sparkDriven, systemcore, SPARK_FLEX, TALON_FX).wiring()).isPresent();
+    assertThat(wired(sparkSteered, systemcore, TALON_FX, SPARK_MAX).wiring()).isPresent();
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                sparkDriven.wired(
-                    SwerveWiringBuilder.builder(driveOnSpark).canBus(canivore).build()))
+        .isThrownBy(() -> wired(sparkDriven, canivore, SPARK_FLEX, TALON_FX))
         .withMessageContaining("its SPARKs are on a CANivore");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                sparkSteered.wired(
-                    SwerveWiringBuilder.builder(steerOnSpark).canBus(canivore).build()))
+        .isThrownBy(() -> wired(sparkSteered, canivore, TALON_FX, SPARK_MAX))
         .withMessageContaining("its SPARKs are on a CANivore");
-    assertThat(
-            drivetrain()
-                .wired(
-                    SwerveWiringBuilder.builder(
-                            wiring(
-                                MechanismWiring.Controller.TALON_FX,
-                                MechanismWiring.Controller.TALON_FX,
-                                true))
-                        .canBus(canivore)
-                        .build())
-                .wiring())
+    assertThat(wired(drivetrain(), canivore, TALON_FX, TALON_FX).wiring())
         .as("TalonFXs may be on a CANivore")
         .isPresent();
   }
 
-  private static SwerveWiring wiring(
-      MechanismWiring.Controller drive, MechanismWiring.Controller steer, boolean cancoders) {
-    List<SwerveWiring.ModuleWiring> modules = new ArrayList<>();
-    for (int i = 0; i < 4; i++) {
-      modules.add(
-          SwerveWiring.ModuleWiring.builder()
-              .driveId(1 + 2 * i)
-              .steerId(2 + 2 * i)
-              .encoderOffset(Rotations.of(0))
-              .driveInverted(false)
-              .steerInverted(true)
-              .encoderInverted(false)
-              .encoderId(cancoders ? Optional.of(20 + i) : Optional.empty())
-              .build());
-    }
-    return SwerveWiring.builder()
-        .canBus(CanBus.port(CanBus.Systemcore.CAN_S0))
-        .driveController(drive)
-        .steerController(steer)
-        .gyroId(30)
-        .gyroYawScale(1.0)
-        .modules(modules)
-        .build();
+  /** A drivetrain wired as the fixtures wire one: gyro 30, motors from 1, CANcoders from 20. */
+  private static Drivetrain wired(
+      Drivetrain drivetrain,
+      CanBus bus,
+      MechanismWiring.Controller drive,
+      MechanismWiring.Controller steer) {
+    return ConfigFixtures.wired(drivetrain, bus, drive, steer, 30, 20);
   }
 
   private static void assertRejected(String field, ThrowingCallable build) {

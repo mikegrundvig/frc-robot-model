@@ -3,7 +3,7 @@ package com.michaelgrundvig.frc.world.robot;
 import static org.wpilib.units.Units.Kilograms;
 
 import com.michaelgrundvig.frc.world.config.Finding;
-import com.michaelgrundvig.frc.world.physical.Shape;
+import com.michaelgrundvig.frc.world.physical.Solid;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -135,13 +135,13 @@ final class AssemblyChecks {
    * shapes cannot be checked.
    */
   private static Optional<String> whyNotOnItsLink(CameraConfig camera, Joint ridesOn) {
-    List<Shape> shapes = ridesOn.link().shapes();
+    List<Solid> shapes = ridesOn.link().shapes();
     if (shapes.isEmpty()) {
       return Optional.empty();
     }
     Translation3d mount = camera.position();
     double offTheLink = Double.POSITIVE_INFINITY;
-    for (Shape shape : shapes) {
+    for (Solid shape : shapes) {
       offTheLink = Math.min(offTheLink, shape.distance(mount));
     }
     if (offTheLink > RobotMath.CAMERA_ON_LINK_METERS) {

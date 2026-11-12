@@ -123,20 +123,84 @@ class ChecksTest {
   void aRuleThatThrowsIsReportedWithTheRest() {
     Rule<List<Integer>> firstPositive = list -> list.get(0) > 0 ? null : "must start positive";
 
-    List<Violation> violations =
+    ConfigException refused =
         catchThrowableOfType(
-                ConfigException.class,
-                () ->
-                    Checks.on(Gains.class)
-                        .field("first", List.<Integer>of(), firstPositive)
-                        .field("second", -1.0, positive())
-                        .orThrow())
-            .violations();
+            ConfigException.class,
+            () ->
+                Checks.on(Gains.class)
+                    .field("first", List.<Integer>of(), firstPositive)
+                    .field("second", -1.0, positive())
+                    .orThrow());
+    List<Violation> violations = refused.violations();
 
     assertThat(violations).hasSize(2);
     assertThat(violations.get(0).where()).isEqualTo("Gains.first");
     assertThat(violations.get(0).what()).startsWith("couldn't be checked: ");
     assertThat(violations.get(1)).isEqualTo(new Violation("Gains.second", "-1 must be positive"));
+  }
+
+  /**
+   * A rule or a check that throws is a bug in it, not in the configuration: what it threw is the
+   * refusal's cause, its stack trace kept, and a second one is suppressed beside it.
+   */
+  @Test
+  void aRuleOrCheckThatThrowsIsTheRefusalsCause() {
+    IllegalStateException ruleBug = new IllegalStateException("the rule's bug");
+    IllegalStateException checkBug = new IllegalStateException("the check's bug");
+    record Case(
+        String name, ThrowingCallable checks, Throwable cause, List<Throwable> suppressed) {}
+    List<Case> cases =
+        List.of(
+            new Case(
+                "a rule",
+                () ->
+                    Checks.on(Gains.class)
+                        .field(
+                            "first",
+                            1.0,
+                            value -> {
+                              throw ruleBug;
+                            })
+                        .orThrow(),
+                ruleBug,
+                List.of()),
+            new Case(
+                "a check across values",
+                () ->
+                    Checks.on(Gains.class)
+                        .check(
+                            "both",
+                            () -> {
+                              throw checkBug;
+                            })
+                        .orThrow(),
+                checkBug,
+                List.of()),
+            new Case(
+                "two rules",
+                () ->
+                    Checks.on(Gains.class)
+                        .field(
+                            "first",
+                            1.0,
+                            value -> {
+                              throw ruleBug;
+                            })
+                        .field(
+                            "second",
+                            1.0,
+                            value -> {
+                              throw checkBug;
+                            })
+                        .orThrow(),
+                ruleBug,
+                List.of(checkBug)));
+    for (Case c : cases) {
+      ConfigException refused = catchThrowableOfType(ConfigException.class, c.checks());
+
+      assertThat(refused.getCause()).as(c.name()).isSameAs(c.cause());
+      assertThat(refused.getSuppressed()).as(c.name()).containsExactlyElementsOf(c.suppressed());
+    }
   }
 
   @Test

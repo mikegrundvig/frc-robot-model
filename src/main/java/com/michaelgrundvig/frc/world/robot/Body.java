@@ -4,6 +4,7 @@ import static com.michaelgrundvig.frc.world.config.Rules.given;
 import static com.michaelgrundvig.frc.world.config.Rules.nonNegative;
 import static com.michaelgrundvig.frc.world.config.Rules.positive;
 import static com.michaelgrundvig.frc.world.config.Rules.shown;
+import static org.wpilib.units.Units.Inches;
 import static org.wpilib.units.Units.KilogramSquareMeters;
 import static org.wpilib.units.Units.Meters;
 
@@ -41,9 +42,14 @@ import org.wpilib.units.measure.MomentOfInertia;
  * @param frameWidth side to side, across the outside of the frame
  * @param overallHeight the robot's tallest point above the floor in its starting configuration
  * @param bumperThickness how far the bumpers stick out past the frame, all the way round. When the
- *     left and right stick out a different amount, this is the front and back
- * @param bumperBottom how high the bumpers' bottom edge is above the floor
- * @param bumperTop how high their top edge is
+ *     left and right stick out a different amount, this is the front and back. None given, a robot
+ *     without its bumpers on the bench, the usual 3 in ({@link #DEFAULT_BUMPER_THICKNESS}), and the
+ *     robot says so at startup
+ * @param bumperBottom how high the bumpers' bottom edge is above the floor, given with their top.
+ *     None given, the season's bumper zone isn't checked against them, they're drawn at {@link
+ *     #DEFAULT_BUMPER_BOTTOM}, and the robot says so at startup
+ * @param bumperTop how high their top edge is, given with their bottom; none given, drawn at {@link
+ *     #DEFAULT_BUMPER_TOP}
  * @param bumperThicknessLeftRight how far the bumpers stick out past the frame at the left and the
  *     right, given only when that differs from the front and back: bumpers squared around a frame
  *     that isn't square are thicker on its shorter sides. None given, the same as {@code
@@ -61,27 +67,46 @@ public record Body(
     Distance frameLength,
     Distance frameWidth,
     Distance overallHeight,
-    Distance bumperThickness,
-    Distance bumperBottom,
-    Distance bumperTop,
+    Optional<Distance> bumperThickness,
+    Optional<Distance> bumperBottom,
+    Optional<Distance> bumperTop,
     Optional<Distance> bumperThicknessLeftRight,
     Optional<Mass> weight,
     Optional<Translation3d> cg,
     Optional<Turning> inertia) {
+  /**
+   * How far the bumpers stick out past the frame when the body doesn't say: the usual bumper, 2.5
+   * in pool noodles on 3/4 in plywood, about 3 in. A robot on the bench without its bumpers still
+   * takes them, since the field and the simulator place it by its bumpers.
+   */
+  public static final Distance DEFAULT_BUMPER_THICKNESS = Inches.of(3);
+
+  /**
+   * Where the bumpers are drawn from when the body doesn't say: the 2026 bumper zone's bottom. Only
+   * the drawing reads it; the season's check is skipped.
+   */
+  public static final Distance DEFAULT_BUMPER_BOTTOM = Inches.of(2.5);
+
+  /** Where the bumpers are drawn up to when the body doesn't say: the 2026 bumper zone's top. */
+  public static final Distance DEFAULT_BUMPER_TOP = Inches.of(5.75);
+
   public Body {
-    Distance length = frameLength.plus(bumperThickness.times(2));
-    Distance width = frameWidth.plus(bumperThicknessLeftRight.orElse(bumperThickness).times(2));
+    Distance thickness = bumperThickness.orElse(DEFAULT_BUMPER_THICKNESS);
+    Distance length = frameLength.plus(thickness.times(2));
+    Distance width = frameWidth.plus(bumperThicknessLeftRight.orElse(thickness).times(2));
     Distance height = overallHeight;
+    Optional<Distance> bottom = bumperBottom;
+    Optional<Distance> top = bumperTop;
     Checks.on(Body.class)
         .field("frameLength", frameLength, positive())
         .field("frameWidth", frameWidth, positive())
         .field("overallHeight", overallHeight, positive())
-        .field("bumperThickness", bumperThickness, positive())
-        .field("bumperBottom", bumperBottom, nonNegative())
-        .field("bumperTop", bumperTop, positive())
+        .field("bumperThickness", bumperThickness, given(positive()))
+        .field("bumperBottom", bumperBottom, given(nonNegative()))
+        .field("bumperTop", bumperTop, given(positive()))
         .field("bumperThicknessLeftRight", bumperThicknessLeftRight, given(positive()))
         .field("weight", weight, given(positive()))
-        .whyNot("bumperTop", () -> whyBumperTopIsMisplaced(bumperTop, bumperBottom, height))
+        .whyNot("bumperTop", () -> whyBumperTopIsMisplaced(top, bottom, height))
         // Against a box of the weight given. Until the robot is weighed, whoever takes a mass for
         // it checks its inertia at that mass ({@code RobotDefinition.massProblems}).
         .whyNot(
@@ -92,11 +117,21 @@ public record Body(
   }
 
   /**
-   * Why the top of the bumpers is not where it can be, if it is not: above their bottom, and no
-   * higher than the robot.
+   * Why the top of the bumpers is not where it can be, if it is not: given with their bottom, above
+   * it, and no higher than the robot.
    */
   private static Optional<String> whyBumperTopIsMisplaced(
-      Distance bumperTop, Distance bumperBottom, Distance overallHeight) {
+      Optional<Distance> givenTop, Optional<Distance> givenBottom, Distance overallHeight) {
+    if (givenTop.isEmpty() && givenBottom.isEmpty()) {
+      return Optional.empty();
+    }
+    if (givenTop.isEmpty() || givenBottom.isEmpty()) {
+      return Optional.of(
+          "the bumpers' top and bottom come together: give both, .bumperBottom(...).bumperTop(...),"
+              + " or neither");
+    }
+    Distance bumperTop = givenTop.get();
+    Distance bumperBottom = givenBottom.get();
     if (bumperTop.gt(bumperBottom) && bumperTop.lte(overallHeight)) {
       return Optional.empty();
     }
@@ -136,7 +171,7 @@ public record Body(
     @ConfigRecord
     record Tensor(Inertia inertia) implements Turning {
       /** Starts describing a whole tensor, one named value at a time. */
-      public static BodyTurningTensorBuilder.InertiaStage builder() {
+      static BodyTurningTensorBuilder.InertiaStage builder() {
         return BodyTurningTensorBuilder.builder();
       }
     }
@@ -153,7 +188,7 @@ public record Body(
       }
 
       /** Starts describing a yaw inertia, one named value at a time. */
-      public static BodyTurningYawBuilder.YawStage builder() {
+      static BodyTurningYawBuilder.YawStage builder() {
         return BodyTurningYawBuilder.builder();
       }
     }
@@ -249,7 +284,7 @@ public record Body(
    * @param mass the robot's, bumpers and battery on
    */
   public MassProperties massProperties(Mass mass) {
-    return MassProperties.builder().mass(mass).cg(cgOrDefault()).inertia(inertia(mass)).build();
+    return MassProperties.of(mass, cgOrDefault(), inertia(mass));
   }
 
   /** Its inertia at a mass: what's given, and a box's of that mass for the rest. */
@@ -295,22 +330,123 @@ public record Body(
     return Meters.of(cgOrDefault().getZ());
   }
 
-  /** Starts building a body, one named value at a time. */
-  public static BodyBuilder.FrameLengthStage builder() {
-    return BodyBuilder.builder();
+  /**
+   * A robot's frame, the rest said by its own verbs: {@code Body.frame(Inches.of(26),
+   * Inches.of(26), Inches.of(30)).bumpers(Inches.of(3), Inches.of(2.5), Inches.of(5.75))
+   * .weight(Pounds.of(137.95))}. Until they're said, its bumpers are the usual ones and it is
+   * unweighed, which the robot says at startup.
+   *
+   * @param length front to back, across the outside of the frame
+   * @param width side to side, across the outside of the frame
+   * @param overallHeight the robot's tallest point above the floor in its starting configuration
+   */
+  public static Body frame(Distance length, Distance width, Distance overallHeight) {
+    return BodyBuilder.builder()
+        .frameLength(length)
+        .frameWidth(width)
+        .overallHeight(overallHeight)
+        .build();
+  }
+
+  /**
+   * The same body, its bumpers as built.
+   *
+   * @param thickness how far the bumpers stick out past the frame, all the way round; the front and
+   *     back's where the left and right differ ({@link #sideBumpers})
+   * @param bottom how high the bumpers' bottom edge is above the floor
+   * @param top how high their top edge is
+   * @throws IllegalArgumentException if its bumpers are given already
+   */
+  public Body bumpers(Distance thickness, Distance bottom, Distance top) {
+    saidOnce(bumperThickness.isPresent(), "bumpers", ".bumpers(thickness, bottom, top)");
+    return with().bumperThickness(thickness).bumperBottom(bottom).bumperTop(top).build();
+  }
+
+  /**
+   * The same body, its bumpers sticking out this far at the left and the right, where that differs
+   * from the front and back: bumpers squared around a frame that isn't square are thicker on its
+   * shorter sides.
+   *
+   * @throws IllegalArgumentException if its side bumpers are given already
+   */
+  public Body sideBumpers(Distance thickness) {
+    saidOnce(bumperThicknessLeftRight.isPresent(), "side bumpers", ".sideBumpers(thickness)");
+    return with().bumperThicknessLeftRight(thickness).build();
+  }
+
+  /**
+   * The same body, weighed: everything that moves, robot, bumpers, and battery, with every
+   * mechanism stowed.
+   *
+   * @throws IllegalArgumentException if its weight is given already
+   */
+  public Body weight(Mass weight) {
+    saidOnce(this.weight.isPresent(), "weight", ".weight(mass)");
+    return with().weight(weight).build();
+  }
+
+  /**
+   * The same body, as hard to turn as this: CAD's whole tensor ({@link Turning#tensor}), or its yaw
+   * alone ({@link Turning#yaw}), the box giving its pitch and roll.
+   *
+   * @throws IllegalArgumentException if its inertia is given already
+   */
+  public Body inertia(Turning inertia) {
+    saidOnce(this.inertia.isPresent(), "inertia", ".inertia(turning)");
+    return with().inertia(inertia).build();
+  }
+
+  /**
+   * The same body, its center of mass here from the robot's origin, every mechanism stowed.
+   *
+   * @throws IllegalArgumentException if its center of mass is given already
+   */
+  public Body cg(Translation3d cg) {
+    saidOnce(this.cg.isPresent(), "center of mass", ".cg(point)");
+    return with().cg(cg).build();
+  }
+
+  private BodyBuilder with() {
+    return BodyBuilder.builder(this);
+  }
+
+  /** The rule that a body says each of its parts once. */
+  private static void saidOnce(boolean alreadySaid, String part, String call) {
+    if (alreadySaid) {
+      throw new IllegalArgumentException(
+          "Body has its " + part + " already: give it once, in one " + call);
+    }
+  }
+
+  /**
+   * How far the bumpers stick out past the frame at the front and the back: as given, or when it
+   * isn't, {@link #DEFAULT_BUMPER_THICKNESS}.
+   */
+  public Distance bumperThicknessOrDefault() {
+    return bumperThickness.orElse(DEFAULT_BUMPER_THICKNESS);
   }
 
   /**
    * How far the bumpers stick out past the frame at the left and the right: as given, or when it
-   * isn't, the same as at the front and the back ({@link #bumperThickness}).
+   * isn't, the same as at the front and the back ({@link #bumperThicknessOrDefault}).
    */
   public Distance bumperThicknessLeftRightOrDefault() {
-    return bumperThicknessLeftRight.orElse(bumperThickness);
+    return bumperThicknessLeftRight.orElse(bumperThicknessOrDefault());
+  }
+
+  /** How high the bumpers' bottom edge is drawn: as given, or {@link #DEFAULT_BUMPER_BOTTOM}. */
+  public Distance bumperBottomOrDefault() {
+    return bumperBottom.orElse(DEFAULT_BUMPER_BOTTOM);
+  }
+
+  /** How high the bumpers' top edge is drawn: as given, or {@link #DEFAULT_BUMPER_TOP}. */
+  public Distance bumperTopOrDefault() {
+    return bumperTop.orElse(DEFAULT_BUMPER_TOP);
   }
 
   /** Front to back, across the outside of the bumpers. */
   public Distance bumperLength() {
-    return frameLength.plus(bumperThickness.times(2));
+    return frameLength.plus(bumperThicknessOrDefault().times(2));
   }
 
   /** Side to side, across the outside of the bumpers. */

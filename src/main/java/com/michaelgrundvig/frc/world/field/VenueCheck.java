@@ -1,5 +1,7 @@
 package com.michaelgrundvig.frc.world.field;
 
+import static org.wpilib.units.Units.Meters;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,7 +43,7 @@ public final class VenueCheck {
   private static final double FIELD_SIZE_METERS = 0.01;
 
   private final Venue venue;
-  private final Field base;
+  private final TagLayout base;
 
   /** Where the official layout puts each tag, by the tag's ID. */
   private final Map<Integer, Pose3d> official;
@@ -51,20 +53,24 @@ public final class VenueCheck {
 
   private final List<String> problems = new ArrayList<>();
 
-  private VenueCheck(Venue venue, Field base) {
+  private VenueCheck(Venue venue, TagLayout base) {
     this.venue = venue;
     this.base = base;
-    official = posesById(base);
+    official = new HashMap<>();
+    for (Tag tag : base.tags()) {
+      official.put(tag.id(), tag.nominal());
+    }
     measured = posesById(venue.layout());
   }
 
   /**
    * What's wrong with a venue against the game's official layout; empty when it fits.
    *
-   * @param base the official layout of the field variant the venue says it was measured against
+   * @param base the official layout of the field variant the venue says it was measured against, as
+   *     the game gives it ({@link com.michaelgrundvig.frc.world.game.Game#layout})
    * @param symmetry the game's, which must still pair every tag with its partner
    */
-  public static List<String> problems(Venue venue, Field base, Symmetry symmetry) {
+  public static List<String> problems(Venue venue, TagLayout base, Symmetry symmetry) {
     VenueCheck check = new VenueCheck(venue, base);
     check.itWasMeasuredAgainstThisLayout();
     check.theFieldIsTheSameSize();
@@ -95,21 +101,21 @@ public final class VenueCheck {
   }
 
   private void itWasMeasuredAgainstThisLayout() {
-    if (venue.base().equals(base.getName())) {
+    if (venue.base().equals(base.name())) {
       return;
     }
     problems.add(
         "measured against \""
             + venue.base()
             + "\", but the field's official layout is \""
-            + base.getName()
+            + base.name()
             + "\"");
   }
 
   private void theFieldIsTheSameSize() {
     Field layout = venue.layout();
-    double lengthOff = Math.abs(layout.getFieldLength() - base.getFieldLength());
-    double widthOff = Math.abs(layout.getFieldWidth() - base.getFieldWidth());
+    double lengthOff = Math.abs(layout.getFieldLength() - base.lengthMeters());
+    double widthOff = Math.abs(layout.getFieldWidth() - base.widthMeters());
     if (lengthOff > FIELD_SIZE_METERS || widthOff > FIELD_SIZE_METERS) {
       problems.add(
           String.format(
@@ -117,8 +123,8 @@ public final class VenueCheck {
               "the field is %.3f x %.3f m, the official one %.3f x %.3f m",
               layout.getFieldLength(),
               layout.getFieldWidth(),
-              base.getFieldLength(),
-              base.getFieldWidth()));
+              base.lengthMeters(),
+              base.widthMeters()));
     }
   }
 
@@ -188,8 +194,8 @@ public final class VenueCheck {
     if (pose == null) {
       return;
     }
-    double length = base.getFieldLength();
-    double width = base.getFieldWidth();
+    double length = base.lengthMeters();
+    double width = base.widthMeters();
     double x = pose.getX();
     double y = pose.getY();
     boolean inside =
@@ -244,10 +250,14 @@ public final class VenueCheck {
    * <p>A tag the venue doesn't have at all is not reported here: it is already reported as missing.
    */
   private void tagsStillPairUp(Symmetry symmetry) {
-    FieldModel officialField = new FieldModel(base, symmetry, List.of(), List.of(), List.of());
+    FieldModel officialField = FieldModel.builder(base, symmetry).build();
     FieldModel measuredField;
     try {
-      measuredField = new FieldModel(venue.layout(), symmetry, List.of(), List.of(), List.of());
+      // The venue's tags are the official layout's family and size: a survey measures where they
+      // stand, not what they are.
+      TagLayout measuredTags =
+          TagLayout.of(venue.layout(), base.family(), Meters.of(base.tagSizeMeters()));
+      measuredField = FieldModel.builder(measuredTags, symmetry).build();
     } catch (IllegalArgumentException e) {
       problems.add("the layout doesn't make a field: " + e.getMessage());
       return;

@@ -37,7 +37,7 @@ final class AbsoluteEncoders {
     static Readings overTravelOf(Sensor.Encoder encoder) {
       Joint joint = encoder.joint();
       if (joint.range().isEmpty()) {
-        double atRest = turnsAt(encoder, joint.restPosition());
+        double atRest = turnsAt(encoder, RobotMath.restPosition(joint));
         return new Readings(atRest, atRest);
       }
       return over(encoder, joint.range().get());
@@ -107,7 +107,7 @@ final class AbsoluteEncoders {
 
   /** How far a joint moves for one turn of it: 2π radians, or 1 for a joint measured in meters. */
   static double jointUnitsPerTurn(Joint joint) {
-    if (joint instanceof Joint.Revolute) {
+    if (joint instanceof RevoluteJoint) {
       return 2 * Math.PI;
     }
     return 1;
@@ -119,7 +119,7 @@ final class AbsoluteEncoders {
    */
   static double turnsAt(Sensor.Encoder encoder, double position) {
     Joint joint = encoder.joint();
-    double jointTurns = joint instanceof Joint.Revolute ? position / (2 * Math.PI) : position;
+    double jointTurns = joint instanceof RevoluteJoint ? position / (2 * Math.PI) : position;
     return encoder.ratio(joint) * jointTurns;
   }
 
@@ -218,7 +218,7 @@ final class AbsoluteEncoders {
         joint
             .range()
             .map(range -> (range.lower() + range.upper()) / 2)
-            .orElse(joint.restPosition());
+            .orElse(RobotMath.restPosition(joint));
     return Range.in(joint, middle - span / 2, middle + span / 2);
   }
 

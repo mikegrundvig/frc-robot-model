@@ -14,24 +14,27 @@ It's unreleased: there are no versions yet, and anything may change.
 | `robot` | The robot's definition: its body, drivetrain, joints and what drives them, sensors, cameras and IMUs, and the rules between them (interlocks, conditions, named places and outputs); and what a joint's definition means for a program, as functions of plain values (where it is driven, what its interlocks allow it each loop, how far its encoder and motor may disagree, which limits its controller reads). |
 | `field` | The field: its tags, the places and zones code names, headings, starts, terrain, the elements that stand on it, and a venue's measured layout. |
 | `physical` | What both are made of: mass and inertia, shapes and materials. |
-| `config` | The validation kit every record is built and checked with. A definition that can't work is refused as it's built, saying why; one that's doubtful says so. |
+| `config` | The validation kit every record is built and checked with. A part that can't work is refused as it's built, and a definition whose parts don't fit each other once it's checked whole (`RobotDefinition.checked`, which `RobotConfig.of` calls), saying why; one that's doubtful says so. |
 | `path` | Timed paths for a drivetrain: keyframes at poses or the field's places, and the trajectories planned through them or along a line under the limits they're given. |
+| `record` | What a robot did, as facts: where a joint stands, who asked it, what holds it, how its move ended, a gate's terms, a binding that fired. Each is an enum or numbers, never text, and one function for each says it in a sentence wherever a person reads it (the console, Pitwall, a test's failure message). |
 | `game` | A season's game: what its manual allows a robot to be, checked against its definition, and its field (`Rebuilt` for 2026, `Reefscape`, `Crescendo`), written once when the game is revealed. A new season's is added on kickoff day, in a new version of the model. |
-| `bridges` | Writers for other tools, such as AdvantageScope's robot assets. |
+| `tools` | What the build's tool writers read of a robot program: its catalog of robots, and the AdvantageScope release they pair with. The writers themselves, such as AdvantageScope's robot assets, are the runtime's build plugins'. |
 
 A joint, as a definition writes it:
 
 ```java
-static final Joint.Revolute PIVOT =
-    Joint.pivot("pivot", Part.CHASSIS, new Translation3d(0.25, 0, 0.32), Joint.PITCH_DOWN)
+static final RevoluteJoint PIVOT =
+    Joint.pivot("pivot", Part.CHASSIS, Joint.PITCH_DOWN)
+        .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
         .range(Range.degrees(0, 135))
         .rest(PIVOT_IN)
         .positions(PIVOT_IN, PIVOT_OUT)
         .motors(Motor.KRAKEN_X60.through(Gearing.of(25)).on(TALON_FX.can(32)))
         .control(MechanismControl.position(30));
 
-static final Joint.Revolute ROLLER =
-    Joint.roller("roller", PIVOT, new Translation3d(0, 0, 0.35))
+static final RevoluteJoint ROLLER =
+    Joint.roller("roller", PIVOT)
+        .at(Meters.of(0), Meters.of(0), Meters.of(0.35))
         .outputs(INTAKING)
         .motors(Motor.KRAKEN_X60.through(Gearing.of(3)).on(TALON_FX.can(31)))
         // The roller runs only once the pivot is out of the frame.
@@ -99,7 +102,7 @@ words the code already has.
 It is published to the FRC libraries' Maven repository,
 [mikegrundvig.github.io/frc-maven](https://mikegrundvig.github.io/frc-maven/), as
 `com.michaelgrundvig.frc:frc-robot-model`, with its processor as
-`com.michaelgrundvig.frc:frc-docs-processor`. Versions are dated releases (`2026.11.11`), shared by
+`com.michaelgrundvig.frc:frc-docs-processor`. Versions are dated releases (`2026.11.13`), shared by
 all the FRC libraries; they are pre-release, with no promise of compatibility from one to the next.
 
 ```groovy
@@ -113,8 +116,8 @@ repositories {
     }
 }
 dependencies {
-    implementation "com.michaelgrundvig.frc:frc-robot-model:2026.11.11"
-    annotationProcessor "com.michaelgrundvig.frc:frc-docs-processor:2026.11.11"
+    implementation "com.michaelgrundvig.frc:frc-robot-model:2026.11.13"
+    annotationProcessor "com.michaelgrundvig.frc:frc-docs-processor:2026.11.13"
 }
 ```
 

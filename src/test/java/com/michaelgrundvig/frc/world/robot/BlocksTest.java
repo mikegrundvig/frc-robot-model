@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.wpilib.math.geometry.Translation3d;
 
 /**
  * The definition's checks of each joint's block against itself and the robot it's on: its control
@@ -45,8 +44,9 @@ class BlocksTest {
       MechanismControl.position(30).withHoming(MechanismControl.Homing.assumeAtRest());
 
   /** An intake's pivot, its stops at 0° and 135°: in at 1.5°, run from 110°, out at 130°. */
-  static final Joint.Revolute PIVOT =
-      Joint.pivot("pivot", Part.CHASSIS, new Translation3d(0.2, 0, 0.3), Joint.PITCH_UP)
+  static final RevoluteJoint PIVOT =
+      Joint.pivot("pivot", Part.CHASSIS, Joint.PITCH_UP)
+          .at(Meters.of(0.2), Meters.of(0), Meters.of(0.3))
           .range(Range.degrees(0, 135))
           .rest(IN)
           .positions(IN, RUN, OUT)
@@ -54,15 +54,17 @@ class BlocksTest {
           .control(HELD);
 
   /** Its roller, only run at its outputs. */
-  static final Joint.Revolute ROLLER =
-      Joint.roller("roller", PIVOT, new Translation3d(0.3, 0, 0))
+  static final RevoluteJoint ROLLER =
+      Joint.roller("roller", PIVOT)
+          .at(Meters.of(0.3), Meters.of(0), Meters.of(0))
           .outputs(INTAKING)
           .motors(Motor.KRAKEN_X60.through(Gearing.of(3)))
           .control(MechanismControl.velocity(0.02));
 
   /** An elevator, 0 to 1.2 m, its top at 1.1 m. */
-  static final Joint.Prismatic ELEVATOR =
-      Joint.elevator("elevator", Part.CHASSIS, new Translation3d(-0.2, 0, 0.1))
+  static final PrismaticJoint ELEVATOR =
+      Joint.elevator("elevator", Part.CHASSIS)
+          .at(Meters.of(-0.2), Meters.of(0), Meters.of(0.1))
           .range(Range.meters(0, 1.2))
           .rest(DOWN)
           .positions(DOWN, TOP)
@@ -71,8 +73,9 @@ class BlocksTest {
               MechanismControl.position(60).withHoming(MechanismControl.Homing.assumeAtRest()));
 
   /** A turret that turns freely, facing front. */
-  static final Joint.Revolute TURRET =
-      Joint.pivot("turret", Part.CHASSIS, new Translation3d(0, 0, 0.5), Vector3.UP)
+  static final RevoluteJoint TURRET =
+      Joint.pivot("turret", Part.CHASSIS, Vector3.UP)
+          .at(Meters.of(0), Meters.of(0), Meters.of(0.5))
           .positions(Position.degrees("front", 0))
           .motors(Motor.KRAKEN_X60.through(Gearing.of(50)))
           .control(HELD);
@@ -258,7 +261,7 @@ class BlocksTest {
    */
   @Test
   void homingToASwitchNeedsOneWhosePositionIsKnown() {
-    Joint.Revolute homing =
+    RevoluteJoint homing =
         PIVOT.retuned(
             control ->
                 control.withHoming(
@@ -285,7 +288,8 @@ class BlocksTest {
                         List.of(
                             Sensor.Switch.limit(
                                 "pivot down", PIVOT, Sensor.Switch.Limit.End.LOWER)))
-                    .build())
+                    .build()
+                    .checked())
         .withMessage(
             "RobotDefinition[test].joints: pivot homes to pivot down, whose position isn't known:"
                 + " measure where it trips and give it, LimitSwitch.lower().at(Degrees.of(...)),"
@@ -306,7 +310,7 @@ class BlocksTest {
         MechanismControl.Homing.toSwitch(Sensor.Switch.Limit.End.LOWER);
     MechanismControl.Homing toUpper =
         MechanismControl.Homing.toSwitch(Sensor.Switch.Limit.End.UPPER);
-    Joint.Revolute homing = PIVOT.retuned(control -> control.withHoming(toLower));
+    RevoluteJoint homing = PIVOT.retuned(control -> control.withHoming(toLower));
     RobotDefinition sound = robot(homing.limitSwitch(LimitSwitch.lower().at(Degrees.of(0))));
 
     assertThatIllegalArgumentException()
@@ -316,7 +320,8 @@ class BlocksTest {
                 + " has none: give it one where it trips,"
                 + " .limitSwitch(LimitSwitch.lower().at(Degrees.of(...))...)");
     assertThatIllegalArgumentException()
-        .isThrownBy(() -> sound.named("practice").with(homing.limitSwitch(LimitSwitch.lower())))
+        .isThrownBy(
+            () -> sound.named("practice").with(homing.limitSwitch(LimitSwitch.lower())).checked())
         .withMessage(
             "RobotDefinition[practice].joints: pivot homes to pivot lower limit, whose position"
                 + " isn't known: measure where it trips and give it,"
@@ -329,7 +334,8 @@ class BlocksTest {
                     .with(
                         PIVOT
                             .retuned(control -> control.withHoming(toUpper))
-                            .limitSwitch(LimitSwitch.lower().at(Degrees.of(0)))))
+                            .limitSwitch(LimitSwitch.lower().at(Degrees.of(0))))
+                    .checked())
         .withMessage(
             "RobotDefinition[practice].joints: pivot homes to its upper limit switch, and its"
                 + " block has none: give it one where it trips,"
@@ -346,7 +352,7 @@ class BlocksTest {
   void aLoopClosesOnAnEncoderOnlyWhereItTellsTheWholeRange() {
     MechanismWiring.PortEncoder closing = MechanismWiring.PortEncoder.dutyCycle(1).closesLoop();
     MechanismControl unhomed = MechanismControl.position(30);
-    Joint.Revolute onSpark =
+    RevoluteJoint onSpark =
         unmotored(PIVOT)
             .motors(Motor.NEO.through(Gearing.of(25)).on(SPARK_MAX.can(23)))
             .absoluteEncoder(DATA_PORT.offset(Rotations.of(0)).closesLoop());
@@ -436,7 +442,8 @@ class BlocksTest {
         .isThrownBy(
             () ->
                 robot(
-                    Joint.pivot("turret", Part.CHASSIS, new Translation3d(0, 0, 0.5), Vector3.UP)
+                    Joint.pivot("turret", Part.CHASSIS, Vector3.UP)
+                        .at(Meters.of(0), Meters.of(0), Meters.of(0.5))
                         .range(Range.degrees(-200, 200))
                         .rest(Degrees.of(0))
                         .motors(Motor.KRAKEN_X60.through(Gearing.of(50)))
@@ -448,8 +455,9 @@ class BlocksTest {
                 + " of it to spare at each end, to tell where turret is. Gear it to at most 0.854 of"
                 + " its turns for each of turret's turns, or leave it out and give turret's control"
                 + " a homing recipe");
-    Joint.Prismatic fromTheFloor =
-        Joint.elevator("elevator", Part.CHASSIS, new Translation3d(-0.2, 0, 0))
+    PrismaticJoint fromTheFloor =
+        Joint.elevator("elevator", Part.CHASSIS)
+            .at(Meters.of(-0.2), Meters.of(0), Meters.of(0))
             .range(Range.meters(0.991, 1.804))
             .rest(Meters.of(0.991))
             .motors(Motor.KRAKEN_X60.through(Gearing.of(10)).drum(Inches.of(1)).count(2))
@@ -468,7 +476,8 @@ class BlocksTest {
         .isThrownBy(
             () ->
                 robot(
-                    Joint.elevator("elevator", Part.CHASSIS, new Translation3d(-0.2, 0, 0))
+                    Joint.elevator("elevator", Part.CHASSIS)
+                        .at(Meters.of(-0.2), Meters.of(0), Meters.of(0))
                         .range(Range.meters(0.991, 1.804))
                         .rest(Meters.of(0.991))
                         .motors(
@@ -487,7 +496,8 @@ class BlocksTest {
         .isThrownBy(
             () ->
                 robot(
-                    Joint.elevator("lift", Part.CHASSIS, new Translation3d(0, 0, 0))
+                    Joint.elevator("lift", Part.CHASSIS)
+                        .at(Meters.of(0), Meters.of(0), Meters.of(0))
                         .range(Range.meters(0, 1))
                         .rest(Meters.of(0))
                         .absoluteEncoder(ninth)))
@@ -499,7 +509,8 @@ class BlocksTest {
         .isThrownBy(
             () ->
                 robot(
-                    Joint.slide("hopper", Part.CHASSIS, new Translation3d(0, 0, 0), Vector3.UP)
+                    Joint.slide("hopper", Part.CHASSIS, Vector3.UP)
+                        .at(Meters.of(0), Meters.of(0), Meters.of(0))
                         .motors(Motor.KRAKEN_X60.through(Gearing.of(10)).drum(Inches.of(1)))
                         .absoluteEncoder(ninth)
                         .control(MechanismControl.velocity(0.02))))
@@ -560,10 +571,11 @@ class BlocksTest {
    */
   @Test
   void aJointWithMotorsAndTheDrivetrainNeedAControlToBeDriven() {
-    Joint.Revolute uncontrolled =
-        PIVOT.driven(DrivenBuilder.builder(PIVOT.driven()).control(Optional.empty()).build());
-    Joint.Revolute bare =
-        JointRevoluteBuilder.builder(uncontrolled)
+    RevoluteJoint uncontrolled =
+        JointCopies.driven(
+            PIVOT, DrivenBuilder.builder(PIVOT.driven()).control(Optional.empty()).build());
+    RevoluteJoint bare =
+        RevoluteJointBuilder.builder(uncontrolled)
             .label("bare")
             .link(Link.unseen("bare"))
             .driven(Driven.NONE)
@@ -580,7 +592,7 @@ class BlocksTest {
             tuple(
                 "drivetrain",
                 "the drivetrain has no control: give it its limits and gains,"
-                    + " .control(DrivetrainControl.builder()...)"),
+                    + " .control(DrivetrainControl.defaults())"),
             tuple(
                 "pivot",
                 "pivot has motors and no control: give it .control(MechanismControl.position(kP)),"
@@ -600,9 +612,9 @@ class BlocksTest {
    */
   @Test
   void eachInputHasOneSensorAndAControllersLimitInputIsItsJoints() {
-    Joint.Revolute onSpark =
+    RevoluteJoint onSpark =
         unmotored(PIVOT).motors(Motor.NEO.through(Gearing.of(25)).on(SPARK_MAX.can(21)));
-    Joint.Revolute onKraken = ROLLER.motors(motors -> motors.on(TALON_FX.can(22)));
+    RevoluteJoint onKraken = ROLLER.motors(motors -> motors.on(TALON_FX.can(22)));
     Sensor.Switch beam =
         Sensor.Switch.beam("claw beam", PIVOT)
             .on(
@@ -630,7 +642,8 @@ class BlocksTest {
                                 .on(CANDI.can(bus, 31).s1().normallyClosed()),
                             Sensor.Switch.limit("pivot up", PIVOT, Sensor.Switch.Limit.End.UPPER)
                                 .on(CANDI.can(bus, 31).s1().normallyClosed())))
-                    .build())
+                    .build()
+                    .checked())
         .withMessage(
             "RobotDefinition[test].sensors: pivot down and pivot up are on one input, CANdi 31's"
                 + " S1: move one to an input of its own");
@@ -650,7 +663,8 @@ class BlocksTest {
                                     SensorWiring.ControllerLimit.of(
                                             ELEVATOR, SensorWiring.Direction.FORWARD)
                                         .normallyClosed())))
-                    .build())
+                    .build()
+                    .checked())
         .withMessage(
             "RobotDefinition[test].sensors: pivot down is pivot's limit switch, on roller's"
                 + " controller, which would stop roller: wire it to pivot's\n"
@@ -670,7 +684,8 @@ class BlocksTest {
                         List.of(
                             Sensor.Switch.beam("claw beam", PIVOT)
                                 .on(SensorWiring.port(2).normallyOpen())))
-                    .build())
+                    .build()
+                    .checked())
         .withMessage(
             "RobotDefinition[test].sensors: pivot absolute encoder and claw beam are on one input,"
                 + " Systemcore's port 2: move one to an input of its own");
@@ -687,9 +702,84 @@ class BlocksTest {
         .hasSize(1);
   }
 
+  /**
+   * A joint's lower limit switch is on its controller's reverse input and its upper on its forward
+   * one: with the motor not reversed, the controller's forward is the joint's way up, so a switch
+   * on the other end's input would stop the wrong way of travel, and is refused. With the motor
+   * reversed, whether the controller's inputs follow it is unconfirmed, so it isn't judged.
+   */
+  @Test
+  void aLimitSwitchOnTheOtherEndsInputIsRefusedWithTheMotorNotReversed() {
+    record Case(
+        String name,
+        Sensor.Switch.Limit.End end,
+        SensorWiring.Direction direction,
+        boolean reversed,
+        String says) {}
+    List<Case> cases =
+        List.of(
+            new Case(
+                "lower on reverse",
+                Sensor.Switch.Limit.End.LOWER,
+                SensorWiring.Direction.REVERSE,
+                false,
+                ""),
+            new Case(
+                "upper on forward",
+                Sensor.Switch.Limit.End.UPPER,
+                SensorWiring.Direction.FORWARD,
+                false,
+                ""),
+            new Case(
+                "lower on forward",
+                Sensor.Switch.Limit.End.LOWER,
+                SensorWiring.Direction.FORWARD,
+                false,
+                "RobotDefinition[test].sensors: pivot lower limit is at pivot's lower end, on its"
+                    + " controller's forward limit input, which stops it moving toward its upper end: put"
+                    + " it on Direction.REVERSE"),
+            new Case(
+                "upper on reverse",
+                Sensor.Switch.Limit.End.UPPER,
+                SensorWiring.Direction.REVERSE,
+                false,
+                "RobotDefinition[test].sensors: pivot upper limit is at pivot's upper end, on its"
+                    + " controller's reverse limit input, which stops it moving toward its lower end: put"
+                    + " it on Direction.FORWARD"),
+            new Case(
+                "lower on forward, the motor reversed",
+                Sensor.Switch.Limit.End.LOWER,
+                SensorWiring.Direction.FORWARD,
+                true,
+                ""));
+    for (Case c : cases) {
+      MechanismWiring.Device controller =
+          c.reversed() ? TALON_FX.can(24).clockwise() : TALON_FX.can(24);
+      Driven.LimitSwitch limit =
+          c.end() == Sensor.Switch.Limit.End.LOWER
+              ? LimitSwitch.lower().on(c.direction().normallyClosed())
+              : LimitSwitch.upper().on(c.direction().normallyClosed());
+      RevoluteJoint pivot =
+          unmotored(PIVOT)
+              .motors(Motor.FALCON_500.through(Gearing.of(25)).on(controller))
+              .limitSwitch(limit);
+      if (c.says().isEmpty()) {
+        assertThat(robot(pivot).joints()).as(c.name()).hasSize(1);
+        continue;
+      }
+      assertThatIllegalArgumentException()
+          .as(c.name())
+          .isThrownBy(() -> robot(pivot))
+          .withMessage(c.says());
+    }
+  }
+
   /** The test robot with these joints, each with its block. */
   private static RobotDefinition robot(Joint... joints) {
     List<Joint> all = new ArrayList<>(List.of(joints));
-    return RobotDefinitionBuilder.builder(ConfigFixtures.definition(List.of())).joints(all).build();
+    return RobotDefinitionBuilder.builder(ConfigFixtures.definition(List.of()))
+        .joints(all)
+        .build()
+        .checked();
   }
 }

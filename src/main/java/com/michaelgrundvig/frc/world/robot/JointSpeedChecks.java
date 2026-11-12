@@ -142,8 +142,8 @@ final class JointSpeedChecks {
    * only runs, a roller or a flywheel, has outputs, which are given in rpm.
    */
   private static String shownCruise(Joint joint, double speed) {
-    if (!joint.holdsPositions()) {
-      return joint.shownSpeed(speed);
+    if (!RobotMath.holdsPositions(joint)) {
+      return Position.Kind.of(joint).shownSpeed(speed);
     }
     return switch (Position.Kind.of(joint)) {
       case ANGLE -> shown(Math.toDegrees(speed)) + "°/s";
@@ -163,14 +163,14 @@ final class JointSpeedChecks {
       return Optional.empty();
     }
     Optional<Position.Kind> measuredIn = bands.get().kind();
-    if (measuredIn.isPresent() && !joint.holdsPositions()) {
+    if (measuredIn.isPresent() && !RobotMath.holdsPositions(joint)) {
       return Optional.of(
           joint.label()
               + " only runs at outputs, so its bands are shares of the speed it's asked for, not "
               + plural(measuredIn.get())
               + ": withBands(Percent.of(3), Percent.of(6)) is 3% to arrive and 6% to stay");
     }
-    if (measuredIn.isEmpty() && joint.holdsPositions()) {
+    if (measuredIn.isEmpty() && RobotMath.holdsPositions(joint)) {
       Position.Kind kind = Position.Kind.of(joint);
       return Optional.of(
           joint.label()
@@ -220,9 +220,9 @@ final class JointSpeedChecks {
                 + " fast; give it a speed under that",
             possessive(joint.label()),
             speed.name(),
-            joint.shownSpeed(speed.value()),
+            Position.Kind.of(joint).shownSpeed(speed.value()),
             shown(size / freeSpeed),
-            joint.shownSpeed(freeSpeed)));
+            Position.Kind.of(joint).shownSpeed(freeSpeed)));
   }
 
   /** Why a named voltage is past the nominal voltage of the joint's motors, if it is. */
@@ -264,9 +264,9 @@ final class JointSpeedChecks {
                   + " nothing left to hold it under load",
               joint.label(),
               output.name(),
-              joint.shownSpeed(output.value()),
+              Position.Kind.of(joint).shownSpeed(output.value()),
               share * 100,
-              joint.shownSpeed(freeSpeed)));
+              Position.Kind.of(joint).shownSpeed(freeSpeed)));
     }
     return Optional.empty();
   }
@@ -278,7 +278,7 @@ final class JointSpeedChecks {
   private static double nominalVolts(RobotMath math, Joint joint) {
     double nominal = Double.POSITIVE_INFINITY;
     for (Drive drive : math.drivesOf(joint)) {
-      nominal = Math.min(nominal, ((Actuator.Motors) drive.actuator()).model().nominalVoltage);
+      nominal = Math.min(nominal, ((Actuator.MotorGroup) drive.actuator()).model().nominalVoltage);
     }
     return nominal;
   }

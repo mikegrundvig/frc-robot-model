@@ -13,6 +13,8 @@ import static org.wpilib.units.Units.Volts;
 import com.michaelgrundvig.frc.world.config.Checks;
 import com.michaelgrundvig.frc.world.config.ConfigRecord;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.wpilib.math.system.DCMotor;
 import org.wpilib.units.measure.AngularVelocity;
 import org.wpilib.units.measure.Current;
@@ -27,10 +29,10 @@ import org.wpilib.units.measure.Voltage;
  * here.
  *
  * <p>The motors FRC robots commonly use are here by name, with WPILib's numbers for each ({@link
- * #presets}). {@code _FOC}: driven with field-oriented control, which CTRE sells as part of Phoenix
- * Pro. It draws more current at the same voltage, for more torque and power at a slightly lower top
- * speed; torque per amp is unchanged, so it adds nothing when a current limit is what caps the
- * motor. Any other motor is described from its datasheet ({@link #fromDatasheet}).
+ * #presets}). Driven with field-oriented control, said on its controller ({@code
+ * TALON_FX.can(32).foc()}), a Kraken or a Falcon runs on WPILib's FOC curve of it instead ({@link
+ * MechanismWiring.Commutation}). Any other motor is described from its datasheet ({@link
+ * #fromDatasheet}).
  *
  * @param name what the motor is called, for messages
  * @param nominalVoltage the voltage the datasheet's numbers were measured at: 12 V for FRC motors
@@ -64,31 +66,25 @@ public record Motor(
   // publishes them (M21). The Kraken X60's is the one the template's drive inertia already assumed
   // (0.0006 kg m² through 6.75:1); the rest scale it by each motor's size.
   public static final Motor KRAKEN_X60 = preset("Kraken X60", DCMotor.getKrakenX60(1), 1.3e-5);
-  public static final Motor KRAKEN_X60_FOC =
-      preset("Kraken X60 FOC", DCMotor.getKrakenX60Foc(1), 1.3e-5);
   public static final Motor KRAKEN_X44 = preset("Kraken X44", DCMotor.getKrakenX44(1), 0.6e-5);
-  public static final Motor KRAKEN_X44_FOC =
-      preset("Kraken X44 FOC", DCMotor.getKrakenX44Foc(1), 0.6e-5);
   public static final Motor FALCON_500 = preset("Falcon 500", DCMotor.getFalcon500(1), 1.3e-5);
-  public static final Motor FALCON_500_FOC =
-      preset("Falcon 500 FOC", DCMotor.getFalcon500Foc(1), 1.3e-5);
   public static final Motor MINION = preset("Minion", DCMotor.getMinion(1), 0.8e-5);
   public static final Motor NEO = preset("NEO", DCMotor.getNEO(1), 1.3e-5);
   public static final Motor NEO_VORTEX = preset("NEO Vortex", DCMotor.getNeoVortex(1), 1.0e-5);
   public static final Motor NEO_550 = preset("NEO 550", DCMotor.getNeo550(1), 0.3e-5);
 
   private static final List<Motor> PRESETS =
-      List.of(
-          KRAKEN_X60,
-          KRAKEN_X60_FOC,
-          KRAKEN_X44,
-          KRAKEN_X44_FOC,
-          FALCON_500,
-          FALCON_500_FOC,
-          MINION,
-          NEO,
-          NEO_VORTEX,
-          NEO_550);
+      List.of(KRAKEN_X60, KRAKEN_X44, FALCON_500, MINION, NEO, NEO_VORTEX, NEO_550);
+
+  /**
+   * The motors WPILib has a curve of driven with field-oriented control, each against its plain
+   * curve. Not presets: FOC is said on the controller, and the drive runs the motor on this curve.
+   */
+  private static final Map<Motor, Motor> FOC_CURVES =
+      Map.of(
+          KRAKEN_X60, preset("Kraken X60 FOC", DCMotor.getKrakenX60Foc(1), 1.3e-5),
+          KRAKEN_X44, preset("Kraken X44 FOC", DCMotor.getKrakenX44Foc(1), 0.6e-5),
+          FALCON_500, preset("Falcon 500 FOC", DCMotor.getFalcon500Foc(1), 1.3e-5));
 
   public Motor {
     Checks.on(Motor.class, name)
@@ -134,6 +130,19 @@ public record Motor(
   /** The motors named here, with WPILib's numbers for each. */
   public static List<Motor> presets() {
     return PRESETS;
+  }
+
+  /**
+   * This motor driven with field-oriented control, as WPILib models it, if WPILib has a curve of
+   * it: the Krakens and the Falcon do, the Minion and REV's motors don't.
+   */
+  Optional<Motor> focCurve() {
+    return Optional.ofNullable(FOC_CURVES.get(this));
+  }
+
+  /** The motors that have a curve under field-oriented control, as a refusal lists them. */
+  static String withFocCurves() {
+    return "a Kraken X60, a Kraken X44 or a Falcon 500";
   }
 
   /** One motor's physical model: its torque, speed, and current at the nominal voltage. */

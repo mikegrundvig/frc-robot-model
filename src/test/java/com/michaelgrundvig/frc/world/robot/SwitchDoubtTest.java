@@ -17,7 +17,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  * tenth of the joint's range, or 15° for one that turns freely.
  */
 class SwitchDoubtTest {
-  private static final Joint.Revolute PIVOT = StandardRobot.PIVOT;
+  private static final RevoluteJoint PIVOT = StandardRobot.PIVOT;
 
   /**
    * The pivot's switch at its lower end, tripping at 30°: its range is 135°, so 13.5° either way.
@@ -27,11 +27,7 @@ class SwitchDoubtTest {
 
   private static Sensor.Switch limit(
       String label, Joint joint, Sensor.Switch.Limit.End end, Optional<Double> position) {
-    return Sensor.Switch.builder()
-        .label(label)
-        .part(joint.parent())
-        .kind(new Sensor.Switch.Limit(joint, position, end))
-        .build();
+    return Sensor.Switch.of(label, joint.parent(), new Sensor.Switch.Limit(joint, position, end));
   }
 
   private static @Nullable String doubt(boolean tripped, double degrees) {
@@ -68,7 +64,7 @@ class SwitchDoubtTest {
   /** A switch whose position isn't known can't be doubted; a free joint's margin is 15°. */
   @Test
   void aSwitchWithNoPositionIsNeverDoubted() {
-    Joint.Revolute turret = StandardRobot.lightPivot("turret", Optional.empty());
+    RevoluteJoint turret = StandardRobot.lightPivot("turret", Optional.empty());
     Sensor.Switch somewhere =
         limit("turret left", turret, Sensor.Switch.Limit.End.LOWER, Optional.empty());
     Sensor.Switch placed =

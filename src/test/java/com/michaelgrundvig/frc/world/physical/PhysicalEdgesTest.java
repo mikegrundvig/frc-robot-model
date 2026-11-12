@@ -337,7 +337,7 @@ class PhysicalEdgesTest {
   }
 
   private static MassProperties pointMass(double kilograms, double x, double y, double z) {
-    return MassProperties.builder().mass(Kilograms.of(kilograms)).cg(new Translation3d(x, y, z)).inertia(Inertia.ZERO).build();
+    return MassProperties.of(Kilograms.of(kilograms), new Translation3d(x, y, z), Inertia.ZERO);
   }
 
   /** Parts added up and taken away. */
@@ -363,7 +363,7 @@ class PhysicalEdgesTest {
 
   /** A box of some size at a pose, or what it is refused for, down to which value. */
   private static String boxRefusal(Pose3d pose, Translation3d size) {
-    return refusal(() -> Shape.Box.builder().pose(pose).size(size).material(Material.ALUMINUM).build());
+    return refusal(() -> Solid.Box.of(pose, size, Material.ALUMINUM));
   }
 
   private static String boxAt(double x, double y, double z) {
@@ -421,8 +421,8 @@ class PhysicalEdgesTest {
         answers("...nor along z", () -> meshWithCorner(0, 0, NONE), "corner 1 isn't a point: Vector3[x=0.0, y=0.0, z=Infinity]"));
   }
 
-  private static Shape.Box box(double length, double width, double height) {
-    return Shape.Box.builder().pose(Pose3d.ZERO).size(new Translation3d(length, width, height)).material(Material.ALUMINUM).build();
+  private static Solid.Box box(double length, double width, double height) {
+    return Solid.Box.of(Pose3d.ZERO, new Translation3d(length, width, height), Material.ALUMINUM);
   }
 
   /** A box's corners, and the sizes it cannot have. */

@@ -66,8 +66,20 @@ public record MassProperties(Mass mass, Translation3d cg, Inertia inertia) {
     return mass.in(Kilograms) == 0;
   }
 
+  /**
+   * A part's mass properties, from CAD's mass-properties report or a scale: {@code
+   * MassProperties.of(Pounds.of(6), new Translation3d(0.3, 0, 0), Inertia.box(...))}.
+   *
+   * @param mass how much it weighs: zero when nobody knows
+   * @param cg its center of mass, in its frame, in meters
+   * @param inertia how hard it is to turn, about its center of mass, along its frame's axes
+   */
+  public static MassProperties of(Mass mass, Translation3d cg, Inertia inertia) {
+    return builder().mass(mass).cg(cg).inertia(inertia).build();
+  }
+
   /** Starts describing a part's mass properties, one named value at a time. */
-  public static MassPropertiesBuilder.MassStage builder() {
+  static MassPropertiesBuilder.MassStage builder() {
     return MassPropertiesBuilder.builder();
   }
 

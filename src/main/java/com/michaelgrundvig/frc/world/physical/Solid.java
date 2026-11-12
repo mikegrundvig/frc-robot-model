@@ -15,7 +15,7 @@ import org.wpilib.math.geometry.Translation3d;
  * what it's made of: what the robot's extension checks and the views use. Only a {@link Box} so
  * far; other kinds come back when a robot needs one.
  */
-public sealed interface Shape {
+public sealed interface Solid {
   /** Where it is, and how it's turned, in its owner's frame: each kind says from which point. */
   Pose3d pose();
 
@@ -48,10 +48,10 @@ public sealed interface Shape {
    * @param material what it's made of
    */
   @ConfigRecord
-  record Box(Pose3d pose, Translation3d size, Material material) implements Shape {
+  record Box(Pose3d pose, Translation3d size, Material material) implements Solid {
     public Box {
       Checks.on(Box.class)
-          .field("pose", pose, Rule.of(Shape::whyNotAPose))
+          .field("pose", pose, Rule.of(Solid::whyNotAPose))
           .field("size", size, Rule.of(Box::whyNotASize))
           .orThrow();
     }
@@ -65,9 +65,20 @@ public sealed interface Shape {
       return Optional.of(size + " must be positive along each axis");
     }
 
+    /**
+     * A box, centered on its pose, its sides along the pose's axes.
+     *
+     * @param pose its center, and how it's turned
+     * @param size its length along the pose's x, width along y, and height along z, in meters
+     * @param material what it's made of
+     */
+    public static Box of(Pose3d pose, Translation3d size, Material material) {
+      return builder().pose(pose).size(size).material(material).build();
+    }
+
     /** Starts describing a box, one named value at a time. */
-    public static ShapeBoxBuilder.PoseStage builder() {
-      return ShapeBoxBuilder.builder();
+    static SolidBoxBuilder.PoseStage builder() {
+      return SolidBoxBuilder.builder();
     }
 
     /**

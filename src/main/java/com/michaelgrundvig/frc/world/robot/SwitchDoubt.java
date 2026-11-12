@@ -62,9 +62,9 @@ public final class SwitchDoubt {
           + " reads tripped with "
           + joint.label()
           + " at "
-          + joint.shown(at)
+          + Position.Kind.of(joint).shown(at)
           + ", nowhere near where it trips, "
-          + joint.shown(trips)
+          + Position.Kind.of(joint).shown(trips)
           + ": a cut wire, if it's normally closed, or a switch out of place";
     }
     if (!tripped && past > margin) {
@@ -72,9 +72,9 @@ public final class SwitchDoubt {
           + " reads clear with "
           + joint.label()
           + " at "
-          + joint.shown(at)
+          + Position.Kind.of(joint).shown(at)
           + ", past where it trips, "
-          + joint.shown(trips)
+          + Position.Kind.of(joint).shown(trips)
           + ": a cut wire, if it's normally open, or a switch out of place";
     }
     return null;

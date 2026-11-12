@@ -22,7 +22,7 @@ class TravelTest {
   private static final Position TURRET_FRONT = Position.degrees("front", 0);
 
   /** The intake's pivot (0° to 135°) on a Kraken at 25:1, profiled at 8 rad/s and 30 rad/s². */
-  private static final Joint.Revolute PIVOT =
+  private static final RevoluteJoint PIVOT =
       StandardRobot.PIVOT
           .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(25, 1)))
           .control(
@@ -31,7 +31,7 @@ class TravelTest {
                   .withHoming(MechanismControl.Homing.assumeAtRest()));
 
   /** The elevator (0 to 1.2 m), profiled at 1.2 m/s and 5 m/s². */
-  private static final Joint.Prismatic ELEVATOR =
+  private static final PrismaticJoint ELEVATOR =
       StandardRobot.ELEVATOR
           .motors(
               Motor.KRAKEN_X60
@@ -44,7 +44,7 @@ class TravelTest {
                   .withHoming(MechanismControl.Homing.assumeAtRest()));
 
   /** A turret that turns freely, profiled at 3 rad/s and 10 rad/s². */
-  private static final Joint.Revolute TURRET =
+  private static final RevoluteJoint TURRET =
       StandardRobot.named(
               StandardRobot.lightPivot("turret", Optional.empty()),
               List.of(TURRET_FRONT),
@@ -56,8 +56,8 @@ class TravelTest {
                   .withHoming(MechanismControl.Homing.assumeAtRest()));
 
   /** A turret whose range spans more than a turn, -200° to 200°. */
-  private static final Joint.Revolute WIDE =
-      JointRevoluteBuilder.builder(TURRET)
+  private static final RevoluteJoint WIDE =
+      RevoluteJointBuilder.builder(TURRET)
           .range(Range.degrees(-200, 200))
           .positions(List.of(TURRET_FRONT, Position.degrees("back", -180)))
           .build();
@@ -160,8 +160,8 @@ class TravelTest {
    */
   @Test
   void aJointThatSlidesTakesAPositionAsItIs() {
-    Joint.Prismatic longSlide =
-        JointPrismaticBuilder.builder(ELEVATOR).range(Range.meters(0, 8)).build();
+    PrismaticJoint longSlide =
+        PrismaticJointBuilder.builder(ELEVATOR).range(Range.meters(0, 8)).build();
 
     assertThat(travel(longSlide).taking()).isEqualTo(Travel.Taking.AS_IT_IS);
     assertThat(travel(longSlide).turnNear(7, 0)).isEqualTo(7);
@@ -169,9 +169,9 @@ class TravelTest {
   }
 
   /** The turret with stops this far apart, in radians, from 0 up. */
-  private static Joint.Revolute turretSpanning(double width) {
+  private static RevoluteJoint turretSpanning(double width) {
     Range range = Range.builder().kind(Position.Kind.ANGLE).lower(0).upper(width).build();
-    return JointRevoluteBuilder.builder(TURRET).range(range).build();
+    return RevoluteJointBuilder.builder(TURRET).range(range).build();
   }
 
   /**

@@ -13,6 +13,7 @@ import com.michaelgrundvig.frc.world.field.FieldModel;
 import com.michaelgrundvig.frc.world.field.Place;
 import com.michaelgrundvig.frc.world.field.Start;
 import com.michaelgrundvig.frc.world.field.Symmetry;
+import com.michaelgrundvig.frc.world.field.TagFamily;
 import com.michaelgrundvig.frc.world.field.TagLayout;
 import com.michaelgrundvig.frc.world.field.Zone;
 import com.michaelgrundvig.frc.world.physical.Material;
@@ -23,6 +24,7 @@ import org.wpilib.fields.Fields;
 import org.wpilib.math.geometry.Pose2d;
 import org.wpilib.math.geometry.Rotation2d;
 import org.wpilib.math.geometry.Translation2d;
+import org.wpilib.units.measure.Distance;
 
 /**
  * 2024's field, CRESCENDO, a mirrored one. Written as {@link Rebuilt} is: blue's alliance only, in
@@ -56,6 +58,12 @@ public final class Crescendo {
 
   static final Fields LAYOUT = Fields.FRC_2024_CRESCENDO;
 
+  /** The tags are 36h11, as the game manual prints them. */
+  static final TagFamily TAG_FAMILY = TagFamily.TAG_36H11;
+
+  /** Each tag's black square is 6.5 in on a side, as the game manual prints them. */
+  static final Distance TAG_SIZE = Inches.of(6.5);
+
   /** Red's half is blue's reflected across the center line: both amps are on one guardrail. */
   static final Symmetry SYMMETRY = Symmetry.MIRRORED;
 
@@ -65,16 +73,16 @@ public final class Crescendo {
   // ---- Materials, where the manual names them ----
 
   /** The subwoofer's vertical faces, and its side inclined ones (5.6.1). */
-  static final Material HDPE = Material.builder().name("HDPE").build();
+  static final Material HDPE = Material.of("HDPE");
 
   /**
    * What the manual doesn't name a material for: the stage's truss legs, the source, the amp, and
    * the speaker's part of the alliance wall.
    */
-  static final Material STRUCTURE = Material.builder().name("field structure").build();
+  static final Material STRUCTURE = Material.of("field structure");
 
   /** The stage core's walls (5.5). */
-  static final Material POLYCARBONATE = Material.builder().name("polycarbonate").build();
+  static final Material POLYCARBONATE = Material.of("polycarbonate");
 
   // ---- The stage, three legs around a six-sided core (5.5) ----
 
@@ -406,11 +414,18 @@ public final class Crescendo {
 
   /** The season's field: its one official layout. */
   public static final Game GAME =
-      new Game(LAYOUT.loadField(), List.of(LAYOUT.loadField()), SYMMETRY, Crescendo::field, LIMITS);
+      new Game(
+          LAYOUT.loadField(),
+          List.of(LAYOUT.loadField()),
+          SYMMETRY,
+          TAG_FAMILY,
+          TAG_SIZE,
+          Crescendo::field,
+          LIMITS);
 
   /** The field model on the official layout, with its starts ({@link #STARTS}). */
   public static FieldModel field() {
-    return field(TagLayout.of(LAYOUT.loadField()));
+    return field(TagLayout.of(LAYOUT.loadField(), TAG_FAMILY, TAG_SIZE));
   }
 
   /** The field model on the field's tags: the official layout's, or a venue's, as surveyed. */

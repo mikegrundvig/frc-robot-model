@@ -43,7 +43,7 @@ public final class MechanismRotations {
    * @throws IllegalArgumentException for a prismatic joint the drive doesn't turn through a drum
    */
   public static MechanismRotations of(Joint joint, Drive drive) {
-    if (joint instanceof Joint.Revolute) {
+    if (joint instanceof RevoluteJoint) {
       return new MechanismRotations(joint, 2 * Math.PI);
     }
     return new MechanismRotations(joint, 2 * Math.PI * drum(joint, drive).in(Meters));
@@ -121,6 +121,6 @@ public final class MechanismRotations {
    * {@code SensorToMechanismRatio}.
    */
   public double ratioPerRotation(double definitionRatio) {
-    return joint instanceof Joint.Revolute ? definitionRatio : definitionRatio * perRotation;
+    return joint instanceof RevoluteJoint ? definitionRatio : definitionRatio * perRotation;
   }
 }
