@@ -37,7 +37,7 @@ public final class ConfigFixtures {
     return Gearing.of(ratio);
   }
 
-  /** Kraken X60 drive at 6.75:1 on 2 in radius wheels: 4.73 m/s free speed. */
+  /** Kraken X60 drive at 6.75:1 on 2 in radius wheels: 4.78 m/s free speed. */
   public static Drivetrain.Module modules() {
     return Drivetrain.Module.builder()
         .driveMotor(Motor.KRAKEN_X60)

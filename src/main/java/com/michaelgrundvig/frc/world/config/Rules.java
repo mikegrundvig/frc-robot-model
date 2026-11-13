@@ -61,114 +61,104 @@ public final class Rules {
 
   /** From {@code min} to {@code max}, both included. */
   public static Rule<Double> between(double min, double max) {
-    return Rule.of(
-        value -> {
-          boolean inRange = value >= min && value <= max;
-          return refusedUnless(value, inRange, "must be from " + shown(min) + " to " + shown(max));
-        });
+    return Rule.of(value -> {
+      boolean inRange = value >= min && value <= max;
+      return refusedUnless(value, inRange, "must be from " + shown(min) + " to " + shown(max));
+    });
   }
 
   /** At least {@code min}, in real units. */
   public static <M extends Measure<?>> Rule<M> atLeast(M min) {
-    return Rule.of(
-        value -> {
-          boolean atLeast = value.baseUnitMagnitude() >= min.baseUnitMagnitude();
-          return refusedUnless(value, atLeast, "must be at least " + shown(min));
-        });
+    return Rule.of(value -> {
+      boolean atLeast = value.baseUnitMagnitude() >= min.baseUnitMagnitude();
+      return refusedUnless(value, atLeast, "must be at least " + shown(min));
+    });
   }
 
   /** At most {@code max}, in real units. */
   public static <M extends Measure<?>> Rule<M> atMost(M max) {
-    return Rule.of(
-        value -> {
-          boolean atMost = value.baseUnitMagnitude() <= max.baseUnitMagnitude();
-          return refusedUnless(value, atMost, "must be at most " + shown(max));
-        });
+    return Rule.of(value -> {
+      boolean atMost = value.baseUnitMagnitude() <= max.baseUnitMagnitude();
+      return refusedUnless(value, atMost, "must be at most " + shown(max));
+    });
   }
 
   /** Less than {@code limit}, in real units. */
   public static <M extends Measure<?>> Rule<M> below(M limit) {
-    return Rule.of(
-        value -> {
-          boolean below = value.baseUnitMagnitude() < limit.baseUnitMagnitude();
-          return refusedUnless(value, below, "must be below " + shown(limit));
-        });
+    return Rule.of(value -> {
+      boolean below = value.baseUnitMagnitude() < limit.baseUnitMagnitude();
+      return refusedUnless(value, below, "must be below " + shown(limit));
+    });
   }
 
   /** From {@code min} to {@code max}, both included, in real units. */
   public static <M extends Measure<?>> Rule<M> between(M min, M max) {
-    return Rule.of(
-        value -> {
-          double magnitude = value.baseUnitMagnitude();
-          boolean inRange =
-              magnitude >= min.baseUnitMagnitude() && magnitude <= max.baseUnitMagnitude();
-          return refusedUnless(value, inRange, "must be from " + shown(min) + " to " + shown(max));
-        });
+    return Rule.of(value -> {
+      double magnitude = value.baseUnitMagnitude();
+      boolean inRange =
+          magnitude >= min.baseUnitMagnitude() && magnitude <= max.baseUnitMagnitude();
+      return refusedUnless(value, inRange, "must be from " + shown(min) + " to " + shown(max));
+    });
   }
 
   /** Text with something in it besides spaces. */
   public static Rule<String> notBlank() {
-    return Rule.of(
-        value -> {
-          if (value.isBlank()) {
-            return Optional.of("must not be blank");
-          }
-          return Optional.empty();
-        });
+    return Rule.of(value -> {
+      if (value.isBlank()) {
+        return Optional.of("must not be blank");
+      }
+      return Optional.empty();
+    });
   }
 
   /** One of the values listed. */
   @SafeVarargs
   public static <V> Rule<V> oneOf(V... allowed) {
     List<V> choices = List.of(allowed);
-    return Rule.of(
-        value -> {
-          if (choices.contains(value)) {
-            return Optional.empty();
-          }
-          String listed = choices.stream().map(String::valueOf).collect(Collectors.joining(", "));
-          return Optional.of(value + " must be one of " + listed);
-        });
+    return Rule.of(value -> {
+      if (choices.contains(value)) {
+        return Optional.empty();
+      }
+      String listed = choices.stream().map(String::valueOf).collect(Collectors.joining(", "));
+      return Optional.of(value + " must be one of " + listed);
+    });
   }
 
   /** Exactly {@code count} items. */
   public static <V> Rule<List<V>> size(int count) {
-    return Rule.of(
-        list -> {
-          if (list.size() == count) {
-            return Optional.empty();
-          }
-          return Optional.of("must have " + count + ", has " + list.size());
-        });
+    return Rule.of(list -> {
+      if (list.size() == count) {
+        return Optional.empty();
+      }
+      return Optional.of("must have " + count + ", has " + list.size());
+    });
   }
 
   /** Every item in a list passes the rule. Each one that doesn't is named by its position. */
   public static <V> Rule<List<V>> each(Rule<? super V> rule) {
-    return Rule.of(
-        list -> {
-          List<String> problems = new ArrayList<>();
-          for (int position = 0; position < list.size(); position++) {
-            Optional<String> whyNot = rule.reason(list.get(position));
-            if (whyNot.isPresent()) {
-              problems.add("[" + position + "] " + whyNot.get());
-            }
-          }
-          if (problems.isEmpty()) {
-            return Optional.empty();
-          }
-          return Optional.of(String.join("; ", problems));
-        });
+    return Rule.of(list -> {
+      List<String> problems = new ArrayList<>();
+      for (int position = 0; position < list.size(); position++) {
+        Optional<String> whyNot = rule.reason(list.get(position));
+        if (whyNot.isPresent()) {
+          problems.add("[" + position + "] " + whyNot.get());
+        }
+      }
+      if (problems.isEmpty()) {
+        return Optional.empty();
+      }
+      return Optional.of(String.join("; ", problems));
+    });
   }
 
   /** An optional value: none passes, and one given passes the rule. */
   public static <V> Rule<Optional<V>> given(Rule<? super V> rule) {
-    return Rule.of(
-        value -> {
-          if (value.isPresent()) {
-            return rule.reason(value.get());
-          }
-          return Optional.empty();
-        });
+    return Rule.of(value -> {
+      if (value.isPresent()) {
+        return rule.reason(value.get());
+      }
+      return Optional.empty();
+    });
   }
 
   /** A measure as people write it: "4.729 m/s" rather than "4.728761e+00 m/s". */
@@ -204,18 +194,17 @@ public final class Rules {
    * @param whatIsAsked what is asked, as a refusal says it after the value: "must be positive"
    */
   private static <V> Rule<V> comparedWithZero(DoublePredicate holds, String whatIsAsked) {
-    return Rule.of(
-        value -> {
-          if (value instanceof Number number) {
-            double plain = number.doubleValue();
-            return refusedUnless(plain, holds.test(plain), whatIsAsked);
-          }
-          if (value instanceof Measure<?> measure) {
-            return refusedUnless(measure, holds.test(measure.baseUnitMagnitude()), whatIsAsked);
-          }
-          return Optional.of(
-              "can't be checked as a number: it's a " + value.getClass().getSimpleName());
-        });
+    return Rule.of(value -> {
+      if (value instanceof Number number) {
+        double plain = number.doubleValue();
+        return refusedUnless(plain, holds.test(plain), whatIsAsked);
+      }
+      if (value instanceof Measure<?> measure) {
+        return refusedUnless(measure, holds.test(measure.baseUnitMagnitude()), whatIsAsked);
+      }
+      return Optional.of(
+          "can't be checked as a number: it's a " + value.getClass().getSimpleName());
+    });
   }
 
   /**

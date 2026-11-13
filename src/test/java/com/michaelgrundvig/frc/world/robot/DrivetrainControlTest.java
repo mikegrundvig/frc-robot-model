@@ -72,8 +72,8 @@ class DrivetrainControlTest {
 
   /**
    * The drivetrain fills in the drive's kV as it takes its control: the modules' ideal, 12 V over
-   * the 4.73 m/s free speed, until one is tuned, which it keeps. Its top speed likewise: four
-   * fifths of the free speed, 3.78 m/s, until one is given, so a slower drivetrain than the
+   * the 4.78 m/s free speed, until one is tuned, which it keeps. Its top speed likewise: four
+   * fifths of the free speed, 3.82 m/s, until one is given, so a slower drivetrain than the
    * template's is never refused for a speed nobody chose.
    */
   @Test
@@ -85,7 +85,7 @@ class DrivetrainControlTest {
         TEMPLATES.control(
             DrivetrainControl.defaults().withDriveKv(2.7).withMaxSpeed(MetersPerSecond.of(4.4)));
 
-    assertThat(ideal).isCloseTo(2.538, within(0.001));
+    assertThat(ideal).isCloseTo(2.511, within(0.001));
     assertThat(TEMPLATES.idealDriveKv()).isEqualTo(ideal);
     assertThat(seeded.control().orElseThrow().gains().driveKv()).contains(ideal);
     assertThat(seeded.control().orElseThrow().limits().maxLinearSpeed().orElseThrow())
@@ -98,7 +98,7 @@ class DrivetrainControlTest {
                 .maxLinearSpeed()
                 .orElseThrow()
                 .in(MetersPerSecond))
-        .isCloseTo(3.783, within(0.001));
+        .isCloseTo(3.824, within(0.001));
     assertThat(tuned.control().orElseThrow().gains().driveKv()).contains(2.7);
     assertThat(tuned.control().orElseThrow().limits().maxLinearSpeed())
         .contains(MetersPerSecond.of(4.4));
@@ -121,7 +121,7 @@ class DrivetrainControlTest {
 
     DrivetrainControl control = slow.control(DrivetrainControl.defaults()).control().orElseThrow();
 
-    assertThat(slow.freeSpeed().in(MetersPerSecond)).isCloseTo(3.19, within(0.01));
+    assertThat(slow.freeSpeed().in(MetersPerSecond)).isCloseTo(3.23, within(0.01));
     assertThat(control.whyTooFastFor(slow)).isEmpty();
     assertThat(control.limits().maxLinearSpeed().orElseThrow().in(MetersPerSecond))
         .isCloseTo(0.8 * slow.freeSpeed().in(MetersPerSecond), within(1e-9));
@@ -344,15 +344,15 @@ class DrivetrainControlTest {
                 "over twice",
                 DrivetrainControl.defaults().withDriveKv(6.0),
                 Optional.of(
-                    "drivetrain's tuned driveKv, 6 V/(m/s), is 2.364 times the ideal, 2.538"
+                    "drivetrain's tuned driveKv, 6 V/(m/s), is 2.39 times the ideal, 2.511"
                         + " V/(m/s), from its motors and what it moves")),
             new Row(
                 "Tuner X's, per rotor turn",
                 DrivetrainControl.defaults().withDriveKv(0.12),
                 Optional.of(
-                    "drivetrain's tuned driveKv, 0.12 V/(m/s), is 0.04729 times the ideal, 2.538"
+                    "drivetrain's tuned driveKv, 0.12 V/(m/s), is 0.0478 times the ideal, 2.511"
                         + " V/(m/s), from its motors and what it moves: the ideal per turn of its"
-                        + " rotor, within 1%, entered as if per meter, by the look of it")));
+                        + " rotor, within 2%, entered as if per meter, by the look of it")));
 
     for (Row row : rows) {
       assertThat(TEMPLATES.control(row.control()).whyDriveKvIsDoubtful())
@@ -361,7 +361,7 @@ class DrivetrainControlTest {
     }
   }
 
-  /** The template's drivetrain reaches 4.73 m/s free: 4 m/s leaves room, 5 m/s doesn't. */
+  /** The template's drivetrain reaches 4.78 m/s free: 4 m/s leaves room, 5 m/s doesn't. */
   @Test
   void topSpeedCannotExceedTheFreeSpeed() {
     var drivetrain = TEMPLATES;
@@ -373,7 +373,7 @@ class DrivetrainControlTest {
     assertThat(control().whyTooFastFor(drivetrain)).isEmpty();
     assertThat(tooFast.whyTooFastFor(drivetrain))
         .contains(
-            "5 m/s is faster than the drivetrain's free speed of 4.729 m/s: give withMaxSpeed at"
+            "5 m/s is faster than the drivetrain's free speed of 4.78 m/s: give withMaxSpeed at"
                 + " most that");
   }
 
@@ -383,9 +383,9 @@ class DrivetrainControlTest {
    * through 6.75:1 on a 2 in wheel whose tread grips at 1.2 of its quarter of the weight, 177 N.
    *
    * <ul>
-   *   <li>At 40 A the motors give first: 0.775 N m each, 103 N at the floor. 412 N over 60 kg is
-   *       6.86 m/s²; at 0.374 m, over 6 kg m², 25.7 rad/s².
-   *   <li>At 80 A they'd push 206 N, and the tread gives first: 177 N a wheel, so the robot speeds
+   *   <li>At 40 A the motors give first: 0.765 N m each, 102 N at the floor. 406 N over 60 kg is
+   *       6.77 m/s²; at 0.374 m, over 6 kg m², 25.3 rad/s².
+   *   <li>At 80 A they'd push 203 N, and the tread gives first: 177 N a wheel, so the robot speeds
    *       up at 1.2 g, 11.77 m/s², whatever its mass, and spins up at 44.1 rad/s².
    * </ul>
    */
@@ -394,7 +394,7 @@ class DrivetrainControlTest {
     RobotDefinition robot = ConfigFixtures.definition(List.of());
     double[][] rows = {
       // stator current (A), linear (m/s²), angular (rad/s²)
-      {40, 6.86, 25.7},
+      {40, 6.77, 25.3},
       {80, 11.77, 44.1},
     };
 
@@ -458,18 +458,17 @@ class DrivetrainControlTest {
   @Test
   void gainsMayBeZeroButNotNegative() {
     assertThatNoException()
-        .isThrownBy(
-            () ->
-                DrivetrainControlSwerveGainsBuilder.builder()
-                    .driveKs(0)
-                    .driveKp(0)
-                    .steerKp(0)
-                    .steerKd(0)
-                    .skewLookahead(Seconds.of(0))
-                    .headingKp(0)
-                    .translationKp(0)
-                    .driveKv(0.0)
-                    .build());
+        .isThrownBy(() ->
+            DrivetrainControlSwerveGainsBuilder.builder()
+                .driveKs(0)
+                .driveKp(0)
+                .steerKp(0)
+                .steerKd(0)
+                .skewLookahead(Seconds.of(0))
+                .headingKp(0)
+                .translationKp(0)
+                .driveKv(0.0)
+                .build());
     assertRejected("SwerveGains.driveKs", () -> changeGains().driveKs(-0.1).build());
     assertRejected("SwerveGains.driveKv", () -> changeGains().driveKv(Double.NaN).build());
     assertRejected("SwerveGains.driveKp", () -> changeGains().driveKp(-1).build());

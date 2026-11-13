@@ -463,10 +463,8 @@ class RobotMathTest {
             "decoding turret-a and turret-b by their difference needs each encoder's counts per"
                 + " turn: give them");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                definition(
-                    List.of(turret), List.of(), List.of(drive), List.of(uncountedA, uncountedB)))
+        .isThrownBy(() ->
+            definition(List.of(turret), List.of(), List.of(drive), List.of(uncountedA, uncountedB)))
         .withMessageContaining(
             "joints: decoding turret-a and turret-b by their difference needs each encoder's counts"
                 + " per turn: give them");

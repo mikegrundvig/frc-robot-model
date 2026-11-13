@@ -133,9 +133,8 @@ class JointBlockTest {
             .rest(Degrees.of(-20))
             .motors(Motor.KRAKEN_X60.through(Gearing.of(60)).count(2));
     RevoluteJoint wired =
-        sim.motors(
-                motors ->
-                    motors.on(TALON_FX.can(CANIVORE, 20), TALON_FX.can(CANIVORE, 21).clockwise()))
+        sim.motors(motors ->
+                motors.on(TALON_FX.can(CANIVORE, 20), TALON_FX.can(CANIVORE, 21).clockwise()))
             .absoluteEncoder(CANCODER.can(CANIVORE, 22).offset(Rotations.of(0.12)).fused());
 
     Drive drive = JointParts.drives(sim).getFirst();
@@ -231,13 +230,12 @@ class JointBlockTest {
     assertThat(pivot.driven().motors()).isEmpty();
     assertThat(pivot.driven().absoluteEncoder().orElseThrow().readByController()).isFalse();
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                DrivenAbsoluteEncoderBuilder.builder()
-                    .ratio(1)
-                    .port(MechanismWiring.PortEncoder.dutyCycle(0))
-                    .dataPort(DATA_PORT.offset(Rotations.of(0)))
-                    .build())
+        .isThrownBy(() ->
+            DrivenAbsoluteEncoderBuilder.builder()
+                .ratio(1)
+                .port(MechanismWiring.PortEncoder.dutyCycle(0))
+                .dataPort(DATA_PORT.offset(Rotations.of(0)))
+                .build())
         .withMessageContaining("it's read one way");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> Driven.AbsoluteEncoder.of().ratio(0))
@@ -382,20 +380,18 @@ class JointBlockTest {
                 new SensorWiring.ControllerLimit("pivot", SensorWiring.Direction.FORWARD),
                 SensorWiring.Polarity.NORMALLY_CLOSED));
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                pivot.limitSwitch(
-                    LimitSwitch.lower().at(Degrees.of(0)).on(SensorWiring.port(1).normallyOpen())))
+        .isThrownBy(() ->
+            pivot.limitSwitch(
+                LimitSwitch.lower().at(Degrees.of(0)).on(SensorWiring.port(1).normallyOpen())))
         .withMessage(
             "pivot already has a limit switch at its lower end: to re-wire it,"
                 + " limitSwitch(End.LOWER, limit -> limit.on(...))");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                RobotMath.switchAt(
-                    Joint.roller("roller", Part.CHASSIS)
-                        .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32)),
-                    Sensor.Switch.Limit.End.LOWER))
+        .isThrownBy(() ->
+            RobotMath.switchAt(
+                Joint.roller("roller", Part.CHASSIS)
+                    .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32)),
+                Sensor.Switch.Limit.End.LOWER))
         .withMessage("roller has no limit switch at its lower end");
     PrismaticJoint unknown =
         Joint.elevator("climber", Part.CHASSIS)
@@ -575,10 +571,8 @@ class JointBlockTest {
         .as("a roller's block says none: it starts at 0")
         .isEmpty();
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                elevator.motors(
-                    Motor.KRAKEN_X60.through(Gearing.of(12)).drum(Inches.of(1)).count(2)))
+        .isThrownBy(() ->
+            elevator.motors(Motor.KRAKEN_X60.through(Gearing.of(12)).drum(Inches.of(1)).count(2)))
         .withMessageStartingWith("elevator already has its motors");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> elevator.control(MechanismControl.position(50)))
@@ -701,10 +695,8 @@ class JointBlockTest {
                 + " .at(Inches.of(...))");
     PrismaticJoint stopped = lift.limitSwitch(LimitSwitch.upper().at(Inches.of(40)));
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                stopped.limitSwitch(
-                    Sensor.Switch.Limit.End.UPPER, limit -> limit.at(Degrees.of(90))))
+        .isThrownBy(() ->
+            stopped.limitSwitch(Sensor.Switch.Limit.End.UPPER, limit -> limit.at(Degrees.of(90))))
         .withMessageStartingWith("lift's upper limit switch trips at an angle");
     assertThat(
             ((Sensor.Switch.Limit)
@@ -847,11 +839,10 @@ class JointBlockTest {
             () -> bare.absoluteEncoder(wired -> wired.on(CANCODER.can(32).offset(Rotations.of(0)))))
         .withMessage("bare has no absolute encoder to change: give it one, .absoluteEncoder(...)");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                turret.limitSwitch(
-                    Sensor.Switch.Limit.End.UPPER,
-                    limit -> limit.on(SensorWiring.port(2).normallyClosed())))
+        .isThrownBy(() ->
+            turret.limitSwitch(
+                Sensor.Switch.Limit.End.UPPER,
+                limit -> limit.on(SensorWiring.port(2).normallyClosed())))
         .withMessage(
             "turret has no limit switch at its upper end to change: give it one,"
                 + " .limitSwitch(LimitSwitch.upper()...)");
@@ -906,12 +897,11 @@ class JointBlockTest {
         .satisfies(
             tilt -> assertThat(RobotMath.restPosition(robot(tilt).joints().getFirst())).isZero());
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                robot(
-                    Joint.pivot("tilt", Part.CHASSIS, Joint.PITCH_UP)
-                        .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
-                        .range(Range.degrees(10, 90))))
+        .isThrownBy(() ->
+            robot(
+                Joint.pivot("tilt", Part.CHASSIS, Joint.PITCH_UP)
+                    .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
+                    .range(Range.degrees(10, 90))))
         .withMessage(
             "RobotDefinition[test].joints: tilt has no rest, so it starts at its zero, 0°, outside"
                 + " its hard stops, 10° to 90°: it can't start there; give where it rests,"
@@ -1038,9 +1028,8 @@ class JointBlockTest {
     assertThat(offset.ratio()).isEqualTo(2);
     assertThat(arm.absoluteEncoder(wired -> wired.offset(Rotations.of(0.47)))).isEqualTo(arm);
     assertThat(
-            arm.absoluteEncoder(
-                    encoder ->
-                        encoder.on(DATA_PORT.offset(Rotations.of(0.1)).inverted().closesLoop()))
+            arm.absoluteEncoder(encoder ->
+                    encoder.on(DATA_PORT.offset(Rotations.of(0.1)).inverted().closesLoop()))
                 .absoluteEncoder(wired -> wired.offset(Rotations.of(-0.2)))
                 .driven()
                 .absoluteEncoder()
@@ -1048,12 +1037,11 @@ class JointBlockTest {
                 .dataPort())
         .contains(DATA_PORT.offset(Rotations.of(-0.2)).inverted().closesLoop());
     assertThat(
-            arm.absoluteEncoder(
-                    encoder ->
-                        encoder.on(
-                            MechanismWiring.PortEncoder.analog(2, 10)
-                                .offset(Rotations.of(1))
-                                .inverted()))
+            arm.absoluteEncoder(encoder ->
+                    encoder.on(
+                        MechanismWiring.PortEncoder.analog(2, 10)
+                            .offset(Rotations.of(1))
+                            .inverted()))
                 .absoluteEncoder(wired -> wired.offset(Rotations.of(3.127)))
                 .driven()
                 .absoluteEncoder()
@@ -1061,19 +1049,17 @@ class JointBlockTest {
                 .port())
         .contains(MechanismWiring.PortEncoder.analog(2, 10).offset(Rotations.of(3.127)).inverted());
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                Joint.roller("bare", Part.CHASSIS)
-                    .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
-                    .absoluteEncoder(wired -> wired.offset(Rotations.of(0.1))))
+        .isThrownBy(() ->
+            Joint.roller("bare", Part.CHASSIS)
+                .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
+                .absoluteEncoder(wired -> wired.offset(Rotations.of(0.1))))
         .withMessage("bare has no absolute encoder to change: give it one, .absoluteEncoder(...)");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                Joint.roller("unwired", Part.CHASSIS)
-                    .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
-                    .absoluteEncoder(AbsoluteEncoder.of())
-                    .absoluteEncoder(wired -> wired.offset(Rotations.of(0.1))))
+        .isThrownBy(() ->
+            Joint.roller("unwired", Part.CHASSIS)
+                .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))
+                .absoluteEncoder(AbsoluteEncoder.of())
+                .absoluteEncoder(wired -> wired.offset(Rotations.of(0.1))))
         .withMessage(
             "an absolute encoder that isn't wired has no offset: the simulator alone reads it."
                 + " Wire it, on(...)");
@@ -1088,12 +1074,9 @@ class JointBlockTest {
             .rest(Degrees.of(0));
 
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                arm.motors(
-                    Motor.KRAKEN_X60
-                        .through(Gearing.of(60))
-                        .on(TALON_FX.can(20), SPARK_MAX.can(21))))
+        .isThrownBy(() ->
+            arm.motors(
+                Motor.KRAKEN_X60.through(Gearing.of(60)).on(TALON_FX.can(20), SPARK_MAX.can(21))))
         .withMessageContaining("a joint's motors are on one kind of controller, on one bus");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> arm.motors(Motor.NEO.through(Gearing.of(60)).on(TALON_FX.can(20))))
@@ -1107,12 +1090,10 @@ class JointBlockTest {
                 + " it's read through their controller, so wire them too; a joint your own code"
                 + " drives reads one on a Systemcore port instead, MechanismWiring.PortEncoder");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                robot(
-                    arm.motors(
-                            Motor.KRAKEN_X60.through(Gearing.of(60)).on(TALON_FX.can(CANIVORE, 20)))
-                        .absoluteEncoder(CANCODER.can(21).offset(Rotations.of(0.1)))))
+        .isThrownBy(() ->
+            robot(
+                arm.motors(Motor.KRAKEN_X60.through(Gearing.of(60)).on(TALON_FX.can(CANIVORE, 20)))
+                    .absoluteEncoder(CANCODER.can(21).offset(Rotations.of(0.1)))))
         .withMessage(
             "RobotDefinition[test].joints: arm's CANcoder is on Systemcore's CAN_S0 port, and its"
                 + " motors on the CANivore canivore: their TalonFX reads it over its own bus, so"
@@ -1128,25 +1109,23 @@ class JointBlockTest {
         .as("its encoder written before its motors: the definition judges the whole block")
         .hasSize(1);
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                JointCopies.driven(
-                    arm,
-                    DrivenBuilder.builder(Driven.NONE)
-                        .motors(
-                            new Driven.Motors(
-                                Motor.KRAKEN_X60,
-                                1,
-                                Gearing.of(60),
-                                Optional.of(Inches.of(1)),
-                                List.of()))
-                        .build()))
+        .isThrownBy(() ->
+            JointCopies.driven(
+                arm,
+                DrivenBuilder.builder(Driven.NONE)
+                    .motors(
+                        new Driven.Motors(
+                            Motor.KRAKEN_X60,
+                            1,
+                            Gearing.of(60),
+                            Optional.of(Inches.of(1)),
+                            List.of()))
+                    .build()))
         .withMessageContaining("a joint that turns has no drum");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                new Driven.Motors(
-                    Motor.KRAKEN_X60, 2, Gearing.of(1), Optional.empty(), List.of(TALON_FX.can(1))))
+        .isThrownBy(() ->
+            new Driven.Motors(
+                Motor.KRAKEN_X60, 2, Gearing.of(1), Optional.empty(), List.of(TALON_FX.can(1))))
         .withMessageContaining("names 1 controllers for 2 motors");
   }
 
@@ -1422,13 +1401,9 @@ class JointBlockTest {
         .isThrownBy(() -> lift.outputs(Output.of("lowering", MetersPerSecond.of(-0.5))))
         .withMessageStartingWith("lift already has its outputs, raising");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                lift.motors(
-                    Motor.KRAKEN_X60
-                        .through(Gearing.of(12))
-                        .drum(Inches.of(1))
-                        .on(TALON_FX.can(9))))
+        .isThrownBy(() ->
+            lift.motors(
+                Motor.KRAKEN_X60.through(Gearing.of(12)).drum(Inches.of(1)).on(TALON_FX.can(9))))
         .withMessageStartingWith("lift already has its motors");
   }
 

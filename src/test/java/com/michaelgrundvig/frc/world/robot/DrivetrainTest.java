@@ -84,9 +84,9 @@ class DrivetrainTest {
 
   @Test
   void freeSpeedComesFromTheMotorGearingAndWheel() {
-    // A Kraken X60 turns 6000 rpm free: 100 rotations per second, divided by the gearing, times
+    // A Kraken X60 turns 6065 rpm free: 101.1 rotations per second, divided by the gearing, times
     // the wheel's circumference.
-    double expected = 6000.0 / 60 / 6.75 * 2 * Math.PI * Inches.of(2).in(Meters);
+    double expected = 6065.0 / 60 / 6.75 * 2 * Math.PI * Inches.of(2).in(Meters);
 
     assertThat(modules().freeSpeed().in(MetersPerSecond)).isCloseTo(expected, within(1e-9));
     assertThat(modules().idealDriveKv()).isCloseTo(12 / expected, within(1e-9));

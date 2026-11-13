@@ -193,8 +193,8 @@ class PathEdgesTest {
   }
 
   private static List<HolonomicSample> twoPoints() {
-    PathPoint first = new PathPoint(1, new Translation2d(0, 0), 0.5, new ChassisVelocities(1, 2, 3));
-    PathPoint second = new PathPoint(1.5, new Translation2d(1, 0), 1, new ChassisVelocities(2, 4, 7));
+    PathPoint first = new PathPoint(0, new Translation2d(0, 0), 0.5, new ChassisVelocities(1, 2, 3));
+    PathPoint second = new PathPoint(0.5, new Translation2d(1, 0), 1, new ChassisVelocities(2, 4, 7));
     return PathPoint.trajectory(List.of(first, second)).getSamples();
   }
 
@@ -210,7 +210,7 @@ class PathEdgesTest {
         answers("the last sample's acceleration is none", () -> acceleration(twoPoints().get(1)), List.of(0.0, 0.0, 0.0)),
         answers("a sample is at its point's place, facing its heading",
             () -> twoPoints().get(1).pose, new Pose2d(1, 0, new Rotation2d(1))),
-        answers("a sample is at its point's time", () -> twoPoints().get(1).time, 1.5));
+        answers("a sample is at its point's time", () -> twoPoints().get(1).time, 0.5));
   }
 
   // spotless:on

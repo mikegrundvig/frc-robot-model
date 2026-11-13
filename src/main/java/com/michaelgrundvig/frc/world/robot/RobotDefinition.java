@@ -689,10 +689,9 @@ public record RobotDefinition(
   /** Each joint's own interlocks, then the robot's, each about the robot's own joints. */
   private static List<Interlock> everyInterlock(List<Joint> joints, List<Interlock> interlocks) {
     List<Interlock> every = new ArrayList<>();
-    joints.forEach(
-        joint ->
-            JointParts.interlocks(joint)
-                .forEach(interlock -> every.add(OwnJoints.onOwn(joints, interlock))));
+    joints.forEach(joint ->
+        JointParts.interlocks(joint)
+            .forEach(interlock -> every.add(OwnJoints.onOwn(joints, interlock))));
     every.addAll(interlocks);
     return every;
   }

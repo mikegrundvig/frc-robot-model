@@ -80,7 +80,7 @@ class PlacesTest {
   private static final PrismaticJoint STAGE = lightSlide("stage", Vector3.UP, Range.meters(0, 0.6));
   private static final PrismaticJoint STAGE_WITH_A_PLACE = named(STAGE, List.of(Position.of("half", Inches.of(10))), List.of());
 
-  // Rollers named at 2.5 times what their motor turns them at, and at 13 V, past the battery's 12.
+  // Rollers named at about 2.5 times what their motor turns them at, and at 13 V, past the battery's 12.
   private static final RevoluteJoint TOO_FAST = named(ROLLER, List.of(), List.of(Output.rpm("intaking", 5000), Output.rpm("feeding", 1900)));
   private static final RevoluteJoint PUSHING = named(ROLLER, List.of(), List.of(Output.volts("pushing", 13), Output.dutyCycle("eject", Percent.of(-80))));
   private static final RevoluteJoint GEARED_PIVOT = PIVOT.motors(Motor.KRAKEN_X60.through(Gearing.of(25)));
@@ -93,7 +93,7 @@ class PlacesTest {
   private static final RevoluteJoint PIVOT_RESTING_OUT = RevoluteJointBuilder.builder(PIVOT).rest(inRadians(120)).build();
 
   private static final String ROLLER_AT_FREE_SPEED =
-      "roller's intaking, 2000 rpm, is 100% of its free speed, 2000 rpm: a velocity loop has"
+      "roller's intaking, 2000 rpm, is 99% of its free speed, 2022 rpm: a velocity loop has"
           + " little or nothing left to hold it under load";
 
   // Conditions on the pivot, the arm and the elevator, asked at positions below.
@@ -413,8 +413,8 @@ class PlacesTest {
         refuses("a named speed past what the motors turn it at",
             () -> MechanismFixtures.definition(List.of(PIVOT, TOO_FAST), List.of(),
                 List.of(MechanismFixtures.motors(TOO_FAST, Motor.KRAKEN_X60, 1, gearing(3, 1))), List.of()),
-            "RobotDefinition[test].joints: roller's intaking, 5000 rpm, is 2.5 times its free"
-                + " speed, 2000 rpm: its motors can't turn it that fast; give it a speed under that"),
+            "RobotDefinition[test].joints: roller's intaking, 5000 rpm, is 2.473 times its free"
+                + " speed, 2022 rpm: its motors can't turn it that fast; give it a speed under that"),
         refuses("a named voltage past the battery's",
             () -> MechanismFixtures.definition(List.of(PIVOT, PUSHING), List.of(),
                 List.of(MechanismFixtures.motors(PUSHING, Motor.KRAKEN_X60, 1, gearing(3, 1))), List.of()),
@@ -425,8 +425,8 @@ class PlacesTest {
         refuses("a profile that cruises past what the motors turn the pivot at",
             () -> robotOf(GEARED_PIVOT.control(stowed(30)
                 .withProfile(DegreesPerSecond.of(1800), DegreesPerSecondPerSecond.of(3600)))),
-            "RobotDefinition[test].joints: pivot's profile cruises at 1800°/s, 1.25 times its free"
-                + " speed, 1440°/s: its motors can't turn it that fast, so its moves would lag"
+            "RobotDefinition[test].joints: pivot's profile cruises at 1800°/s, 1.237 times its free"
+                + " speed, 1456°/s: its motors can't turn it that fast, so its moves would lag"
                 + " their profile; give it a cruise under its free speed"),
         refuses("bands in angles for a roller",
             () -> robotOf(PIVOT, ROLLER.motors(Motor.KRAKEN_X60.through(Gearing.of(3)))
@@ -562,7 +562,7 @@ class PlacesTest {
         refuses("a profile that cruises past what the motors turn the roller at, said in rpm",
             () -> robotOf(PIVOT, ROLLER.motors(Motor.KRAKEN_X60.through(Gearing.of(1))).control(
                 MechanismControl.velocity(0.02).withProfile(RPM.of(7500), RotationsPerSecondPerSecond.of(200)))),
-            "roller's profile cruises at 7500 rpm, 1.25 times its free speed, 6000 rpm:"));
+            "roller's profile cruises at 7500 rpm, 1.237 times its free speed, 6065 rpm:"));
   }
 
   /** Each of these is taken, though its neighbor in a table above is refused. */

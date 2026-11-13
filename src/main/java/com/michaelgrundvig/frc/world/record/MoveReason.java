@@ -58,5 +58,10 @@ public enum MoveReason {
    */
   PATH_NOT_PLANNED,
   /** The drivetrain was never handed the driver's sticks. */
-  NO_DRIVER
+  NO_DRIVER,
+  /**
+   * The robot's mode (autonomous, teleop, utility) ended, which cancels each command started in it
+   * outside any other command.
+   */
+  ROBOT_MODE_ENDED
 }

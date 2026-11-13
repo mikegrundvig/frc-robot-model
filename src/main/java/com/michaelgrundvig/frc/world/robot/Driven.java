@@ -360,11 +360,10 @@ public record Driven(
     public AbsoluteEncoder offset(Angle offset) {
       MechanismWiring.EncoderWiring wiring =
           wiring()
-              .orElseThrow(
-                  () ->
-                      new IllegalArgumentException(
-                          "an absolute encoder that isn't wired has no offset: the simulator alone"
-                              + " reads it. Wire it, on(...)"));
+              .orElseThrow(() ->
+                  new IllegalArgumentException(
+                      "an absolute encoder that isn't wired has no offset: the simulator alone"
+                          + " reads it. Wire it, on(...)"));
       return readBy(wiring.offset(offset));
     }
 

@@ -51,11 +51,10 @@ class DefinitionEdgesTest {
   private static String cornerAt(int corner, double x, double y) {
     List<Drivetrain.Corner> corners = new ArrayList<>(ConfigFixtures.drivetrain().corners());
     Drivetrain.Module module = corners.get(corner).module();
-    return built(
-        () -> {
-          corners.set(corner, new Drivetrain.Corner(module, new Translation2d(x, y)));
-          Drivetrain.builder().corners(corners).build();
-        });
+    return built(() -> {
+      corners.set(corner, new Drivetrain.Corner(module, new Translation2d(x, y)));
+      Drivetrain.builder().corners(corners).build();
+    });
   }
 
   private static final int FRONT_LEFT = 0;
@@ -65,15 +64,14 @@ class DefinitionEdgesTest {
   /** The standard robot's pivot, 0° to 135°, driven with these soft limits, in radians. */
   private static String softLimits(double lower, double upper) {
     Range limits = Range.builder().kind(Position.Kind.ANGLE).lower(lower).upper(upper).build();
-    return built(
-        () ->
-            StandardRobot.robotOf(
-                PIVOT
-                    .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(25, 1)))
-                    .control(
-                        MechanismControl.position(30)
-                            .withSoftLimits(limits)
-                            .withHoming(MechanismControl.Homing.assumeAtRest()))));
+    return built(() ->
+        StandardRobot.robotOf(
+            PIVOT
+                .motors(Motor.KRAKEN_X60.through(MechanismFixtures.gearing(25, 1)))
+                .control(
+                    MechanismControl.position(30)
+                        .withSoftLimits(limits)
+                        .withHoming(MechanismControl.Homing.assumeAtRest()))));
   }
 
   private static final double LOWER_STOP = PIVOT.range().orElseThrow().lower();

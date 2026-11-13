@@ -46,7 +46,7 @@ class TrajectoriesTest {
     assertThat(end.pose.getRotation().getDegrees()).isCloseTo(90, within(1e-6));
     assertThat(Math.hypot(end.velocity.vx, end.velocity.vy)).isZero();
     // 2.24 m at 2.3 m/s², never reaching top speed: 2√(2.24/2.3) s.
-    assertThat(plan.trajectory().duration).isCloseTo(1.97, within(0.03));
+    assertThat(plan.trajectory().duration()).isCloseTo(1.97, within(0.03));
   }
 
   /**
@@ -75,7 +75,7 @@ class TrajectoriesTest {
       assertThat(Math.abs(sample.velocity.omega)).isLessThan(2 * Math.PI + 1e-6);
     }
     // Along and across together, sampled every loop, each held to 2.3 m/s².
-    for (double t = 0; t + 0.02 <= path.duration; t += 0.02) {
+    for (double t = 0; t + 0.02 <= path.duration(); t += 0.02) {
       ChassisVelocities was = path.sampleAt(t).velocity;
       ChassisVelocities next = path.sampleAt(t + 0.02).velocity;
       double accelerating = Math.hypot(next.vx - was.vx, next.vy - was.vy) / 0.02;
@@ -95,10 +95,10 @@ class TrajectoriesTest {
 
     // 0.3 m takes 0.72 s; a half turn at 9.2 rad/s², 1.17 s.
     assertThat(plan.passing()[0]).isCloseTo(0.72, within(0.03));
-    assertThat(path.duration).isCloseTo(1.17, within(0.03));
+    assertThat(path.duration()).isCloseTo(1.17, within(0.03));
     assertThat(path.end().pose.getTranslation().getDistance(new Translation2d(0.3, 0)))
         .isLessThan(1e-9);
-    assertThat(degrees(path, path.duration)).isCloseTo(180, within(0.01));
+    assertThat(degrees(path, path.duration())).isCloseTo(180, within(0.01));
     assertThat(degrees(path, 0.9)).as("still turning, there").isBetween(90.0, 179.0);
   }
 
@@ -118,7 +118,7 @@ class TrajectoriesTest {
     }
     assertThat(most).as("never turned left on the way to -170°").isLessThan(1);
     assertThat(path.end().velocity.omega).isZero();
-    assertThat(Math.abs(degrees(path, path.duration))).isCloseTo(170, within(0.01));
+    assertThat(Math.abs(degrees(path, path.duration()))).isCloseTo(170, within(0.01));
   }
 
   /** Keyframes too near where the robot is, or each other, have no path through them. */
@@ -128,14 +128,9 @@ class TrajectoriesTest {
             () -> Trajectories.through(ORIGIN, STILL, List.of(at(0.01, 0, 90)), LIMITS, STEP))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("(0.01, 0.00) is within 5 cm of where the robot starts");
-    assertThatThrownBy(
-            () ->
-                Trajectories.through(
-                    ORIGIN,
-                    STILL,
-                    List.of(at(1, 0, 0), at(1, 0.02, 0).named("there")),
-                    LIMITS,
-                    STEP))
+    assertThatThrownBy(() ->
+            Trajectories.through(
+                ORIGIN, STILL, List.of(at(1, 0, 0), at(1, 0.02, 0).named("there")), LIMITS, STEP))
         .hasMessage("there is within 5 cm of the keyframe before");
   }
 

@@ -89,10 +89,8 @@ class InertiaTest {
           a center that is no place| 1  | NaN | MassProperties.cg
           """)
   void massPropertiesMustBeAPartsOwn(String label, double kilograms, double z, String refusal) {
-    assertThatThrownBy(
-            () ->
-                MassProperties.of(
-                    Kilograms.of(kilograms), new Translation3d(0, 0, z), Inertia.ZERO))
+    assertThatThrownBy(() ->
+            MassProperties.of(Kilograms.of(kilograms), new Translation3d(0, 0, z), Inertia.ZERO))
         .hasMessageContaining(refusal);
   }
 

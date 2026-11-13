@@ -237,11 +237,10 @@ class SensorTest {
 
     assertThat(robot.math().sensorPose(placed, Map.of(PIVOT, Math.PI / 2)).getTranslation())
         .as("on the arm, near its end, raised")
-        .satisfies(
-            where -> {
-              assertThat(where.getX()).isCloseTo(0.2, offset(1e-9));
-              assertThat(where.getZ()).isCloseTo(0.65, offset(1e-9));
-            });
+        .satisfies(where -> {
+          assertThat(where.getX()).isCloseTo(0.2, offset(1e-9));
+          assertThat(where.getZ()).isCloseTo(0.65, offset(1e-9));
+        });
     assertThat(robot.math().sensorPose(unplaced, Map.of()))
         .as("at its part's origin")
         .isEqualTo(Pose3d.ZERO);
@@ -252,13 +251,12 @@ class SensorTest {
             "pivot down's position on pivot isn't known: it can stop pivot but not home it")
         .noneMatch(note -> note.startsWith("claw beam isn't placed"));
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                definition(
-                    List.of(PIVOT, ROLLER),
-                    List.of(),
-                    List.of(pivotMotor, rollerMotor),
-                    List.of(Sensor.Switch.beam("stray beam", stranger))))
+        .isThrownBy(() ->
+            definition(
+                List.of(PIVOT, ROLLER),
+                List.of(),
+                List.of(pivotMotor, rollerMotor),
+                List.of(Sensor.Switch.beam("stray beam", stranger))))
         .withMessageContaining(
             "sensor stray beam's joint, stranger, isn't one of the robot's joints");
   }

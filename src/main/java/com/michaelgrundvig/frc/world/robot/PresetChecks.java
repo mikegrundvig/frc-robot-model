@@ -83,10 +83,8 @@ final class PresetChecks {
     List<Finding> found = new ArrayList<>();
     for (Interlock interlock : checkable) {
       InterlockChecks.howBroken(interlock, placement)
-          .ifPresent(
-              broken ->
-                  found.add(
-                      Finding.refused(preset.name(), "preset " + preset.name() + " " + broken)));
+          .ifPresent(broken ->
+              found.add(Finding.refused(preset.name(), "preset " + preset.name() + " " + broken)));
     }
     return found;
   }

@@ -234,11 +234,9 @@ class Polygon2dTest {
         .hasMessageContaining("positive");
     assertThatThrownBy(() -> Polygon2d.rectangle(new Translation2d(1, 1), new Translation2d(1, 2)))
         .hasMessageContaining("positive");
-    assertThatThrownBy(
-            () ->
-                Polygon2d.hull(
-                    List.of(
-                        new Translation2d(0, 0), new Translation2d(1, 1), new Translation2d(2, 2))))
+    assertThatThrownBy(() ->
+            Polygon2d.hull(
+                List.of(new Translation2d(0, 0), new Translation2d(1, 1), new Translation2d(2, 2))))
         .hasMessageContaining("one line");
   }
 }

@@ -28,19 +28,17 @@ final class JointWiringChecks {
   static void check(String label, Driven driven) {
     driven
         .motors()
-        .ifPresent(
-            motors ->
-                Checks.on(Driven.Motors.class, label)
-                    .field("controllers", motors.controllers(), DeviceRules.controllers())
-                    .orThrow());
+        .ifPresent(motors ->
+            Checks.on(Driven.Motors.class, label)
+                .field("controllers", motors.controllers(), DeviceRules.controllers())
+                .orThrow());
     driven
         .absoluteEncoder()
-        .ifPresent(
-            encoder ->
-                Checks.on(Driven.AbsoluteEncoder.class, label)
-                    .field("cancoder", encoder.cancoder(), given(DeviceRules.cancoder()))
-                    .field("dataPort", encoder.dataPort(), given(DeviceRules.dataPort()))
-                    .orThrow());
+        .ifPresent(encoder ->
+            Checks.on(Driven.AbsoluteEncoder.class, label)
+                .field("cancoder", encoder.cancoder(), given(DeviceRules.cancoder()))
+                .field("dataPort", encoder.dataPort(), given(DeviceRules.dataPort()))
+                .orThrow());
     driven.control().ifPresent(control -> control.gains().checkOn(label));
     if (driven.motors().isPresent() && driven.control().isPresent()) {
       Driven.Motors motors = driven.motors().get();

@@ -30,12 +30,11 @@ final class DeviceRules {
 
   /** Each of a joint's motor controllers' CAN IDs, on the bus: the first that isn't, if any. */
   static Rule<List<MechanismWiring.Device>> controllers() {
-    return Rule.of(
-        devices ->
-            devices.stream()
-                .map(device -> whyNotOnTheBus(device.id()))
-                .flatMap(Optional::stream)
-                .findFirst());
+    return Rule.of(devices ->
+        devices.stream()
+            .map(device -> whyNotOnTheBus(device.id()))
+            .flatMap(Optional::stream)
+            .findFirst());
   }
 
   /** A CANcoder's CAN ID on the bus, and its offset within a turn. */
@@ -51,12 +50,11 @@ final class DeviceRules {
 
   /** A swerve module's absolute encoder, a CANcoder or one on its steering SPARK's data port. */
   static Rule<SwerveWiring.ModuleEncoder> moduleEncoder() {
-    return Rule.of(
-        encoder ->
-            switch (encoder) {
-              case MechanismWiring.Cancoder cancoder -> cancoder().reason(cancoder);
-              case MechanismWiring.DataPortEncoder dataPort -> dataPort().reason(dataPort);
-            });
+    return Rule.of(encoder ->
+        switch (encoder) {
+          case MechanismWiring.Cancoder cancoder -> cancoder().reason(cancoder);
+          case MechanismWiring.DataPortEncoder dataPort -> dataPort().reason(dataPort);
+        });
   }
 
   /** Why a CAN ID isn't one a device on the bus can have, if it isn't: "CAN ID 70 must be ...". */

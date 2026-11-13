@@ -58,16 +58,15 @@ class MechanismWiringTest {
   void itTakesAMotorAndNoIdTwice() {
     assertThatThrownBy(() -> Motor.KRAKEN_X60.through(Gearing.of(60)).count(0))
         .hasMessage("Motors.count: 0 must be positive");
-    assertThatThrownBy(
-            () ->
-                RobotDefinitionBuilder.builder(ConfigFixtures.definition(List.of()))
-                    .joints(
-                        List.of(
-                            onTalons(
-                                MechanismWiring.Controller.TALON_FX.can(11),
-                                MechanismWiring.Controller.TALON_FX.can(11))))
-                    .build()
-                    .checked())
+    assertThatThrownBy(() ->
+            RobotDefinitionBuilder.builder(ConfigFixtures.definition(List.of()))
+                .joints(
+                    List.of(
+                        onTalons(
+                            MechanismWiring.Controller.TALON_FX.can(11),
+                            MechanismWiring.Controller.TALON_FX.can(11))))
+                .build()
+                .checked())
         .hasMessageContaining(
             "two TalonFXs on Systemcore's CAN_S0 port share CAN ID 11, arm motor 11 and arm motor"
                 + " 11: give each its own");
@@ -213,13 +212,12 @@ class MechanismWiringTest {
     // Reversed, offset a quarter turn back: reading -0.35 turns, it reads 0.1 raw.
     assertThat(port.raw(-0.35)).isCloseTo(0.1, within(1e-12));
     assertThat(port.raw(0.65)).isCloseTo(0.1, within(1e-12));
-    assertThatThrownBy(
-            () ->
-                DrivenAbsoluteEncoderBuilder.builder()
-                    .ratio(1)
-                    .cancoder(cancoder)
-                    .dataPort(port)
-                    .build())
+    assertThatThrownBy(() ->
+            DrivenAbsoluteEncoderBuilder.builder()
+                .ratio(1)
+                .cancoder(cancoder)
+                .dataPort(port)
+                .build())
         .hasMessage(
             "AbsoluteEncoder.port: names more than one of a CANcoder, a data port and a Systemcore"
                 + " port: it's read one way");

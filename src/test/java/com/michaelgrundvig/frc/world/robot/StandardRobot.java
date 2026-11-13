@@ -46,7 +46,7 @@ final class StandardRobot {
           Math.toRadians(1.5), link("intake arm", 2, point(0.15, 0, 0), point(0.3, 0.4, 0.05))),
       List.of(PIVOT_IN, PIVOT_RUN, PIVOT_OUT), List.of());
 
-  /** Its roller, through 3:1: a Kraken X60's 6000 rpm is 2000 of the roller's, all "intaking". */
+  /** Its roller, through 3:1: a Kraken X60's 6065 rpm is 2022 of the roller's, all "intaking". */
   static final RevoluteJoint ROLLER = named(
       revolute("roller", PIVOT, point(0.3, 0, 0), PITCH_UP, Optional.empty(), 0,
           link("roller", 0.5, point(0, 0, 0), point(0.05, 0.4, 0.05))),

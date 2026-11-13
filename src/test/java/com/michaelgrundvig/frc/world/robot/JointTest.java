@@ -68,16 +68,15 @@ class JointTest {
   @Test
   void aJointIsOne() {
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                revolute(
-                    " ",
-                    Part.CHASSIS,
-                    point(0, 0, 0),
-                    new Vector3(0, 0, 0),
-                    Optional.empty(),
-                    0,
-                    arm.link()))
+        .isThrownBy(() ->
+            revolute(
+                " ",
+                Part.CHASSIS,
+                point(0, 0, 0),
+                new Vector3(0, 0, 0),
+                Optional.empty(),
+                0,
+                arm.link()))
         .withMessageContaining("RevoluteJoint[ ].label")
         .withMessageContaining("an axis can't be zero");
     RevoluteJoint restingPastItsStops =
@@ -95,15 +94,14 @@ class JointTest {
             "RobotDefinition[test].joints: arm rests at 114.6°, outside its hard stops, 0° to 90°:"
                 + " it can't start there");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                PrismaticJoint.builder()
-                    .label("lift")
-                    .parent(Part.CHASSIS)
-                    .axis(UP)
-                    .link(arm.link())
-                    .place(new Transform3d(Double.NaN, 0, 0, Rotation3d.ZERO))
-                    .build())
+        .isThrownBy(() ->
+            PrismaticJoint.builder()
+                .label("lift")
+                .parent(Part.CHASSIS)
+                .axis(UP)
+                .link(arm.link())
+                .place(new Transform3d(Double.NaN, 0, 0, Rotation3d.ZERO))
+                .build())
         .withMessageStartingWith("PrismaticJoint[lift].place");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> Range.meters(1, 1))
@@ -166,22 +164,20 @@ class JointTest {
         .isThrownBy(() -> linear(arm, arm, 1))
         .withMessageContaining("a joint can't follow itself");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                Coupling.Curve.builder()
-                    .leader(arm)
-                    .follower(other)
-                    .table(List.of(new Translation2d(1, 0), new Translation2d(1, 2)))
-                    .build())
+        .isThrownBy(() ->
+            Coupling.Curve.builder()
+                .leader(arm)
+                .follower(other)
+                .table(List.of(new Translation2d(1, 0), new Translation2d(1, 2)))
+                .build())
         .withMessageContaining("must rise from point to point");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                Coupling.Curve.builder()
-                    .leader(arm)
-                    .follower(other)
-                    .table(List.of(new Translation2d(1, 0)))
-                    .build())
+        .isThrownBy(() ->
+            Coupling.Curve.builder()
+                .leader(arm)
+                .follower(other)
+                .table(List.of(new Translation2d(1, 0)))
+                .build())
         .withMessageContaining("two points or more");
   }
 
@@ -203,14 +199,13 @@ class JointTest {
     assertThat(line.efficiency()).isEqualTo(1);
     assertThat(line.joints()).containsExactly(arm);
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                Transmission.Between.builder()
-                    .a(arm)
-                    .onA(point(0, 0, 0))
-                    .b(arm)
-                    .onB(point(0.2, 0, 0))
-                    .build())
+        .isThrownBy(() ->
+            Transmission.Between.builder()
+                .a(arm)
+                .onA(point(0, 0, 0))
+                .b(arm)
+                .onB(point(0.2, 0, 0))
+                .build())
         .withMessageContaining("two different parts");
     assertThatIllegalArgumentException()
         .isThrownBy(() -> Transmission.Combined.of(List.of(), 1))
@@ -287,15 +282,14 @@ class JointTest {
             link("other arm", 1, point(0.1, 0, 0), point(0.1, 0.1, 0.1)));
 
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                definition(
-                    List.of(arm, twin),
-                    List.of(),
-                    List.of(
-                        MechanismFixtures.motors(arm, Motor.NEO, 1, gearing(10, 1)),
-                        MechanismFixtures.motors(twin, Motor.NEO, 1, gearing(10, 1))),
-                    List.of()))
+        .isThrownBy(() ->
+            definition(
+                List.of(arm, twin),
+                List.of(),
+                List.of(
+                    MechanismFixtures.motors(arm, Motor.NEO, 1, gearing(10, 1)),
+                    MechanismFixtures.motors(twin, Motor.NEO, 1, gearing(10, 1))),
+                List.of()))
         .withMessageContaining("two joints are labeled arm")
         .withMessageContaining("two drives are labeled arm");
   }
@@ -328,25 +322,23 @@ class JointTest {
             link("top", 1, point(0, 0, 0.2), point(0.2, 0.05, 0.4)));
 
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                definition(
-                    List.of(carriage, stage, top),
-                    List.of(linear(carriage, stage, 0.5), linear(top, stage, 0.5)),
-                    List.of(),
-                    List.of()))
+        .isThrownBy(() ->
+            definition(
+                List.of(carriage, stage, top),
+                List.of(linear(carriage, stage, 0.5), linear(top, stage, 0.5)),
+                List.of(),
+                List.of()))
         .withMessageContaining("stage follows two joints");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                definition(
-                    List.of(carriage, stage, top),
-                    List.of(
-                        linear(carriage, stage, 0.5),
-                        linear(stage, top, 0.5),
-                        linear(top, carriage, 0.5)),
-                    List.of(),
-                    List.of()))
+        .isThrownBy(() ->
+            definition(
+                List.of(carriage, stage, top),
+                List.of(
+                    linear(carriage, stage, 0.5),
+                    linear(stage, top, 0.5),
+                    linear(top, carriage, 0.5)),
+                List.of(),
+                List.of()))
         .withMessageContaining("follows itself, through its couplings");
     Coupling offset =
         Coupling.Linear.builder().leader(carriage).follower(stage).ratio(0.5).offset(0.2).build();
@@ -464,10 +456,9 @@ class JointTest {
         .withMessageContaining("hood-rotor: a span is of absolute encoders on one joint");
     assertThatIllegalArgumentException().isThrownBy(() -> math.absoluteSpan(List.of()));
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                math.rotorToSensorRatio(
-                    MechanismFixtures.motors(arm, Motor.NEO, 1, gearing(5, 1)), reads))
+        .isThrownBy(() ->
+            math.rotorToSensorRatio(
+                MechanismFixtures.motors(arm, Motor.NEO, 1, gearing(5, 1)), reads))
         .withMessageContaining("doesn't turn hood");
   }
 
@@ -511,9 +502,8 @@ class JointTest {
         .withMessageContaining(
             "a shaft slides lift through a drum, a sprocket or a pinion: name its pitch radius");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                Transmission.Term.builder().joint(arm).ratio(5).pitchRadius(Inches.of(0.5)).build())
+        .isThrownBy(() ->
+            Transmission.Term.builder().joint(arm).ratio(5).pitchRadius(Inches.of(0.5)).build())
         .withMessageContaining("arm turns: its ratio is per turn, through no drum");
     assertThat(bare.perTurnOrMeter()).as("read straight off the slide").isEqualTo(400);
     assertThat(pinion.perTurnOrMeter())

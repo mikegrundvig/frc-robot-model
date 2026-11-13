@@ -149,11 +149,10 @@ public record Drivetrain(
   public Drivetrain encoderOffsets(
       Angle frontLeft, Angle frontRight, Angle backLeft, Angle backRight) {
     SwerveWiring was =
-        wiring.orElseThrow(
-            () ->
-                new IllegalArgumentException(
-                    "the drivetrain isn't wired, so its modules have no offsets: wire it,"
-                        + " .gyro(...).frontLeft(...)...backRight(...)"));
+        wiring.orElseThrow(() ->
+            new IllegalArgumentException(
+                "the drivetrain isn't wired, so its modules have no offsets: wire it,"
+                    + " .gyro(...).frontLeft(...)...backRight(...)"));
     return withWiring(was.encoderOffsets(frontLeft, frontRight, backLeft, backRight));
   }
 
@@ -175,15 +174,14 @@ public record Drivetrain(
   /** Its corners as the robot reads them: each module without what only the simulator reads. */
   private static List<Corner> robotReads(List<Corner> corners) {
     return corners.stream()
-        .map(
-            corner ->
-                DrivetrainCornerBuilder.builder(corner)
-                    .module(
-                        DrivetrainModuleBuilder.builder(corner.module())
-                            .driveInertia(Optional.empty())
-                            .steerInertia(Optional.empty())
-                            .build())
-                    .build())
+        .map(corner ->
+            DrivetrainCornerBuilder.builder(corner)
+                .module(
+                    DrivetrainModuleBuilder.builder(corner.module())
+                        .driveInertia(Optional.empty())
+                        .steerInertia(Optional.empty())
+                        .build())
+                .build())
         .toList();
   }
 

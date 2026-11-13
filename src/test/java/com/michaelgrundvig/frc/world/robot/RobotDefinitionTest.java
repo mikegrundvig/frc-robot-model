@@ -36,12 +36,11 @@ class RobotDefinitionTest {
     var tooWide = Drivetrain.uniform(ConfigFixtures.modules(), Inches.of(11), Inches.of(13));
 
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                RobotDefinitionBuilder.builder(definition(List.of()))
-                    .drivetrain(tooWide)
-                    .build()
-                    .checked())
+        .isThrownBy(() ->
+            RobotDefinitionBuilder.builder(definition(List.of()))
+                .drivetrain(tooWide)
+                .build()
+                .checked())
         .withMessageStartingWith("RobotDefinition[test].drivetrain.corners");
   }
 
@@ -101,16 +100,15 @@ class RobotDefinitionTest {
         .withMessageContaining(
             "RobotDefinition[test].backupImu: the backup IMU is outside the robot");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                RobotDefinitionBuilder.builder(robot)
-                    .drivetrain(
-                        ConfigFixtures.wired(
-                            drivetrain(),
-                            SwerveWiring.PIGEON_2.can(1).at(behind),
-                            wiredDrivetrain(1).wiring().orElseThrow().modules()))
-                    .build()
-                    .checked())
+        .isThrownBy(() ->
+            RobotDefinitionBuilder.builder(robot)
+                .drivetrain(
+                    ConfigFixtures.wired(
+                        drivetrain(),
+                        SwerveWiring.PIGEON_2.can(1).at(behind),
+                        wiredDrivetrain(1).wiring().orElseThrow().modules()))
+                .build()
+                .checked())
         .withMessageContaining(
             "RobotDefinition[test].drivetrain.wiring.gyro: the gyro is outside the robot");
     ImuMount aside = ImuMountBuilder.builder(ImuMount.UNCHECKED).left(Inches.of(4)).build();
@@ -137,10 +135,9 @@ class RobotDefinitionTest {
   @Test
   void anImusOrientationIsARotation() {
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                ImuMount.at(Meters.of(0), Meters.of(0), Meters.of(0))
-                    .turned(new Rotation3d(Double.NaN, 0, 0)))
+        .isThrownBy(() ->
+            ImuMount.at(Meters.of(0), Meters.of(0), Meters.of(0))
+                .turned(new Rotation3d(Double.NaN, 0, 0)))
         .withMessageContaining("ImuMount.orientation");
   }
 
@@ -190,10 +187,9 @@ class RobotDefinitionTest {
       assertThat(motors.controllers()).containsExactly(TALON_FX.can(33));
     }
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                pivot(Gearing.of(30))
-                    .motors(Motor.KRAKEN_X60.through(Gearing.of(25)).on(TALON_FX.can(33))))
+        .isThrownBy(() ->
+            pivot(Gearing.of(30))
+                .motors(Motor.KRAKEN_X60.through(Gearing.of(25)).on(TALON_FX.can(33))))
         .withMessageStartingWith(
             "pivot already has its motors: to re-wire them, motors(motors -> motors.on(...))");
   }
@@ -242,20 +238,18 @@ class RobotDefinitionTest {
         .extracting(CanDevice::name)
         .contains("pivot motor 33", "CANdi 36", "the gyro");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                competition.with(
-                    Joint.roller("roller", Part.CHASSIS)
-                        .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))))
+        .isThrownBy(() ->
+            competition.with(
+                Joint.roller("roller", Part.CHASSIS)
+                    .at(Meters.of(0.25), Meters.of(0), Meters.of(0.32))))
         .withMessage(
             "test has no joint roller the same but for how it's driven, its stops, where it rests"
                 + " and where its places are");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                competition.with(
-                    pivot.motors(motors -> motors.on(TALON_FX.can(33))),
-                    pivot.retuned(control -> control.withKd(1))))
+        .isThrownBy(() ->
+            competition.with(
+                pivot.motors(motors -> motors.on(TALON_FX.can(33))),
+                pivot.retuned(control -> control.withKd(1))))
         .withMessage(
             "pivot is given twice, and the second would drop the first's change: give it once,"
                 + " its changes one after another");
@@ -263,11 +257,10 @@ class RobotDefinitionTest {
         .isThrownBy(() -> competition.with(Sensor.Switch.beam("hopper beam", Part.CHASSIS)))
         .withMessage("test has no sensor hopper beam the same but for its wiring");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                competition.with(
-                    RobotMath.switchAt(pivot, Sensor.Switch.Limit.End.LOWER)
-                        .on(SensorWiring.port(4).normallyClosed())))
+        .isThrownBy(() ->
+            competition.with(
+                RobotMath.switchAt(pivot, Sensor.Switch.Limit.End.LOWER)
+                    .on(SensorWiring.port(4).normallyClosed())))
         .withMessage(
             "pivot lower limit is pivot's own: re-wire it with its joint,"
                 + " limitSwitch(End.LOWER, limit -> limit.on(...))");
@@ -277,10 +270,9 @@ class RobotDefinitionTest {
             "pivot absolute encoder is pivot's own: re-wire it with its joint,"
                 + " absoluteEncoder(encoder -> encoder.on(...))");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                competition.with(
-                    Drivetrain.uniform(ConfigFixtures.modules(), Inches.of(10), Inches.of(10))))
+        .isThrownBy(() ->
+            competition.with(
+                Drivetrain.uniform(ConfigFixtures.modules(), Inches.of(10), Inches.of(10))))
         .withMessage(
             "test's drivetrain isn't this one: their modules, or where they sit, differ. Give its"
                 + " own, re-wired, .gyro(...).frontLeft(...)...backRight(...), or re-tuned,"
@@ -333,11 +325,9 @@ class RobotDefinitionTest {
       assertThat(modules.getFirst().drive().id()).isEqualTo(1);
     }
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                drivetrain()
-                    .encoderOffsets(
-                        Rotations.of(0), Rotations.of(0), Rotations.of(0), Rotations.of(0)))
+        .isThrownBy(() ->
+            drivetrain()
+                .encoderOffsets(Rotations.of(0), Rotations.of(0), Rotations.of(0), Rotations.of(0)))
         .withMessage(
             "the drivetrain isn't wired, so its modules have no offsets: wire it,"
                 + " .gyro(...).frontLeft(...)...backRight(...)");
@@ -405,10 +395,8 @@ class RobotDefinitionTest {
             .wheelCoefficientOfFriction(1.0)
             .build();
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                competition.with(
-                    Drivetrain.inset(grippier, ConfigFixtures.body(), Inches.of(2.625))))
+        .isThrownBy(() ->
+            competition.with(Drivetrain.inset(grippier, ConfigFixtures.body(), Inches.of(2.625))))
         .withMessageStartingWith("test's drivetrain isn't this one");
   }
 

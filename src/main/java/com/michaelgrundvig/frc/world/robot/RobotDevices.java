@@ -46,11 +46,10 @@ final class RobotDevices {
     }
     boolean alreadyListed =
         devices.stream()
-            .anyMatch(
-                device ->
-                    device.kind() == CanDevice.Kind.CANDI
-                        && device.bus().equals(candi.bus())
-                        && device.id() == candi.id());
+            .anyMatch(device ->
+                device.kind() == CanDevice.Kind.CANDI
+                    && device.bus().equals(candi.bus())
+                    && device.id() == candi.id());
     if (!alreadyListed) {
       devices.add(device("CANdi " + candi.id(), CanDevice.Kind.CANDI, candi.bus(), candi.id()));
     }

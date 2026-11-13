@@ -122,12 +122,11 @@ class LeftOutValuesTest {
       }
       assertThat(notes(row.robot()))
           .as(row.left())
-          .anySatisfy(
-              note -> {
-                assertThat(note.subject()).isEqualTo(row.subject());
-                assertThat(note.message()).startsWith(row.says());
-                assertThat(note.scope()).isEqualTo(row.scope());
-              });
+          .anySatisfy(note -> {
+            assertThat(note.subject()).isEqualTo(row.subject());
+            assertThat(note.message()).startsWith(row.says());
+            assertThat(note.scope()).isEqualTo(row.scope());
+          });
     }
   }
 

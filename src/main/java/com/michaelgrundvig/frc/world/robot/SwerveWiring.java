@@ -61,14 +61,13 @@ public record SwerveWiring(
    * yet checked, until {@code .yawScale(...)} and {@code .at(...)} say otherwise.
    */
   public static final CanDeviceKind<Gyro> PIGEON_2 =
-      new CanDeviceKind<>(
-          (bus, id) ->
-              SwerveWiringGyroBuilder.builder()
-                  .bus(bus)
-                  .id(id)
-                  .yawScale(1)
-                  .mount(ImuMount.UNCHECKED)
-                  .build());
+      new CanDeviceKind<>((bus, id) ->
+          SwerveWiringGyroBuilder.builder()
+              .bus(bus)
+              .id(id)
+              .yawScale(1)
+              .mount(ImuMount.UNCHECKED)
+              .build());
 
   public SwerveWiring {
     List<ModuleWiring> corners = List.of(frontLeft, frontRight, backLeft, backRight);

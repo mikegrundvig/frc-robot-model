@@ -140,6 +140,14 @@ class MoveSentencesTest {
                 toPlace(MoveResult.CANCELED, PIVOT, 0.2, 38.49, MoveReason.ROBOT_DISABLED),
                 ""))
         .isEqualTo("pivot → out: CANCELED after 0.20 s, pivot at 38.49°: the robot was disabled");
+    assertThat(
+            said(
+                "pivot → out",
+                toPlace(MoveResult.CANCELED, PIVOT, 0.2, 38.49, MoveReason.ROBOT_MODE_ENDED),
+                ""))
+        .isEqualTo(
+            "pivot → out: CANCELED after 0.20 s, pivot at 38.49°: the robot's mode it was started in"
+                + " ended");
   }
 
   /** A joint run at an output, and a joint that was homed, have no place to say they were at. */
@@ -337,6 +345,11 @@ class MoveSentencesTest {
     assertThat(
             drive(MoveResult.CANCELED, DriveMoveTask.TO_PLACE, 5.98, MoveReason.ROBOT_DISABLED, ""))
         .isEqualTo("drive → there: CANCELED after 5.98 s: the robot was disabled");
+    assertThat(
+            drive(
+                MoveResult.CANCELED, DriveMoveTask.TO_PLACE, 5.98, MoveReason.ROBOT_MODE_ENDED, ""))
+        .isEqualTo(
+            "drive → there: CANCELED after 5.98 s: the robot's mode it was started in ended");
     assertThat(
             drive(
                 MoveResult.REFUSED,

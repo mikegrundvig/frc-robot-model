@@ -42,11 +42,10 @@ class CanDeviceTest {
   @Test
   void twoMechanismsOnOneMotorAreNamed() {
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                robot(
-                    roller("coral intake", SPARK_MAX.can(13)),
-                    roller("algae intake", SPARK_FLEX.can(13))))
+        .isThrownBy(() ->
+            robot(
+                roller("coral intake", SPARK_MAX.can(13)),
+                roller("algae intake", SPARK_FLEX.can(13))))
         .withMessage(
             "RobotDefinition[test].devices: two SPARKs on Systemcore's CAN_S0 port share CAN ID 13,"
                 + " coral intake motor 13 and algae intake motor 13: give each its own");

@@ -81,19 +81,19 @@ class SpinUpNoteTest {
   }
 
   /**
-   * Two Krakens at 40 A push with 2 x 40 A x 7.09 N m / 366 A = 1.55 N m through no gearing. With
-   * only their rotors, 2 x 1.3e-5 kg m^2, 3000 rpm (314 rad/s) takes 2.6e-5 x 314 / 1.55 = 5 ms;
-   * with a 1.8 kg flywheel of 0.00232 kg m^2 on the shaft, 0.00235 x 314 / 1.55 = 0.48 s.
+   * Two Krakens at 40 A push with 2 x 40 A x 7.157 N m / 374.4 A = 1.53 N m through no gearing.
+   * With only their rotors, 2 x 1.3e-5 kg m^2, 3000 rpm (314 rad/s) takes 2.6e-5 x 314 / 1.53 = 5
+   * ms; with a 1.8 kg flywheel of 0.00232 kg m^2 on the shaft, 0.00235 x 314 / 1.53 = 0.48 s.
    */
   @Test
   void theTimeIsTheInertiaTimesTheSpeedOverTheTorqueAtTheLimit() {
     record Row(String joint, RevoluteJoint shooter, double speed, double seconds) {}
     List<Row> rows =
         List.of(
-            new Row("no flywheel", shooter(Link.unseen("flywheel"), SHOOTING), RPM_3000, 0.00527),
-            new Row("flywheel", shooter(FLYWHEEL, SHOOTING), RPM_3000, 0.4756),
-            new Row("half the speed", shooter(FLYWHEEL, SHOOTING), RPM_3000 / 2, 0.2378),
-            new Row("backwards", shooter(FLYWHEEL, SHOOTING), -RPM_3000, 0.4756));
+            new Row("no flywheel", shooter(Link.unseen("flywheel"), SHOOTING), RPM_3000, 0.00534),
+            new Row("flywheel", shooter(FLYWHEEL, SHOOTING), RPM_3000, 0.4820),
+            new Row("half the speed", shooter(FLYWHEEL, SHOOTING), RPM_3000 / 2, 0.2410),
+            new Row("backwards", shooter(FLYWHEEL, SHOOTING), -RPM_3000, 0.4820));
     for (Row row : rows) {
       OptionalDouble seconds =
           robot(row.shooter()).math().secondsFromRestAtStatorLimit(row.shooter(), row.speed());

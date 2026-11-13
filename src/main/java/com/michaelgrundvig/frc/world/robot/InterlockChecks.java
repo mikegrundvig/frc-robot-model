@@ -206,14 +206,12 @@ final class InterlockChecks {
       }
     }
     List<Finding> found = new ArrayList<>();
-    needed.forEach(
-        (joint, neededOfEachOther) ->
-            neededOfEachOther.forEach(
-                (other, conditions) -> {
-                  if (!allHoldSomewhere(other, conditions)) {
-                    found.add(Places.refused(joint, neverRuns(joint, other, conditions)));
-                  }
-                }));
+    needed.forEach((joint, neededOfEachOther) ->
+        neededOfEachOther.forEach((other, conditions) -> {
+          if (!allHoldSomewhere(other, conditions)) {
+            found.add(Places.refused(joint, neverRuns(joint, other, conditions)));
+          }
+        }));
     return found;
   }
 
@@ -236,15 +234,13 @@ final class InterlockChecks {
     for (Joint joint : math.joints()) {
       for (Position position : joint.positions()) {
         keepOutsAround(joint, position, onPositions)
-            .forEach(
-                (other, keepOuts) -> {
-                  List<Condition.OnJoint> conditions =
-                      keepOuts.stream().map(InterlockChecks::onPosition).toList();
-                  if (!noneHoldsSomewhere(other, conditions)) {
-                    found.add(
-                        Places.refused(joint, neverReached(joint, position, other, keepOuts)));
-                  }
-                });
+            .forEach((other, keepOuts) -> {
+              List<Condition.OnJoint> conditions =
+                  keepOuts.stream().map(InterlockChecks::onPosition).toList();
+              if (!noneHoldsSomewhere(other, conditions)) {
+                found.add(Places.refused(joint, neverReached(joint, position, other, keepOuts)));
+              }
+            });
       }
     }
     return found;

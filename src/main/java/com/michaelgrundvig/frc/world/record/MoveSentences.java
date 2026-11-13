@@ -20,6 +20,9 @@ public final class MoveSentences {
   /** What a move that the robot's disabling canceled says of why. */
   public static final String ROBOT_WAS_DISABLED = "the robot was disabled";
 
+  /** What a move canceled because the robot's mode it was started in ended says of why. */
+  public static final String ROBOT_MODE_ENDED = "the robot's mode it was started in ended";
+
   /** What a refusal says when the drivetrain has not been handed the driver's sticks. */
   public static final String NO_DRIVER =
       "the drivetrain has no driver's sticks: the robot hands them over as it builds the drive,"
@@ -83,6 +86,7 @@ public final class MoveSentences {
         switch (outcome.reason()) {
           case NONE -> "";
           case ROBOT_DISABLED -> ROBOT_WAS_DISABLED;
+          case ROBOT_MODE_ENDED -> ROBOT_MODE_ENDED;
           case NO_DRIVER -> NO_DRIVER;
           default -> why;
         };
@@ -222,6 +226,7 @@ public final class MoveSentences {
     return switch (move.reason()) {
       case NONE -> "";
       case ROBOT_DISABLED -> ROBOT_WAS_DISABLED;
+      case ROBOT_MODE_ENDED -> ROBOT_MODE_ENDED;
       case NO_DRIVER -> NO_DRIVER;
       case POSITION_LOST ->
           "can't go on: "

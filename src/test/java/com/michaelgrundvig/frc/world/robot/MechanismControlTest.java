@@ -56,12 +56,9 @@ class MechanismControlTest {
 
     assertThatThrownBy(() -> pivot.control(MechanismControl.position(-30)))
         .hasMessage("Gains[pivot].kP: -30 must be zero or more");
-    assertThatThrownBy(
-            () ->
-                pivot.control(
-                    MechanismControlBuilder.builder(MechanismControl.position(1))
-                        .gains(wrong)
-                        .build()))
+    assertThatThrownBy(() ->
+            pivot.control(
+                MechanismControlBuilder.builder(MechanismControl.position(1)).gains(wrong).build()))
         .hasMessage(
             "Gains[pivot].kP: -1 must be zero or more\n"
                 + "Gains[pivot].kV: -0.1 must be zero or more\n"
@@ -94,14 +91,13 @@ class MechanismControlTest {
 
   @Test
   void theSupplyLimitStepsDownWithinPhoenixsFiveSeconds() {
-    assertThatThrownBy(
-            () ->
-                MechanismControl.CurrentLimits.builder()
-                    .stator(Amps.of(40))
-                    .supply(Amps.of(40))
-                    .supplyLower(Amps.of(30))
-                    .supplyLowerTime(Seconds.of(6))
-                    .build())
+    assertThatThrownBy(() ->
+            MechanismControl.CurrentLimits.builder()
+                .stator(Amps.of(40))
+                .supply(Amps.of(40))
+                .supplyLower(Amps.of(30))
+                .supplyLowerTime(Seconds.of(6))
+                .build())
         .hasMessage("CurrentLimits.supplyLowerTime: 6 s must be at most 5 s");
   }
 
@@ -241,10 +237,9 @@ class MechanismControlTest {
                 + " Volts.per(RotationsPerSecondPerSecond) or"
                 + " Volts.per(MetersPerSecondPerSecond)");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                MechanismControl.position(Volts.per(Rotation).of(188))
-                    .withKd(Volts.per(MetersPerSecond).of(1)))
+        .isThrownBy(() ->
+            MechanismControl.position(Volts.per(Rotation).of(188))
+                .withKd(Volts.per(MetersPerSecond).of(1)))
         .withMessage(
             "Gains.kD: it's per a length, and the other gains are per an angle: a control drives"
                 + " one joint, which turns or slides");
@@ -287,9 +282,8 @@ class MechanismControlTest {
             "Gains.kP: volts per Rotation can't be one in a control for speeds: give it per a"
                 + " speed, Volts.per(RotationsPerSecond) or Volts.per(MetersPerSecond)");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                MechanismControl.position(30).withKd(Volts.per(RotationsPerSecondPerSecond).of(1)))
+        .isThrownBy(() ->
+            MechanismControl.position(30).withKd(Volts.per(RotationsPerSecondPerSecond).of(1)))
         .withMessageStartingWith("Gains.kD: volts per ")
         .withMessageEndingWith(
             " can't be one in a control for positions: give it per a speed,"
@@ -518,20 +512,17 @@ class MechanismControlTest {
     assertThat(MechanismControl.Homing.travelSeconds(math, slide, 2))
         .isCloseTo(0.4 / lifting, within(1e-9));
     assertThat(given.secondsOn(math, elevator)).isEqualTo(5);
-    assertThatThrownBy(
-            () ->
-                MechanismControl.Homing.ToSwitch.builder()
-                    .end(Sensor.Switch.Limit.End.LOWER)
-                    .volts(2)
-                    .timeout(Seconds.of(0))
-                    .build())
+    assertThatThrownBy(() ->
+            MechanismControl.Homing.ToSwitch.builder()
+                .end(Sensor.Switch.Limit.End.LOWER)
+                .volts(2)
+                .timeout(Seconds.of(0))
+                .build())
         .hasMessage("ToSwitch.timeout: 0 s must be positive");
     assertThat(derived.stallShare()).isEmpty();
     for (double share : new double[] {0, 1.5}) {
-      assertThatThrownBy(
-              () ->
-                  MechanismControl.Homing.toHardStop(Sensor.Switch.Limit.End.LOWER)
-                      .stallShare(share))
+      assertThatThrownBy(() ->
+              MechanismControl.Homing.toHardStop(Sensor.Switch.Limit.End.LOWER).stallShare(share))
           .hasMessageStartingWith("ToHardStop.stallShare: ");
     }
     MechanismControl.Homing.ToHardStop lower =

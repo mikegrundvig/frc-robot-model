@@ -241,25 +241,21 @@ class PdhTest {
   @Test
   void aChannelIsThePdhsAndItsBreakerNoBiggerThanItTakes() {
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                robot(
-                    Optional.of(Pdh.can(1)),
-                    roller(
-                        TALON_FX.can(31).pdh(24, Amps.of(40)),
-                        TALON_FX.can(32).pdh(19, Amps.of(50)))))
+        .isThrownBy(() ->
+            robot(
+                Optional.of(Pdh.can(1)),
+                roller(
+                    TALON_FX.can(31).pdh(24, Amps.of(40)), TALON_FX.can(32).pdh(19, Amps.of(50)))))
         .withMessage(
             "RobotDefinition[test].pdh: roller motor 31's channel, 24, isn't one of the PDH's:"
                 + " they're 0 to 23\nRobotDefinition[test].pdh: roller motor 32's 50 A breaker is"
                 + " over channel 19's rating: a high-current channel takes up to 40 A");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                robot(
-                    Optional.of(Pdh.can(1)),
-                    roller(
-                        TALON_FX.can(31).pdh(22, Amps.of(20)),
-                        TALON_FX.can(32).pdh(23, Amps.of(20)))))
+        .isThrownBy(() ->
+            robot(
+                Optional.of(Pdh.can(1)),
+                roller(
+                    TALON_FX.can(31).pdh(22, Amps.of(20)), TALON_FX.can(32).pdh(23, Amps.of(20)))))
         .withMessage(
             "RobotDefinition[test].pdh: roller motor 31's 20 A breaker is over channel 22's"
                 + " rating: a low-current channel takes up to 15 A\nRobotDefinition[test].pdh:"
@@ -285,12 +281,11 @@ class PdhTest {
                 + " channel, and the robot declares no PDH: give its definition one,"
                 + " .withPdh(Pdh.can(1)) at its CAN ID");
     assertThatIllegalArgumentException()
-        .isThrownBy(
-            () ->
-                RobotDefinitionBuilder.builder(robot(Optional.empty()))
-                    .drivetrain(wiredDrivetrain())
-                    .build()
-                    .checked())
+        .isThrownBy(() ->
+            RobotDefinitionBuilder.builder(robot(Optional.empty()))
+                .drivetrain(wiredDrivetrain())
+                .build()
+                .checked())
         .withMessageStartingWith(
             "RobotDefinition[test].pdh: front-left drive, front-left steering are fed");
   }
@@ -349,8 +344,7 @@ class PdhTest {
     assertThat(robot.devices()).noneMatch(device -> device.feed().isPresent());
     assertThat(
             MechanismFixtures.notes(RobotDefinitionBuilder.builder(robot).pdh(Pdh.can(1)).build()))
-        .anyMatch(
-            note ->
-                note.startsWith("none of the drivetrain's motor controllers has a PDH channel:"));
+        .anyMatch(note ->
+            note.startsWith("none of the drivetrain's motor controllers has a PDH channel:"));
   }
 }
