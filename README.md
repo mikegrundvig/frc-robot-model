@@ -102,7 +102,7 @@ words the code already has.
 It is published to the FRC libraries' Maven repository,
 [mikegrundvig.github.io/frc-maven](https://mikegrundvig.github.io/frc-maven/), as
 `com.michaelgrundvig.frc:frc-robot-model`, with its processor as
-`com.michaelgrundvig.frc:frc-docs-processor`. Versions are dated releases (`2026.11.14`), shared by
+`com.michaelgrundvig.frc:frc-docs-processor`. Versions are dated releases (`2026.11.15`), shared by
 all the FRC libraries; they are pre-release, with no promise of compatibility from one to the next.
 
 ```groovy
@@ -116,8 +116,8 @@ repositories {
     }
 }
 dependencies {
-    implementation "com.michaelgrundvig.frc:frc-robot-model:2026.11.14"
-    annotationProcessor "com.michaelgrundvig.frc:frc-docs-processor:2026.11.14"
+    implementation "com.michaelgrundvig.frc:frc-robot-model:2026.11.15"
+    annotationProcessor "com.michaelgrundvig.frc:frc-docs-processor:2026.11.15"
 }
 ```
 
