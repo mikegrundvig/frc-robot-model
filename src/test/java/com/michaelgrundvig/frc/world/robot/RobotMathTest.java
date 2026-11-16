@@ -393,9 +393,9 @@ class RobotMathTest {
                     new Translation2d(1.5, 0.25)))
             .build();
     CameraConfig camera =
-        CameraConfigBuilder.builder(ConfigFixtures.camera("hopper", point(0.05, 0, 0.15)))
-            .joint(hopper)
-            .build();
+        ConfigFixtures.station("hopper", point(0.05, 0, 0.15))
+            .on(hopper)
+            .holds(Camera.photonVision(1, ConfigFixtures.type()));
     RobotDefinition robot =
         definition(
             List.of(intake, hopper),

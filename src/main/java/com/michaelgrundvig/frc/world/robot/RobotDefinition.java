@@ -60,7 +60,7 @@ import org.wpilib.units.measure.Mass;
  * @param name which robot this is, as its logs and its checks' messages name it
  * @param body the frame, bumpers, and mass
  * @param drivetrain the swerve drivetrain, as built
- * @param cameras the AprilTag cameras
+ * @param cameras the AprilTag cameras, each in its station ({@link CameraStation#holds})
  * @param backupImu where the backup IMU is mounted, and whether its accelerometer has been checked
  *     to read along the robot's axes, if the robot has one: Systemcore's own, which stands in while
  *     the gyro is lost; or a second Pigeon. Empty for a robot with none: robot code then reads no
@@ -130,6 +130,9 @@ public record RobotDefinition(
     Optional<RobotMath> whole = RobotMath.whole(body, joints, couplings, everyDrive, everySensor);
     Checks.on(RobotDefinition.class, name)
         .field("cameras", cameras, Rule.of(RobotDefinition::whyNamesAreShared))
+        .field("cameras", cameras, Rule.of(RobotDefinition::whyACameraIsInTwoStations))
+        .field("cameras", cameras, Rule.of(RobotDefinition::whyTwoTypesShareAName))
+        .field("cameras", cameras, Rule.of(RobotDefinition::whyOneDeviceIsTwoCameras))
         .whyNot("drivetrain.corners", () -> drivetrain.whyWheelsDontFit(body))
         .whyNot(
             "drivetrain.control.limits.maxLinearSpeed",
@@ -347,10 +350,12 @@ public record RobotDefinition(
   }
 
   /**
-   * The same robot with some of its cameras mounted otherwise: a practice robot's back camera,
-   * lower, {@code COMPETITION.with(CameraConfigBuilder.builder(BACK).up(Inches.of(20.8)).build())}.
-   * Each replaces the robot's camera of its name, all of it: where it sits and points, the camera
-   * itself, and how far its results are trusted.
+   * The same robot with some of its stations holding another camera, or mounted otherwise: a camera
+   * swapped, {@code COMPETITION.with(FRONT_LEFT.holds(CAMERA_3))}, or a practice robot's back
+   * station, lower, {@code
+   * COMPETITION.with(CameraStationBuilder.builder(BACK).up(Inches.of(20.8)).build().holds(CAMERA_4))}.
+   * Each replaces the robot's camera of its station's name, all of it: where it sits and points,
+   * the camera in it, and how far its results are trusted.
    *
    * @throws IllegalArgumentException for a camera the robot has none of by its name, or one given
    *     twice
@@ -374,12 +379,12 @@ public record RobotDefinition(
   }
 
   /**
-   * The same robot with more cameras: a bench robot's, {@code
-   * DRIVING.named("vision-bench").withCameras(CAMERA_1, CAMERA_2)}. Each is added after the robot's
-   * own, and a camera of a name it has already is refused once the robot is finished ({@link
-   * #checked}), as two of one name are: to mount one of its cameras otherwise, {@link
-   * #with(CameraConfig...)}. A camera on a joint may come before or after its joint ({@link
-   * #withJoints}).
+   * The same robot with more cameras, each in its station: a bench robot's, {@code
+   * DRIVING.named("vision-bench").withCameras(FRONT_LEFT.holds(CAMERA_1),
+   * FRONT_RIGHT.holds(CAMERA_2))}. Each is added after the robot's own, and a camera of a name it
+   * has already is refused once the robot is finished ({@link #checked}), as two of one name are:
+   * to mount one of its cameras otherwise, {@link #with(CameraConfig...)}. A camera on a joint may
+   * come before or after its joint ({@link #withJoints}).
    */
   public RobotDefinition withCameras(CameraConfig... added) {
     List<CameraConfig> all = new ArrayList<>(cameras);
@@ -494,8 +499,8 @@ public record RobotDefinition(
    *
    * <p>Doubtful ({@link Finding.Level#DOUBT}): a drive kV under half or over twice the modules'
    * ideal ({@code Drivetrain.whyDriveKvIsDoubtful}); a camera's field of view more than 2° from its
-   * lens's ({@code CameraConfig.whyFieldOfViewDisagreesWithLens}); a named speed above nine tenths
-   * of what its joint's motors turn it at, which a velocity loop can't hold under load ({@code
+   * lens's ({@code Camera.whyFieldOfViewDisagreesWithLens}); a named speed above nine tenths of
+   * what its joint's motors turn it at, which a velocity loop can't hold under load ({@code
    * RobotMath.freeSpeed}); one above it all is refused. A joint resting inside a region it's kept
    * out of as the robot starts, which it may only leave until the region opens; a preset there is
    * refused.
@@ -576,6 +581,7 @@ public record RobotDefinition(
     drivetrain.whyDriveKvIsDoubtful().ifPresent(why -> found.add(Finding.doubt("drivetrain", why)));
     for (CameraConfig camera : cameras) {
       camera
+          .camera()
           .whyFieldOfViewDisagreesWithLens()
           .ifPresent(why -> found.add(Finding.doubt(camera.name(), why)));
     }
@@ -732,7 +738,7 @@ public record RobotDefinition(
 
   /**
    * Why cameras' names cannot all be theirs, if they cannot: two have the same name, or names that
-   * differ only in case or punctuation. Those become the same id ({@link CameraConfig#id()}), so
+   * differ only in case or punctuation. Those become the same id ({@link CameraStation#id()}), so
    * "Front Left" and "front-left" are one camera to everything that reads ids.
    */
   /**
@@ -774,6 +780,108 @@ public record RobotDefinition(
       return Optional.empty();
     }
     return Optional.of(String.join("; ", shared));
+  }
+
+  /**
+   * Why the cameras can't all be where they're listed, if they can't: one camera, by the number on
+   * its label, is in two stations at once, or two cameras that differ have one number, so the pit
+   * can't tell which is which.
+   */
+  private static Optional<String> whyACameraIsInTwoStations(List<CameraConfig> cameras) {
+    Map<Integer, CameraConfig> byNumber = new HashMap<>();
+    List<String> problems = new ArrayList<>();
+    for (CameraConfig placed : cameras) {
+      CameraConfig earlier = byNumber.putIfAbsent(placed.camera().number(), placed);
+      if (earlier == null) {
+        continue;
+      }
+      String stations = earlier.name() + " and " + placed.name();
+      if (earlier.camera().equals(placed.camera())) {
+        problems.add(
+            "camera "
+                + placed.camera().number()
+                + " is in both "
+                + stations
+                + ": a camera is in one station");
+        continue;
+      }
+      problems.add(
+          "two different cameras, in "
+              + stations
+              + ", are both numbered "
+              + placed.camera().number()
+              + ": give each camera the number on its own label");
+    }
+    if (problems.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(String.join("; ", problems));
+  }
+
+  /**
+   * Why two of the cameras are one camera, if they are: two numbers given the same device, which is
+   * one camera plugged in once, so Visor would be configured twice for it.
+   */
+  private static Optional<String> whyOneDeviceIsTwoCameras(List<CameraConfig> cameras) {
+    Map<String, CameraConfig> byDevice = new HashMap<>();
+    List<String> problems = new ArrayList<>();
+    for (CameraConfig placed : cameras) {
+      Optional<String> device = placed.camera().device();
+      if (device.isEmpty()) {
+        continue;
+      }
+      CameraConfig earlier = byDevice.putIfAbsent(device.get(), placed);
+      if (earlier == null || earlier.camera().number() == placed.camera().number()) {
+        continue;
+      }
+      problems.add(
+          "cameras "
+              + earlier.camera().number()
+              + " (in "
+              + earlier.name()
+              + ") and "
+              + placed.camera().number()
+              + " (in "
+              + placed.name()
+              + ") have one device, "
+              + device.get()
+              + ": a device is one camera, so give each camera its own");
+    }
+    if (problems.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(String.join("; ", problems));
+  }
+
+  /**
+   * Why the cameras' types can't all be told apart by name, if they can't: two types of one name
+   * that differ in more than their live view. A venue keeps its exposure and gain by a type's name,
+   * and a gain is in a camera's own units, so a name has to mean one kind of camera, set up one
+   * way. Only the live view, which no venue keeps and which says nothing of the camera, may differ.
+   */
+  private static Optional<String> whyTwoTypesShareAName(List<CameraConfig> cameras) {
+    Map<String, CameraType> byName = new HashMap<>();
+    Set<String> shared = new java.util.TreeSet<>();
+    for (CameraConfig camera : cameras) {
+      CameraType type = withoutItsLiveView(camera.type());
+      CameraType earlier = byName.putIfAbsent(type.name(), type);
+      if (earlier != null && !earlier.equals(type)) {
+        shared.add(type.name());
+      }
+    }
+    if (shared.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        "two different camera types are both named "
+            + String.join(", ", shared)
+            + ": a venue keeps each type's exposure and gain by its name, so a name is one kind of"
+            + " camera, the same in all but its live view. Name each its own");
+  }
+
+  /** A camera type with its live view left to Visor's: what two types of one name must share. */
+  private static CameraType withoutItsLiveView(CameraType type) {
+    return CameraTypeBuilder.builder(type).stream(Optional.empty()).build();
   }
 
   /**

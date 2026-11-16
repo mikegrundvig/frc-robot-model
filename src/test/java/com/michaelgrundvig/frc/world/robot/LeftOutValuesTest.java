@@ -22,16 +22,16 @@ import org.wpilib.math.geometry.Translation3d;
 class LeftOutValuesTest {
   /** A camera stating everything, at the front of the fixture's robot. */
   private static final CameraConfig STATED =
-      CameraConfigBuilder.builder(ConfigFixtures.camera("front", new Translation3d(0.3, 0, 0.5)))
-          .mountTolerance(CameraConfig.MountTolerance.MEASURED)
-          .build();
+      ConfigFixtures.station("front", new Translation3d(0.3, 0, 0.5))
+          .mountTolerance(MountTolerance.MEASURED)
+          .holds(Camera.photonVision(1, ConfigFixtures.type()));
 
   @Test
   void eachValueLeftOutIsNotedWhereItsRead() {
     record Row(
         String left, RobotDefinition robot, String subject, String says, Finding.Scope scope) {}
     RobotDefinition stated = ConfigFixtures.definition(List.of(STATED));
-    CameraConfig.ImageSensor bare = CameraConfig.ImageSensor.of(1280, 800, Hertz.of(30));
+    ImageSensor bare = ImageSensor.of(1280, 800, Hertz.of(30));
     List<Row> rows =
         List.of(
             new Row(
@@ -63,14 +63,15 @@ class LeftOutValuesTest {
                 "a camera's roll, noise scale, latency and checked mount",
                 withCamera(
                     stated,
-                    CameraConfigBuilder.builder(STATED)
-                        .roll(Optional.empty())
-                        .noiseScale(Optional.empty())
-                        .sensor(
-                            bare.fieldOfView(Degrees.of(80), CameraConfig.Across.DIAGONAL)
-                                .sightRange(Meters.of(7)))
-                        .mountTolerance(CameraConfig.MountTolerance.UNCHECKED)
-                        .build()),
+                    withSensor(
+                        CameraStationBuilder.builder(STATED.station())
+                            .roll(Optional.empty())
+                            .noiseScale(Optional.empty())
+                            .mountTolerance(MountTolerance.UNCHECKED)
+                            .build()
+                            .holds(STATED.camera()),
+                        bare.fieldOfView(Degrees.of(80), ImageSensor.Across.DIAGONAL)
+                            .sightRange(Meters.of(7)))),
                 "front",
                 "camera front: its roll is taken as 0°, level, its noise scale as 1, a typical"
                     + " camera's, its latency as 30 ms, its software's typical one, its mount as"
@@ -78,18 +79,14 @@ class LeftOutValuesTest {
                 ROBOT),
             new Row(
                 "a camera's field of view and sight range",
-                withCamera(
-                    stated,
-                    CameraConfigBuilder.builder(STATED)
-                        .sensor(bare.latency(Milliseconds.of(30)))
-                        .build()),
+                withCamera(stated, withSensor(STATED, bare.latency(Milliseconds.of(30)))),
                 "front",
                 "camera front: its field of view is taken as 80° across the diagonal, its sight"
                     + " range as 7 m: what the simulator's camera sees",
                 SIMULATOR),
             new Row(
                 "a camera's latency, field of view and sight range, in one note",
-                withCamera(stated, CameraConfigBuilder.builder(STATED).sensor(bare).build()),
+                withCamera(stated, withSensor(STATED, bare)),
                 "front",
                 "camera front: its latency as 30 ms, its software's typical one: the localizer"
                     + " places and weighs its images by them: the mount procedure gives its roll"
@@ -136,8 +133,8 @@ class LeftOutValuesTest {
    */
   @Test
   void aFieldOfViewThatDisagreesWithItsLensIsDoubted() {
-    CameraConfig.Software.Lens lens =
-        CameraConfig.Software.Lens.builder()
+    Lens lens =
+        Lens.builder()
             .width(1280)
             .height(800)
             .fx(905.2)
@@ -146,11 +143,10 @@ class LeftOutValuesTest {
             .cy(398.8)
             .distortion(List.of())
             .build();
-    CameraConfig datasheet =
-        CameraConfigBuilder.builder(STATED)
-            .sensor(STATED.sensor().fieldOfView(Degrees.of(90), CameraConfig.Across.DIAGONAL))
-            .software(CameraConfig.Software.visor().lens(lens))
-            .build();
+    CameraType datasheetType =
+        CameraType.of(
+            "datasheet", STATED.sensor().fieldOfView(Degrees.of(90), ImageSensor.Across.DIAGONAL));
+    CameraConfig datasheet = STATED.station().holds(Camera.visor(1, datasheetType).lens(lens));
 
     assertThat(MechanismFixtures.findings(ConfigFixtures.definition(List.of(datasheet))))
         .filteredOn(finding -> finding.level() == Finding.Level.DOUBT)
@@ -158,13 +154,19 @@ class LeftOutValuesTest {
         .containsExactly(
             org.assertj.core.groups.Tuple.tuple(
                 "front",
-                "camera front's sensor gives a field of view of 90.0° across the diagonal, but its"
-                    + " lens calibration sees 79.6°: the lens's is used. Leave the sensor's out, or"
-                    + " check which is right"));
+                "camera 1's type, datasheet, gives a field of view of 90.0° across the diagonal,"
+                    + " but its lens calibration sees 79.6°: the lens's is used. Leave the type's"
+                    + " out, or check which is right"));
   }
 
   private static RobotDefinition withBody(RobotDefinition robot, BodyBuilder body) {
     return RobotDefinitionBuilder.builder(robot).body(body.build()).build();
+  }
+
+  /** The same camera in its station, its type's images these. */
+  private static CameraConfig withSensor(CameraConfig camera, ImageSensor sensor) {
+    CameraType type = CameraTypeBuilder.builder(camera.type()).sensor(sensor).build();
+    return camera.station().holds(CameraBuilder.builder(camera.camera()).type(type).build());
   }
 
   private static RobotDefinition withCamera(RobotDefinition robot, CameraConfig camera) {

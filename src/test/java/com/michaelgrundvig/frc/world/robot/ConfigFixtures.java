@@ -57,21 +57,40 @@ public final class ConfigFixtures {
     return Drivetrain.inset(modules(), body(), Inches.of(2.625));
   }
 
-  /** A 1280 x 800 camera with an 80 degree field of view. */
-  public static CameraConfig.ImageSensor sensor() {
-    return CameraConfig.ImageSensor.of(1280, 800, Hertz.of(30))
-        .fieldOfView(Degrees.of(80), CameraConfig.Across.DIAGONAL)
+  /** A 1280 x 800 camera's images, with an 80 degree field of view. */
+  public static ImageSensor sensor() {
+    return ImageSensor.of(1280, 800, Hertz.of(30))
+        .fieldOfView(Degrees.of(80), ImageSensor.Across.DIAGONAL)
         .latency(Milliseconds.of(30))
         .sightRange(Meters.of(7));
   }
 
-  /** A level, forward-facing camera at the given position. */
-  public static CameraConfig camera(String name, Translation3d position) {
-    return CameraConfig.of(name, sensor())
+  /** A kind of camera with those images, at the default exposure and gain. */
+  public static CameraType type() {
+    return CameraType.of("test camera", sensor());
+  }
+
+  /** A level, forward-facing station at the given position. */
+  public static CameraStation station(String name, Translation3d position) {
+    return CameraStation.named(name)
         .at(position.getMeasureX(), position.getMeasureY(), position.getMeasureZ())
         .facing(Degrees.of(0), Degrees.of(0))
         .roll(Degrees.of(0))
         .noiseScale(1.0);
+  }
+
+  /**
+   * A level, forward-facing camera on PhotonVision at the given position, in a station of that
+   * name. Its label's number comes from the name, so cameras of different names are different
+   * cameras.
+   */
+  public static CameraConfig camera(String name, Translation3d position) {
+    return station(name, position).holds(Camera.photonVision(numberFor(name), type()));
+  }
+
+  /** A camera number for a station's name: the same name always gives the same number. */
+  public static int numberFor(String name) {
+    return 1 + Math.floorMod(name.hashCode(), 9_999);
   }
 
   /**

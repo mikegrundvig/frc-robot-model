@@ -17,7 +17,9 @@ import org.wpilib.math.geometry.Pose3d;
  * WPIcal's output for an event's field. Venues are runtime data, never code: a file uploaded in the
  * pit, or committed under {@code venues/}, read by {@link VenueFile} and checked by {@link
  * VenueCheck} before the robot uses it. Set against the official layout it was measured against, it
- * gives its {@link Tag}s ({@link #tags}), which a {@link FieldModel} is built on.
+ * gives its {@link Tag}s ({@link #tags}), which a {@link FieldModel} is built on. It may also carry
+ * its cameras' exposure and gain for its lighting ({@link VenueCameras}), the only robot settings a
+ * venue keeps.
  *
  * @param name what people call it, such as "Practice field, October"
  * @param kind a practice field, a shop, an event, or the official layout itself
@@ -26,8 +28,11 @@ import org.wpilib.math.geometry.Pose3d;
  * @param layout every tag where the survey found it, in WPILib's field frame: the file's layout,
  *     unchanged, as the coprocessors get it
  * @param moved why each tag the survey found far from its official place is there
- * @param method how it was measured: "hand", "wpical", "bundle adjustment", or "unknown"
+ * @param method how it was measured: "hand", "wpical", "bundle adjustment", "unknown", or
+ *     "official" for the official layout taken as it is, with no survey
  * @param date when it was measured (ISO 8601), or empty when unknown
+ * @param cameras the exposure and gain its cameras run at here, where it says ({@link
+ *     VenueCameras}): kept in the pit for the venue's lighting, and none in a bare layout
  * @param wrapped true when the file was a bare WPILib layout, given the stated defaults
  * @param text the file as read, which is what's logged, stored and downloaded
  */
@@ -39,6 +44,7 @@ public record Venue(
     Map<Integer, String> moved,
     String method,
     String date,
+    VenueCameras cameras,
     boolean wrapped,
     String text) {
 

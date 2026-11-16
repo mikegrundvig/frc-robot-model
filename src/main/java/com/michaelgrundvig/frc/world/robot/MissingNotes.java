@@ -213,7 +213,9 @@ final class MissingNotes {
     }
     if (camera.noiseScale().isEmpty()) {
       robotReads.add(
-          "its noise scale as " + shown(CameraConfig.DEFAULT_NOISE_SCALE) + ", a typical camera's");
+          "its noise scale as "
+              + shown(CameraStation.DEFAULT_NOISE_SCALE)
+              + ", a typical camera's");
     }
     if (camera.sensor().latency().isEmpty()) {
       robotReads.add(
@@ -221,14 +223,24 @@ final class MissingNotes {
               + shown(camera.latencyOrDefault().in(Milliseconds))
               + " ms, its software's typical one");
     }
-    if (camera.mountTolerance().equals(CameraConfig.MountTolerance.UNCHECKED)) {
-      CameraConfig.MountTolerance unchecked = CameraConfig.MountTolerance.UNCHECKED;
+    MountTolerance unchecked = MountTolerance.UNCHECKED;
+    String uncheckedMount =
+        "its mount as unchecked, as far as "
+            + shown(unchecked.along())
+            + " and "
+            + shown(unchecked.about().in(Degrees))
+            + "° off";
+    if (camera.measuredWithAnotherCamera()) {
+      // The mount procedure checked the station with a camera since swapped out.
       robotReads.add(
-          "its mount as unchecked, as far as "
-              + shown(unchecked.along())
-              + " and "
-              + shown(unchecked.about().in(Degrees))
-              + "° off");
+          uncheckedMount
+              + ": its station was measured with camera "
+              + camera.station().measuredWith().orElseThrow()
+              + ", and holds camera "
+              + camera.camera().number()
+              + " now");
+    } else if (camera.mountTolerance().equals(unchecked)) {
+      robotReads.add(uncheckedMount);
     }
     return robotReads;
   }
@@ -239,11 +251,11 @@ final class MissingNotes {
     if (camera.lens().isEmpty() && camera.sensor().fieldOfView().isEmpty()) {
       simulatorReads.add(
           "its field of view is taken as "
-              + shown(CameraConfig.DEFAULT_FIELD_OF_VIEW.in(Degrees))
+              + shown(Camera.DEFAULT_FIELD_OF_VIEW.in(Degrees))
               + "° across the diagonal");
     }
     if (camera.sensor().sightRange().isEmpty()) {
-      simulatorReads.add("its sight range as " + shown(CameraConfig.DEFAULT_SIGHT_RANGE));
+      simulatorReads.add("its sight range as " + shown(Camera.DEFAULT_SIGHT_RANGE));
     }
     return simulatorReads;
   }

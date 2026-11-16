@@ -355,7 +355,11 @@ class RobotDefinitionTest {
     CameraConfig back = camera("back", inches(-10, 0, 20));
     CameraConfig front = camera("front", inches(10, 0, 20));
     RobotDefinition competition = definition(List.of(front, back));
-    CameraConfig lower = CameraConfigBuilder.builder(back).up(Inches.of(19.81)).build();
+    CameraConfig lower =
+        CameraStationBuilder.builder(back.station())
+            .up(Inches.of(19.81))
+            .build()
+            .holds(back.camera());
 
     RobotDefinition practice = competition.with(lower);
 

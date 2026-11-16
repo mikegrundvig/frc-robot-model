@@ -1,5 +1,7 @@
 package com.michaelgrundvig.frc.world.field;
 
+import static org.wpilib.units.Units.Milliseconds;
+
 import io.avaje.jsonb.JsonType;
 import io.avaje.jsonb.Jsonb;
 import java.util.LinkedHashMap;
@@ -10,6 +12,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import org.wpilib.fields.Field;
+import org.wpilib.units.measure.Time;
 
 /**
  * Reads a venue file: a small JSON document of ours that embeds WPILib's layout unchanged.
@@ -23,9 +26,16 @@ import org.wpilib.fields.Field;
  *   "layout": { ... },                        // WPILib's layout, either format, as WPILib writes it
  *   "moved": {"14": "the panel was rehung after the survey"},   // optional
  *   "method": "hand",                                            // optional
- *   "date": "2026-10-12"                                         // optional
+ *   "date": "2026-10-12",                                        // optional
+ *   "cameras": {                                                 // optional
+ *     "types": {"ThriftyCam": {"exposureMs": 1.5, "gain": 40}},  // by camera type, optional
+ *     "stations": {"back": {"type": "ThriftyCam", "gain": 52}}  // a station's own, optional
+ *   }
  * }
  * }</pre>
+ *
+ * <p>The cameras' settings are kept by the pit after tuning ({@link #withCameras}); a bare WPILib
+ * layout has none, and its cameras run at their types' settings.
  *
  * <p>The embedded layout is either WPILib's field format ({@code field-tags}, {@code
  * field-dimensions}) or its earlier AprilTag layout ({@code tags}, {@code field}), which WPIcal and
@@ -39,7 +49,19 @@ import org.wpilib.fields.Field;
 public final class VenueFile {
   /** The keys a venue file may have at its top level. */
   private static final Set<String> KEYS =
-      Set.of("format", "name", "kind", "base", "layout", "moved", "method", "date");
+      Set.of("format", "name", "kind", "base", "layout", "moved", "method", "date", "cameras");
+
+  /** The keys a venue's camera settings may have. */
+  private static final Set<String> CAMERA_KEYS = Set.of("types", "stations");
+
+  /** The keys a camera type's settings may have. */
+  private static final Set<String> SETTING_KEYS = Set.of("exposureMs", "gain");
+
+  /** The keys a station's settings may have: a type's, and the type they were kept for. */
+  private static final Set<String> STATION_KEYS = Set.of("type", "exposureMs", "gain");
+
+  /** Any JSON value, written as the file's text: indented, its objects in their own order. */
+  private static final JsonType<Object> JSON_VALUE = Jsonb.instance().type(Object.class);
 
   /**
    * Deeper nesting than this is refused before it's read: a field layout is five levels deep, and
@@ -116,8 +138,118 @@ public final class VenueFile {
         venue.moved(),
         venue.method(),
         venue.date(),
+        venue.cameras(),
         wrapped,
         venue.text());
+  }
+
+  /**
+   * A venue with no survey: the official layout as it is, named for an event, for the pit to keep
+   * its cameras' settings in. It is an official venue, its tags where the official layout puts
+   * them, so it fits the field wherever the official layout does.
+   *
+   * @param name what to call it: the event's name
+   * @param official the official layout, as the game gives it
+   * @throws IllegalArgumentException if the name is blank
+   */
+  public static Venue official(String name, Field official) {
+    if (name.isBlank()) {
+      throw new IllegalArgumentException("a venue needs a name: give the event's");
+    }
+    Map<String, Object> file = new LinkedHashMap<>();
+    file.put("format", Venue.FORMAT);
+    file.put("name", name.strip());
+    file.put("kind", Venue.Kind.OFFICIAL.name().toLowerCase(Locale.ROOT));
+    file.put("base", official.getName());
+    file.put("method", "official");
+    file.put("layout", VenueJson.parse(layoutText(official)));
+    return read(text(file));
+  }
+
+  /**
+   * The official layout's text: WPILib's own file where it kept it, else WPILib's writing of it.
+   */
+  private static String layoutText(Field official) {
+    String json = official.getJson();
+    if (json != null) {
+      return json;
+    }
+    return Jsonb.instance().type(Field.class).toJson(official);
+  }
+
+  /**
+   * The same venue, its cameras' settings these: its file as it was, the {@code "cameras"} part
+   * written anew, or left out when there are none. The rest of the file keeps its values and their
+   * order, so its survey is unchanged.
+   *
+   * @throws IllegalArgumentException if the venue's file can't be read again, which a venue read
+   *     from it can always be
+   */
+  public static Venue withCameras(Venue venue, VenueCameras cameras) {
+    if (!(VenueJson.parse(venue.text()) instanceof Map<?, ?> parsed)) {
+      throw new IllegalArgumentException("venue file: not a JSON object");
+    }
+    Map<String, Object> file = new LinkedHashMap<>();
+    for (Map.Entry<?, ?> entry : parsed.entrySet()) {
+      file.put(String.valueOf(entry.getKey()), entry.getValue());
+    }
+    file.remove("cameras");
+    if (!cameras.empty()) {
+      file.put("cameras", written(cameras));
+    }
+    Venue kept = read(text(file));
+    return new Venue(
+        kept.name(),
+        kept.kind(),
+        kept.base(),
+        kept.layout(),
+        kept.moved(),
+        kept.method(),
+        kept.date(),
+        kept.cameras(),
+        venue.wrapped(),
+        kept.text());
+  }
+
+  /** A venue file's text from its values, indented, ending in a newline. */
+  private static String text(Map<String, Object> file) {
+    return JSON_VALUE.toJsonPretty(file) + "\n";
+  }
+
+  /** A venue's camera settings as its file has them. */
+  private static Map<String, Object> written(VenueCameras cameras) {
+    Map<String, Object> written = new LinkedHashMap<>();
+    if (!cameras.types().isEmpty()) {
+      written.put("types", written(cameras.types()));
+    }
+    if (!cameras.stations().isEmpty()) {
+      Map<String, Object> stations = new LinkedHashMap<>();
+      cameras
+          .stations()
+          .forEach((station, own) -> {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("type", own.type());
+            entry.putAll(written(own.settings()));
+            stations.put(station, entry);
+          });
+      written.put("stations", stations);
+    }
+    return written;
+  }
+
+  /** Settings by name, as a venue's file has them. */
+  private static Map<String, Object> written(Map<String, VenueCameras.Settings> named) {
+    Map<String, Object> written = new LinkedHashMap<>();
+    named.forEach((name, settings) -> written.put(name, written(settings)));
+    return written;
+  }
+
+  /** One camera's settings as a venue's file has them: its exposure in milliseconds, its gain. */
+  private static Map<String, Object> written(VenueCameras.Settings settings) {
+    Map<String, Object> written = new LinkedHashMap<>();
+    settings.exposure().ifPresent(time -> written.put("exposureMs", time.in(Milliseconds)));
+    settings.gain().ifPresent(gain -> written.put("gain", gain));
+    return written;
   }
 
   /**
@@ -171,6 +303,7 @@ public final class VenueFile {
     Map<Integer, String> moved = moved();
     Optional<String> method = reading.textOr(file, "method", "method", "unknown");
     Optional<String> date = reading.textOr(file, "date", "date", "");
+    VenueCameras cameras = cameras();
 
     boolean readAllItNeeds =
         name.isPresent()
@@ -191,8 +324,131 @@ public final class VenueFile {
             moved,
             method.get(),
             date.orElse(""),
+            cameras,
             wrapped,
             text));
+  }
+
+  /**
+   * The venue's camera settings: none if the file leaves them out. A value that can't be read is a
+   * problem, and is left out.
+   */
+  private VenueCameras cameras() {
+    if (!file.containsKey("cameras")) {
+      return VenueCameras.NONE;
+    }
+    Optional<Map<?, ?>> cameras = reading.object(file.get("cameras"), "cameras");
+    if (cameras.isEmpty()) {
+      return VenueCameras.NONE;
+    }
+    noteUnknownKeys(cameras.get(), CAMERA_KEYS, "cameras");
+    Map<String, VenueCameras.Settings> types = new LinkedHashMap<>();
+    named(cameras.get(), "types", "camera type", SETTING_KEYS)
+        .forEach((name, part) -> types.put(name, settings(part, "cameras: camera type " + name)));
+    Map<String, VenueCameras.StationSettings> stations = new LinkedHashMap<>();
+    named(cameras.get(), "stations", "station", STATION_KEYS)
+        .forEach((name, part) -> {
+          String where = "cameras: station " + name;
+          if (!part.containsKey("type")) {
+            // A station's own are for the kind of camera they were kept with, which it names.
+            reading.problem(
+                where
+                    + " doesn't say the camera type its settings were kept for: add it,"
+                    + " \"type\": \"ThriftyCam\" for a station that held a ThriftyCam");
+            return;
+          }
+          Optional<String> type = reading.text(part, "type", where + ": type");
+          VenueCameras.Settings own = settings(part, where);
+          if (type.isPresent() && !type.get().isBlank()) {
+            stations.put(name, new VenueCameras.StationSettings(type.get(), own));
+          } else if (type.isPresent()) {
+            reading.problem(where + ": type is blank");
+          }
+        });
+    return new VenueCameras(types, stations);
+  }
+
+  /**
+   * The parts of the venue's cameras by name: each camera type's, or each station's. One that isn't
+   * an object, or has a key the format doesn't, is a problem.
+   *
+   * @param key the part: "types" or "stations"
+   * @param what what each is, for the problems: "camera type", "station"
+   * @param known the keys each may have
+   */
+  private Map<String, Map<?, ?>> named(
+      Map<?, ?> cameras, String key, String what, Set<String> known) {
+    Map<String, Map<?, ?>> named = new LinkedHashMap<>();
+    if (!cameras.containsKey(key)) {
+      return named;
+    }
+    Optional<Map<?, ?>> listed = reading.object(cameras.get(key), "cameras' " + key);
+    for (Map.Entry<?, ?> entry : listed.orElse(Map.of()).entrySet()) {
+      String name = String.valueOf(entry.getKey());
+      String where = "cameras: " + what + " " + name;
+      if (name.isBlank()) {
+        reading.problem("cameras: a " + what + " with no name");
+        continue;
+      }
+      Optional<Map<?, ?>> own = reading.object(entry.getValue(), where);
+      if (own.isEmpty()) {
+        continue;
+      }
+      noteUnknownKeys(own.get(), known, where);
+      named.put(name, own.get());
+    }
+    return named;
+  }
+
+  /**
+   * One camera's settings, from its part of the file: an exposure in milliseconds and a gain, each
+   * if given. One out of its range is a problem, and is left out.
+   *
+   * @param where what the problems call this part: a type's or a station's
+   */
+  private VenueCameras.Settings settings(Map<?, ?> part, String where) {
+    Optional<Time> exposure = Optional.empty();
+    if (part.containsKey("exposureMs")) {
+      OptionalDouble millis = reading.number(part, "exposureMs", where + ": exposureMs");
+      if (millis.isPresent()) {
+        Time time = Milliseconds.of(millis.getAsDouble());
+        if (time.lt(VenueCameras.SHORTEST_EXPOSURE) || time.gt(VenueCameras.LONGEST_EXPOSURE)) {
+          reading.problem(
+              where + ": exposureMs " + millis.getAsDouble() + " (from 0.1 to 1000 ms)");
+        } else {
+          exposure = Optional.of(time);
+        }
+      }
+    }
+    Optional<Integer> gain = Optional.empty();
+    if (part.containsKey("gain")) {
+      OptionalDouble written = reading.number(part, "gain", where + ": gain");
+      if (written.isPresent()) {
+        double value = written.getAsDouble();
+        boolean whole = value == Math.rint(value);
+        if (!whole || value < 0 || value > VenueCameras.MOST_GAIN) {
+          reading.problem(
+              where
+                  + ": gain "
+                  + value
+                  + " (a whole number from 0 to "
+                  + VenueCameras.MOST_GAIN
+                  + ")");
+        } else {
+          gain = Optional.of((int) value);
+        }
+      }
+    }
+    return new VenueCameras.Settings(exposure, gain);
+  }
+
+  /** Each key of a part of the file that the format doesn't have is a problem. */
+  private void noteUnknownKeys(Map<?, ?> part, Set<String> known, String where) {
+    for (Object key : part.keySet()) {
+      if (!known.contains(key)) {
+        reading.problem(where + ": unknown key \"" + key + "\"");
+      }
+    }
   }
 
   private void noteUnknownKeys() {

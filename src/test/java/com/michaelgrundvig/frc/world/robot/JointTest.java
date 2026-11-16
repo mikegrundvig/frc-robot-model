@@ -401,14 +401,11 @@ class JointTest {
   /** A camera on a link sits on it, and inside the robot when its joint is stowed. */
   @Test
   void aCameraOnAJointSitsOnItsLink() {
+    Camera camera = Camera.photonVision(1, ConfigFixtures.type());
     CameraConfig onArm =
-        CameraConfigBuilder.builder(ConfigFixtures.camera("arm", point(0.2, 0, 0.03)))
-            .joint((Joint) arm)
-            .build();
+        ConfigFixtures.station("arm", point(0.2, 0, 0.03)).on((Joint) arm).holds(camera);
     CameraConfig floating =
-        CameraConfigBuilder.builder(ConfigFixtures.camera("arm", point(0.2, 0, 0.4)))
-            .joint((Joint) arm)
-            .build();
+        ConfigFixtures.station("arm", point(0.2, 0, 0.4)).on((Joint) arm).holds(camera);
     Drive drive = MechanismFixtures.motors(arm, Motor.KRAKEN_X60, 1, gearing(50, 1));
 
     RobotDefinition robot =
